@@ -7,16 +7,19 @@
 #define LOCK_MANAGER
 
 #include <list>
+#include <mutex>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <zmq.hpp>
 
 #include "common/configuration.h"
 #include "common/constants.h"
 #include "common/json_utils.h"
 #include "common/txn_holder.h"
 #include "common/types.h"
+#include "module/base/module.h"
 
 using std::list;
 using std::optional;
@@ -51,12 +54,19 @@ class LockQueueTail {
 };
 
 struct TxnInfo {
-  vector<TxnId> waited_by;
-  int waiting_for_cnt = 0;
-  int unarrived_lock_requests = 0;
+  explicit TxnInfo(TxnId txn_id) : id(txn_id), num_waiting_for(0), unarrived_lock_requests(0) {}
 
-  bool is_ready() const { return waiting_for_cnt == 0 && unarrived_lock_requests == 0; }
+  const TxnId id;
+  // This list must only grow
+  vector<TxnId> waited_by;
+  int num_waiting_for;
+  int unarrived_lock_requests;
+
+  bool is_complete() const { return unarrived_lock_requests == 0; }
+  bool is_ready() const { return num_waiting_for == 0 && unarrived_lock_requests == 0; }
 };
+
+class DeadlockResolver;
 
 /**
  * This is a deterministic lock manager which grants locks for transactions
@@ -80,6 +90,28 @@ struct TxnInfo {
  */
 class DDRLockManager {
  public:
+  /**
+   * Starts the deadlock resolver in a new thread
+   *
+   * @param context zmq context to create the signal socket
+   * @param signal_chan channel to receive signal from the deadlock resolver when there are new ready txns after
+   *                    resolving deadlocks
+   * @param check_interval interval between the times the deadlock resolver wakes up
+   * @param init_only only initialize the resolver without actually run it
+   */
+  void StartDeadlockResolver(zmq::context_t& context, Channel signal_chan, milliseconds check_interval,
+                             bool init_only = false);
+  /**
+   * Runs the deadlock resolving algorithm synchronously. Return false if the resolver is not initialized yet or
+   * it is already running in a background thread.
+   */
+  bool ResolveDeadlock();
+
+  /**
+   * Gets the list of txns that become ready after resolving deadlocks
+   */
+  vector<TxnId> GetReadyTxns();
+
   /**
    * Counts the number of locks a txn needs.
    *
@@ -129,8 +161,17 @@ class DDRLockManager {
   void GetStats(rapidjson::Document& stats, uint32_t level) const;
 
  private:
+  friend class DeadlockResolver;
+
   unordered_map<KeyReplica, LockQueueTail> lock_table_;
   unordered_map<TxnId, TxnInfo> txn_info_;
+  mutable std::mutex mut_txn_info_;
+
+  vector<TxnId> ready_txns_;
+  std::mutex mut_ready_txns_;
+
+  // This must defined the end so that it is destroyed before the shared resources
+  std::unique_ptr<ModuleRunner> dl_resolver_;
 };
 
 }  // namespace slog

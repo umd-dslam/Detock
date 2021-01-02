@@ -57,6 +57,7 @@ message Request {
         RemoteReadResult remote_read_result = 11;
         CompletedSubtransaction completed_subtxn = 12;
         StatsRequest stats = 13;
+        Signal signal = 14;
     }
 }
 
@@ -142,6 +143,12 @@ message CompletedSubtransaction {
 message StatsRequest {
     uint32 id = 1;
     uint32 level = 2;
+}
+
+/**
+ * Generic signal message
+ */
+message Signal {
 }
 
 /***********************************************
