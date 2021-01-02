@@ -78,6 +78,10 @@ class DeadlockResolver;
  * queue, it only keeps track of the tail of the queue. The dependencies
  * between the txns are tracked in a graph, which can be used to deterministically
  * detect and resolve deadlocks.
+ * 
+ * Transactions coming into this lock manager must have unique ids. For example,
+ * after txn 100 acquires and releases its locks, the txn id 100 cannot be used
+ * again for any future txns coming into this lock manager.
  *
  * Remastering:
  * Locks are taken on the tuple <key, replica>, using the transaction's

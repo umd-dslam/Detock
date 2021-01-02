@@ -122,7 +122,7 @@ AcquireLocksResult OldLockManager::AcquireLocks(const TxnHolder& txn_holder) {
 
   auto txn_id = txn_holder.transaction()->internal().id();
   int num_locks_acquired = 0;
-  for (auto pair : txn_holder.keys_in_partition()) {
+  for (auto& pair : txn_holder.keys_in_partition()) {
     auto key = pair.first;
     auto mode = pair.second;
     auto& lock_state = lock_table_[key];

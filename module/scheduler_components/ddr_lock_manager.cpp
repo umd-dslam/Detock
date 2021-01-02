@@ -57,18 +57,22 @@ class DeadlockResolver : public Module {
   bool Loop() final {
     std::this_thread::sleep_for(check_interval_);
 
-    VLOG(4) << "Deadlock resolver woke up";
-
     // Take a snapshot of the txn dependency graph
     {
       lock_guard<mutex> guard(lm_.mut_txn_info_);
       txn_info_ = lm_.txn_info_;
     }
 
+    // The resolver uses num_waiting_for field to record the amount that the actual value of
+    // num_waiting_for in the lock manager would increase/decrease after resolving deadlocks
+    for (auto& it : txn_info_) {
+      it.second.num_waiting_for = 0;
+    }
+
     // Find topological order and build the tranpose graph
     topo_order_.clear();
     aux_graph_.clear();
-    for (auto it : txn_info_) {
+    for (auto& it : txn_info_) {
       auto txn = it.second;
       auto ins = aux_graph_.try_emplace(txn.id, txn.id, txn.is_complete());
       auto& node = ins.first->second;
@@ -80,7 +84,6 @@ class DeadlockResolver : public Module {
     std::reverse(topo_order_.begin(), topo_order_.end());
 
     vector<TxnId> to_be_updated;
-    vector<TxnId> ready_txns;
     int num_sscs = 0;
     // Form the strongly connected components. This time, We traverse on
     // the tranpose graph. For each stable component with more than 1 member,
@@ -102,10 +105,7 @@ class DeadlockResolver : public Module {
           }
         } else if (ssc_.size() > 1) {
           // If this component is stable and has more than 1 element, resolve the deadlock
-          auto ready = ResolveDeadlock();
-          if (ready.has_value()) {
-            ready_txns.push_back(ready.value());
-          }
+          ResolveDeadlock();
           // The info of txns in this scc will be updated in the lock manager
           to_be_updated.insert(to_be_updated.end(), ssc_.begin(), ssc_.end());
           num_sscs++;
@@ -113,15 +113,11 @@ class DeadlockResolver : public Module {
       }
     }
 
-    if (num_sscs) {
-      VLOG(4) << "Found and resolved " << num_sscs << " deadlock group(s)";
-    } else {
-      VLOG(4) << "No stable deadlock found";
-    }
-
+    vector<TxnId> ready_txns;
     // Update the txn info table in the lock manager with deadlock-free dependencies if needed
     if (!to_be_updated.empty()) {
       lock_guard<mutex> guard(lm_.mut_txn_info_);
+
       for (auto txn_id : to_be_updated) {
         auto new_txn_it = txn_info_.find(txn_id);
         DCHECK(new_txn_it != txn_info_.end());
@@ -133,7 +129,16 @@ class DeadlockResolver : public Module {
 
         // Replace the prefix of the waited-by list by the deadlock-resolved waited-by list
         std::copy(new_txn.waited_by.begin(), new_txn.waited_by.end(), txn.waited_by.begin());
-        txn.num_waiting_for = new_txn.num_waiting_for;
+        // The resolver stores the amount that num_waiting_for increases/decreases so it is
+        // added here instead of assigning
+        txn.num_waiting_for += new_txn.num_waiting_for;
+        // Check if any txn becomes ready after deadlock resolving. This must be performed
+        // in this critical region. Otherwise, we might run into a race condition where both
+        // the resolver and lock manager see num_waiting_for as larger than 0, while it is not
+        // because they work on two different snapshots of the txn_info table
+        if (txn.is_ready()) {
+          ready_txns.push_back(txn_id);
+        }
       }
     }
 
@@ -150,6 +155,16 @@ class DeadlockResolver : public Module {
       SendEnvelope(signal_, move(env));
     }
 
+    if (num_sscs) {
+      VLOG(3) << "Deadlock group(s) found and resolved: " << num_sscs;
+      if (ready_txns.empty()) {
+        VLOG(3) << "No txn becomes ready after resolving deadlock";
+      } else {
+        VLOG(3) << "New ready txns after resolving deadlocks: " << ready_txns.size();
+      }
+    } else {
+      VLOG_EVERY_N(4, 100) << "No stable deadlock found";
+    }
     return false;
   }
 
@@ -198,7 +213,7 @@ class DeadlockResolver : public Module {
     return is_stable;
   }
 
-  optional<TxnId> ResolveDeadlock() {
+  void ResolveDeadlock() {
     DCHECK_GE(ssc_.size(), 2);
 
     std::sort(ssc_.begin(), ssc_.end());
@@ -231,11 +246,6 @@ class DeadlockResolver : public Module {
       // must be one empty slot for the new edge
       CHECK(new_edge_added) << "Cannot find slot to add new edge";
     }
-    auto& head_txn = txn_info_.find(ssc_[0])->second;
-    if (head_txn.is_ready()) {
-      return ssc_[0];
-    }
-    return {};
   }
 
   DDRLockManager& lm_;

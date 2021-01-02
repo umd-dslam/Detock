@@ -1,5 +1,7 @@
 #include "module/scheduler_components/ddr_lock_manager.h"
 
+#include <numeric>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
@@ -75,8 +77,7 @@ TEST_F(DDRLockManagerTest, ReleaseLocksAndReturnMultipleNewLockHolders) {
 
   auto result = lock_manager.ReleaseLocks(txn1);
   ASSERT_EQ(result.size(), 2U);
-  ASSERT_TRUE(find(result.begin(), result.end(), 200) != result.end());
-  ASSERT_TRUE(find(result.begin(), result.end(), 400) != result.end());
+  ASSERT_THAT(result, UnorderedElementsAre(200, 400));
 
   ASSERT_TRUE(lock_manager.ReleaseLocks(txn4).empty());
 
@@ -377,42 +378,59 @@ TEST_F(DDRLockManagerTest, ConcurrentResolver) {
   // This resolver runs in a different thread so this test might or might not run into
   // a faulty execution. The interval is set to a low number in hope that it is more
   // probable to expose a bug, if any.
-  lock_manager.StartDeadlockResolver(context, 0, 1ms);
+  lock_manager.StartDeadlockResolver(context, 0, 0ms);
+  // Loop multiple times to increase the chance of bugs showing
+  for (int i = 0; i < 50; i++) {
+    // Change txn ids at every loop so that they are all uniques
+    std::array<TxnId, 7> ids;
+    std::iota(ids.begin(), ids.end(), i + 7);
+    auto configs = MakeTestConfigurations("locking", 1, 1);
+    auto txn1 = MakeTxnHolder(configs[0], ids[1], {"A"}, {"B"});
+    auto txn1_lockonly1 = MakeTxnHolder(configs[0], ids[1], {}, {"B"});
+    auto txn1_lockonly2 = MakeTxnHolder(configs[0], ids[1], {"A"}, {});
+    auto txn2 = MakeTxnHolder(configs[0], ids[2], {"B"}, {"A"});
+    auto txn2_lockonly1 = MakeTxnHolder(configs[0], ids[2], {"B"}, {});
+    auto txn2_lockonly2 = MakeTxnHolder(configs[0], ids[2], {}, {"A"});
+    auto txn3 = MakeTxnHolder(configs[0], ids[3], {"B"}, {});
+    auto txn4 = MakeTxnHolder(configs[0], ids[4], {"A"}, {});
+    auto txn5 = MakeTxnHolder(configs[0], ids[5], {"B"}, {});
+    auto txn6 = MakeTxnHolder(configs[0], ids[6], {"A"}, {});
+    
+    // Txn1 and Txn2 forms a deadlock. Other txns have to wait until this deadlock is resolved
+    ASSERT_FALSE(lock_manager.AcceptTransaction(txn1));
+    ASSERT_FALSE(lock_manager.AcceptTransaction(txn2));
+    ASSERT_EQ(lock_manager.AcceptTxnAndAcquireLocks(txn3), AcquireLocksResult::ACQUIRED);
+    ASSERT_EQ(lock_manager.AcquireLocks(txn1_lockonly1), AcquireLocksResult::WAITING);
+    ASSERT_EQ(lock_manager.AcquireLocks(txn2_lockonly1), AcquireLocksResult::WAITING);
+    ASSERT_EQ(lock_manager.AcquireLocks(txn2_lockonly2), AcquireLocksResult::WAITING);
+    ASSERT_EQ(lock_manager.AcquireLocks(txn1_lockonly2), AcquireLocksResult::WAITING);
+    ASSERT_EQ(lock_manager.AcceptTxnAndAcquireLocks(txn4), AcquireLocksResult::WAITING);
+    ASSERT_EQ(lock_manager.AcceptTxnAndAcquireLocks(txn5), AcquireLocksResult::WAITING);
+    ASSERT_EQ(lock_manager.AcceptTxnAndAcquireLocks(txn6), AcquireLocksResult::WAITING);
 
-  auto configs = MakeTestConfigurations("locking", 1, 1);
-  auto txn1 = MakeTxnHolder(configs[0], 100, {"A"}, {"B"});
-  auto txn1_lockonly1 = MakeTxnHolder(configs[0], 100, {}, {"B"});
-  auto txn1_lockonly2 = MakeTxnHolder(configs[0], 100, {"A"}, {});
-  auto txn2 = MakeTxnHolder(configs[0], 200, {"B"}, {"A"});
-  auto txn2_lockonly1 = MakeTxnHolder(configs[0], 200, {"B"}, {});
-  auto txn2_lockonly2 = MakeTxnHolder(configs[0], 200, {}, {"A"});
-  auto txn3 = MakeTxnHolder(configs[0], 300, {"B"}, {});
-  auto txn4 = MakeTxnHolder(configs[0], 400, {"A"}, {});
-  auto txn5 = MakeTxnHolder(configs[0], 500, {"B"}, {});
-  auto txn6 = MakeTxnHolder(configs[0], 600, {"A"}, {});
-  
-  // Txn1 and Txn2 forms a deadlock. Other txns have to wait until this deadlock is resolved
-  ASSERT_FALSE(lock_manager.AcceptTransaction(txn1));
-  ASSERT_FALSE(lock_manager.AcceptTransaction(txn2));
-  ASSERT_EQ(lock_manager.AcquireLocks(txn1_lockonly1), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(txn2_lockonly1), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(txn2_lockonly2), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(txn1_lockonly2), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcceptTxnAndAcquireLocks(txn3), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcceptTxnAndAcquireLocks(txn4), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcceptTxnAndAcquireLocks(txn5), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcceptTxnAndAcquireLocks(txn6), AcquireLocksResult::WAITING);
+    auto result = lock_manager.ReleaseLocks(txn3);
+    if (!result.empty()) {
+      LOG(INFO) << "Deadlock resolved before releasing txn3";
+      // This case happens when the resolver resolves the deadlock before txn3 releasing locks
+      ASSERT_THAT(result, ElementsAre(ids[1]));
+    } else {
+      LOG(INFO) << "Deadlock resolved after releasing txn3";
+      // This case happens when the resolver resolves the deadlock after the txn3 releasing locks
+      zmq::message_t msg;
+      (void) socket.recv(msg);
+      auto ready_txns = lock_manager.GetReadyTxns();
+      ASSERT_THAT(ready_txns, ElementsAre(ids[1]));
+    }
 
-  zmq::message_t msg;
-  (void) socket.recv(msg);
-  auto ready_txns = lock_manager.GetReadyTxns();
-  ASSERT_THAT(ready_txns, ElementsAre(100));
+    result = lock_manager.ReleaseLocks(txn1);
+    ASSERT_THAT(result, UnorderedElementsAre(ids[2], ids[5]));
+    ASSERT_TRUE(lock_manager.ReleaseLocks(txn5).empty());
 
-  auto result = lock_manager.ReleaseLocks(txn1);
-  ASSERT_THAT(result, UnorderedElementsAre(200, 300, 500));
-
-  result = lock_manager.ReleaseLocks(txn2);
-  ASSERT_THAT(result, UnorderedElementsAre(400, 600));
+    result = lock_manager.ReleaseLocks(txn2);
+    ASSERT_THAT(result, UnorderedElementsAre(ids[4], ids[6]));
+    ASSERT_TRUE(lock_manager.ReleaseLocks(txn4).empty());
+    ASSERT_TRUE(lock_manager.ReleaseLocks(txn6).empty());
+  }
 }
 
 TEST_F(DDRLockManagerTest, MultipleDeadlocks) {
