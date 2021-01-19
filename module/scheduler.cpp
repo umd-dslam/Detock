@@ -27,8 +27,13 @@ Scheduler::Scheduler(const ConfigurationPtr& config, const shared_ptr<Broker>& b
 
 #if defined(REMASTER_PROTOCOL_SIMPLE) || defined(REMASTER_PROTOCOL_PER_KEY)
   remaster_manager_.SetStorage(storage);
-#endif /* defined(REMASTER_PROTOCOL_SIMPLE) || \
-          defined(REMASTER_PROTOCOL_PER_KEY) */
+#endif
+
+#ifdef LOCK_MANAGER_DDR
+  if (config_->ddr_interval() > 0ms) {
+    lock_manager_.StartDeadlockResolver(*broker->context(), kSchedulerChannel, config_->ddr_interval());
+  }
+#endif
 }
 
 void Scheduler::Initialize() {
@@ -57,6 +62,15 @@ void Scheduler::HandleInternalRequest(EnvelopePtr&& env) {
     case Request::kForwardTxn:
       ProcessTransaction(move(env));
       break;
+#ifdef LOCK_MANAGER_DDR
+    case Request::kSignal: {
+      auto ready_txns = lock_manager_.GetReadyTxns();
+      for (auto ready_txns : ready_txns) {
+        Dispatch(ready_txns);
+      }
+      break;
+    }
+#endif
     case Request::kStats:
       ProcessStatsRequest(env->request().stats());
       break;

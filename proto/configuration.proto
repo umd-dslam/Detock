@@ -86,9 +86,9 @@ message Configuration {
     }
     // Number of worker threads for processing the transactions
     uint32 num_workers = 8;
-    // How long the forwarder wait for batching
+    // How long the forwarder wait for batching in ms
     uint64 forwarder_batch_duration = 9;
-    // How long the sequencer wait for batching
+    // How long the sequencer wait for batching in ms
     uint64 sequencer_batch_duration = 10;
     // Number of regions that need to be synchronously replicated to
     uint32 replication_factor = 11;
@@ -100,4 +100,6 @@ message Configuration {
     bool return_dummy_txn = 14;
     // For multi-home txn, send lock-only txns directly to the regions, skipping the global orderer
     bool bypass_mh_orderer = 15;
+    // Deadlock checking/resolving interval in ms. Set to 0 to disable deadlock resolving thread
+    uint64 ddr_interval = 16;
 }

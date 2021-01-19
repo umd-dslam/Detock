@@ -57,6 +57,7 @@ class Configuration {
   vector<TransactionEvent> disabled_tracing_events() const;
   bool return_dummy_txn() const;
   bool bypass_mh_orderer() const;
+  milliseconds ddr_interval() const;
 
  private:
   internal::Configuration config_;
