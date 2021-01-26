@@ -3,6 +3,7 @@
 #include <glog/logging.h>
 
 #include <unordered_set>
+#include <variant>
 #include <vector>
 
 #include "common/configuration.h"
@@ -14,6 +15,7 @@
 #include "proto/internal.pb.h"
 #include "storage/mem_only_storage.h"
 
+using std::pair;
 using std::shared_ptr;
 using std::string;
 using std::unique_ptr;
@@ -26,12 +28,11 @@ using ConfigVec = std::vector<ConfigurationPtr>;
 ConfigVec MakeTestConfigurations(string&& prefix, int num_replicas, int num_partitions,
                                  internal::Configuration common_config = {});
 
-Transaction* FillMetadata(Transaction* txn, uint32_t master, uint32_t counter);
-Transaction* ComputeInvolvedPartitions(Transaction* txn, const ConfigurationPtr& config);
+Transaction* MakeTestTransaction(const ConfigurationPtr& config, TxnId id, const std::vector<KeyEntry>& keys,
+                                 const std::variant<string, int>& proc = "", MachineId coordinator = 0);
 
-TxnHolder MakeTxnHolder(const ConfigurationPtr& config, TxnId id, const std::unordered_set<Key>& read_set,
-                        const std::unordered_set<Key>& write_set,
-                        const std::unordered_map<Key, std::pair<uint32_t, uint32_t>>& master_metadata = {});
+TxnHolder MakeTestTxnHolder(const ConfigurationPtr& config, TxnId id, const std::vector<KeyEntry>& keys,
+                            const std::variant<string, int>& proc = "");
 
 using ModuleRunnerPtr = unique_ptr<ModuleRunner>;
 

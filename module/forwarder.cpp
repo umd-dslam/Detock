@@ -34,7 +34,10 @@ Forwarder::Forwarder(const ConfigurationPtr& config, const shared_ptr<Broker>& b
       config_(config),
       lookup_master_index_(lookup_master_index),
       batch_timeout_(batch_timeout),
-      rg_(std::random_device()()) {}
+      lookup_request_scheduled_(false),
+      rg_(std::random_device()()) {
+  partitioned_lookup_request_.resize(config_->num_partitions());
+}
 
 void Forwarder::HandleInternalRequest(EnvelopePtr&& env) {
   switch (env->request().type_case()) {
@@ -54,58 +57,33 @@ void Forwarder::ProcessForwardTxn(EnvelopePtr&& env) {
 
   TRACE(txn->mutable_internal(), TransactionEvent::ENTER_FORWARDER);
 
+  try {
+    PopulateInvolvedPartitions(config_, *txn);
+  } catch (std::invalid_argument& e) {
+    LOG(ERROR) << "Only numeric keys are allowed while running in Simple Partitioning mode";
+    return;
+  }
+
   bool need_remote_lookup = false;
+  for (auto& kv : *txn->mutable_keys()) {
+    auto partition = config_->partition_of_key(kv.first);
 
-  auto lookup_master = lookup_request_.mutable_request()->mutable_lookup_master();
-  vector<uint32_t> involved_partitions;
-  // This function will be called on the read and write set of the current txn
-  auto LocalMasterLookupFn = [this, txn, lookup_master, &involved_partitions,
-                              &need_remote_lookup](const google::protobuf::Map<string, string>& keys) -> bool {
-    auto txn_metadata = txn->mutable_internal()->mutable_master_metadata();
-    for (auto& pair : keys) {
-      const auto& key = pair.first;
-      uint32_t partition = 0;
-
-      try {
-        partition = config_->partition_of_key(key);
-      } catch (std::invalid_argument& e) {
-        LOG(ERROR) << "Only numeric keys are allowed while running in Simple Partitioning mode";
-        return false;
-      }
-
-      involved_partitions.push_back(partition);
-
-      // If this is a local partition, lookup the master info from the local storage
-      if (partition == config_->local_partition()) {
-        auto& new_metadata = (*txn_metadata)[key];
-        Metadata metadata;
-        if (lookup_master_index_->GetMasterMetadata(key, metadata)) {
-          new_metadata.set_master(metadata.master);
-          new_metadata.set_counter(metadata.counter);
-        } else {
-          new_metadata.set_master(DEFAULT_MASTER_REGION_OF_NEW_KEY);
-          new_metadata.set_counter(0);
-        }
+    // If this is a local partition, lookup the master info from the local storage
+    if (partition == config_->local_partition()) {
+      Metadata metadata;
+      if (lookup_master_index_->GetMasterMetadata(kv.first, metadata)) {
+        kv.second.mutable_metadata()->set_master(metadata.master);
+        kv.second.mutable_metadata()->set_counter(metadata.counter);
       } else {
-        // Otherwise, add the key to the remote lookup master request
-        lookup_master->add_keys(key);
-        need_remote_lookup = true;
+        kv.second.mutable_metadata()->set_master(DEFAULT_MASTER_REGION_OF_NEW_KEY);
+        kv.second.mutable_metadata()->set_counter(0);
       }
+    } else {
+      // Otherwise, add the key to the appropriate remote lookup master request
+      partitioned_lookup_request_[partition].mutable_request()->mutable_lookup_master()->add_keys(kv.first);
+      need_remote_lookup = true;
     }
-    return true;
-  };
-
-  if (!LocalMasterLookupFn(txn->read_set())) {
-    return;
   }
-  if (!LocalMasterLookupFn(txn->write_set())) {
-    return;
-  }
-
-  // Deduplicate involved partition list and set it to the txn
-  sort(involved_partitions.begin(), involved_partitions.end());
-  auto last = unique(involved_partitions.begin(), involved_partitions.end());
-  *txn->mutable_internal()->mutable_involved_partitions() = {involved_partitions.begin(), last};
 
   // If there is no need to look master info from remote partitions,
   // forward the txn immediately
@@ -119,7 +97,11 @@ void Forwarder::ProcessForwardTxn(EnvelopePtr&& env) {
   }
 
   VLOG(3) << "Remote master lookup needed to determine type of txn " << txn->internal().id();
-  lookup_master->add_txn_ids(txn->internal().id());
+  for (auto p : txn->internal().involved_partitions()) {
+    if (p != config_->local_partition()) {
+      partitioned_lookup_request_[p].mutable_request()->mutable_lookup_master()->add_txn_ids(txn->internal().id());
+    }
+  }
   pending_transactions_.insert_or_assign(txn->internal().id(), move(env));
 
   // If the request is not scheduled to be sent yet, schedule one now
@@ -128,12 +110,11 @@ void Forwarder::ProcessForwardTxn(EnvelopePtr&& env) {
       auto local_rep = config_->local_replica();
       auto num_partitions = config_->num_partitions();
       for (uint32_t part = 0; part < num_partitions; part++) {
-        if (part != config_->local_partition()) {
-          Send(lookup_request_, config_->MakeMachineId(local_rep, part), kForwarderChannel);
+        if (!partitioned_lookup_request_[part].request().lookup_master().txn_ids().empty()) {
+          Send(partitioned_lookup_request_[part], config_->MakeMachineId(local_rep, part), kForwarderChannel);
+          partitioned_lookup_request_[part].Clear();
         }
       }
-      // Reset the lookup request
-      lookup_request_.Clear();
       lookup_request_scheduled_ = false;
     });
     lookup_request_scheduled_ = true;
@@ -184,17 +165,12 @@ void Forwarder::HandleInternalResponse(EnvelopePtr&& env) {
     // Transfer master info from the lookup response to its intended transaction
     auto& pending_env = pending_txn_it->second;
     auto txn = pending_env->mutable_request()->mutable_forward_txn()->mutable_txn();
-    auto txn_master_metadata = txn->mutable_internal()->mutable_master_metadata();
-    for (const auto& pair : txn->read_set()) {
-      auto it = lookup_master.master_metadata().find(pair.first);
-      if (it != lookup_master.master_metadata().end()) {
-        txn_master_metadata->insert(*it);
-      }
-    }
-    for (const auto& pair : txn->write_set()) {
-      auto it = lookup_master.master_metadata().find(pair.first);
-      if (it != lookup_master.master_metadata().end()) {
-        txn_master_metadata->insert(*it);
+    for (auto& kv : *txn->mutable_keys()) {
+      if (!kv.second.has_metadata()) {
+        auto it = lookup_master.master_metadata().find(kv.first);
+        if (it != lookup_master.master_metadata().end()) {
+          kv.second.mutable_metadata()->CopyFrom(it->second);
+        }
       }
     }
 
@@ -212,12 +188,13 @@ void Forwarder::Forward(EnvelopePtr&& env) {
   auto txn_internal = txn->mutable_internal();
   auto txn_id = txn_internal->id();
   auto txn_type = txn_internal->type();
-  auto& master_metadata = txn_internal->master_metadata();
+
+  PopulateInvolvedReplicas(*txn);
 
   if (txn_type == TransactionType::SINGLE_HOME) {
     // If this current replica is its home, forward to the sequencer of the same machine
     // Otherwise, forward to the sequencer of a random machine in its home region
-    auto home_replica = master_metadata.begin()->second.master();
+    auto home_replica = txn->keys().begin()->second.metadata().master();
     if (home_replica == config_->local_replica()) {
       VLOG(3) << "Current region is home of txn " << txn_id;
 
@@ -235,10 +212,8 @@ void Forwarder::Forward(EnvelopePtr&& env) {
 
       Send(*env, random_machine_in_home_replica, kSequencerChannel);
     }
-  } else if (txn_type == TransactionType::MULTI_HOME) {
+  } else if (txn_type == TransactionType::MULTI_HOME_OR_LOCK_ONLY) {
     VLOG(3) << "Txn " << txn_id << " is a multi-home txn. Sending to the orderer.";
-
-    PopulateInvolvedReplicas(txn);
 
     TRACE(txn_internal, TransactionEvent::EXIT_FORWARDER_TO_MULTI_HOME_ORDERER);
 
@@ -250,19 +225,10 @@ void Forwarder::Forward(EnvelopePtr&& env) {
         destinations.push_back(config_->MakeMachineId(rep, part));
       }
       Send(*env, destinations, kSequencerChannel);
-
-      // Send the txn to schedulers of involved partitions
-      destinations.clear();
-      for (auto part : txn->internal().involved_partitions()) {
-        for (uint32_t rep = 0; rep < config_->num_replicas(); rep++) {
-          destinations.push_back(config_->MakeMachineId(rep, part));
-        }
-      }
-      Send(move(env), destinations, kSchedulerChannel);
     } else {
-      auto mh_orderer =
-          config_->MakeMachineId(config_->local_replica(), config_->leader_partition_for_multi_home_ordering());
-      Send(*env, mh_orderer, kMultiHomeOrdererChannel);
+      auto mh_orderer = config_->MakeMachineId(config_->leader_replica_for_multi_home_ordering(),
+                                               config_->leader_partition_for_multi_home_ordering());
+      Send(move(env), mh_orderer, kMultiHomeOrdererChannel);
     }
   }
 }

@@ -12,19 +12,9 @@ namespace slog {
 
 void ValidateTransaction(Transaction* txn) {
   txn->set_status(TransactionStatus::ABORTED);
-  if (txn->read_set_size() + txn->write_set_size() == 0) {
+  if (txn->keys().empty()) {
     txn->set_abort_reason("Txn accesses no key");
     return;
-  }
-  if (txn->procedure_case() == Transaction::ProcedureCase::kRemaster) {
-    if (txn->read_set_size() > 0) {
-      txn->set_abort_reason("Remaster txns should not read anything");
-      return;
-    }
-    if (txn->write_set_size() != 1) {
-      txn->set_abort_reason("Remaster txns should write to 1 key");
-      return;
-    }
   }
   txn->set_status(TransactionStatus::NOT_STARTED);
 }

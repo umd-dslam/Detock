@@ -58,56 +58,29 @@ ConfigVec MakeTestConfigurations(string&& prefix, int num_replicas, int num_part
   return configs;
 }
 
-Transaction* FillMetadata(Transaction* txn, uint32_t master, uint32_t counter) {
-  auto metadata = txn->mutable_internal()->mutable_master_metadata();
-  for (auto& key_value : txn->read_set()) {
-    auto& m = (*metadata)[key_value.first];
-    m.set_master(master);
-    m.set_counter(counter);
-  }
-  for (auto& key_value : txn->write_set()) {
-    auto& m = (*metadata)[key_value.first];
-    m.set_master(master);
-    m.set_counter(counter);
-  }
-  txn->mutable_internal()->add_involved_replicas(master);
-  return txn;
-}
-
-Transaction* ComputeInvolvedPartitions(Transaction* txn, const ConfigurationPtr& config) {
-  vector<uint32_t> involved_partitions;
-  auto ExtractPartitions = [&involved_partitions, &config](const google::protobuf::Map<string, string>& keys) {
-    for (auto& pair : keys) {
-      const auto& key = pair.first;
-      uint32_t partition;
-      partition = config->partition_of_key(key);
-      involved_partitions.push_back(partition);
-    }
-  };
-  ExtractPartitions(txn->read_set());
-  ExtractPartitions(txn->write_set());
-
-  sort(involved_partitions.begin(), involved_partitions.end());
-  auto last = unique(involved_partitions.begin(), involved_partitions.end());
-  *txn->mutable_internal()->mutable_involved_partitions() = {involved_partitions.begin(), last};
-
-  return txn;
-}
-
-TxnHolder MakeTxnHolder(const ConfigurationPtr& config, TxnId id, const unordered_set<Key>& read_set,
-                        const unordered_set<Key>& write_set,
-                        const unordered_map<Key, pair<uint32_t, uint32_t>>& master_metadata) {
-  Transaction* txn;
-  if (master_metadata.empty()) {
-    // Some tests need to read the metadata. While it does not matter to those tests, they throw
-    // errors if the metadata does not exist
-    txn = FillMetadata(MakeTransaction(read_set, write_set, ""), 0, 0);
-  } else {
-    txn = MakeTransaction(read_set, write_set, "", master_metadata);
-  }
-  txn = ComputeInvolvedPartitions(txn, config);
+Transaction* MakeTestTransaction(const ConfigurationPtr& config, TxnId id, const std::vector<KeyEntry>& keys,
+                                 const std::variant<string, int>& proc, MachineId coordinator) {
+  auto txn = MakeTransaction(keys, proc, coordinator);
   txn->mutable_internal()->set_id(id);
-  return {config, txn};
+
+  PopulateInvolvedPartitions(config, *txn);
+
+  return txn;
+}
+
+TxnHolder MakeTestTxnHolder(const ConfigurationPtr& config, TxnId id, const std::vector<KeyEntry>& keys,
+                            const std::variant<string, int>& proc) {
+  auto txn = MakeTestTransaction(config, id, keys, proc);
+  auto first_lo = GenerateLockOnlyTxn(txn, txn->internal().involved_replicas(0));
+  CHECK(first_lo != nullptr);
+  TxnHolder holder(config, first_lo);
+  for (int i = 1; i < txn->internal().involved_replicas_size(); ++i) {
+    auto lo = GenerateLockOnlyTxn(txn, txn->internal().involved_replicas(i));
+    CHECK(lo != nullptr);
+    holder.AddLockOnlyTxn(lo);
+  }
+  delete txn;
+  return holder;
 }
 
 TestSlog::TestSlog(const ConfigurationPtr& config)

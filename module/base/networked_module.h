@@ -15,7 +15,7 @@
 namespace slog {
 
 struct ChannelOption {
-  ChannelOption(Channel channel, bool recv_raw = false) : channel(channel), recv_raw(recv_raw) {}
+  ChannelOption(Channel channel, bool recv_raw = true) : channel(channel), recv_raw(recv_raw) {}
   Channel channel;
   bool recv_raw;
 };
@@ -45,6 +45,7 @@ class NetworkedModule : public Module {
 
   inline static EnvelopePtr NewEnvelope() { return std::make_unique<internal::Envelope>(); }
   void Send(const internal::Envelope& env, MachineId to_machine_id, Channel to_channel);
+  void Send(EnvelopePtr&& env, MachineId to_machine_id, Channel to_channel);
   void Send(EnvelopePtr&& env, Channel to_channel);
   void Send(const internal::Envelope& env, const std::vector<MachineId>& to_machine_ids, Channel to_channel);
   void Send(EnvelopePtr&& env, const std::vector<MachineId>& to_machine_ids, Channel to_channel);

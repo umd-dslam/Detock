@@ -1,8 +1,9 @@
 #pragma once
 
+#include <optional>
 #include <unordered_map>
-#include <unordered_set>
 #include <variant>
+#include <vector>
 
 #include "common/configuration.h"
 #include "common/types.h"
@@ -14,30 +15,30 @@
 using std::pair;
 using std::string;
 using std::unordered_map;
-using std::unordered_set;
 
 namespace slog {
 
+struct KeyEntry {
+  KeyEntry(const Key& key, KeyType type = KeyType::READ, std::optional<Metadata> metadata = {})
+      : key(key), type(type), metadata(metadata) {}
+
+  KeyEntry(const Key& key, KeyType type, uint32_t master) : KeyEntry(key, type, {{master}}) {}
+
+  Key key;
+  KeyType type;
+  std::optional<Metadata> metadata;
+};
+
 /**
  * Creates a new transaction
- * @param read_set            Read set of the transaction
- * @param write_set           Write set of the transaction
+ * @param keys                Keys of the transaction
  * @param proc                Code or new master
- * @param master_metadata     Metadata regarding its mastership. This is used for
- *                            testing purpose.
  * @param coordinating_server MachineId of the server in charge of responding the
  *                            transaction result to the client.
  * @return                    A new transaction having given properties
  */
-Transaction* MakeTransaction(const unordered_set<Key>& read_set, const unordered_set<Key>& write_set,
-                             const std::variant<string, int>& proc = "",
-                             const unordered_map<Key, pair<uint32_t, uint32_t>>& master_metadata = {},
-                             const MachineId coordinating_server = 0);
-
-/**
- * Populate the involved_replicas field in the transaction
- */
-void PopulateInvolvedReplicas(Transaction* txn);
+Transaction* MakeTransaction(const std::vector<KeyEntry>& keys, const std::variant<string, int>& proc = "",
+                             MachineId coordinating_server = 0);
 
 /**
  * Inspects the internal metadata of a transaction then determines whether
@@ -52,6 +53,23 @@ void PopulateInvolvedReplicas(Transaction* txn);
 TransactionType SetTransactionType(Transaction& txn);
 
 /**
+ * If in_place is set to true, the given txn is modified
+ */
+Transaction* GenerateLockOnlyTxn(Transaction* txn, uint32_t lo_master, bool in_place = false);
+
+Transaction* GeneratePartitionedTxn(const ConfigurationPtr& config, const Transaction& txn, uint32_t partition);
+
+/**
+ * Populate the involved_replicas field in the transaction
+ */
+void PopulateInvolvedReplicas(Transaction& txn);
+
+/**
+ * Populate the involved_partitions field in the transaction
+ */
+void PopulateInvolvedPartitions(const ConfigurationPtr& config, Transaction& txn);
+
+/**
  * Merges the results of two transactions
  *
  * @param txn   The transaction that will hold the final merged result
@@ -60,8 +78,29 @@ TransactionType SetTransactionType(Transaction& txn);
 void MergeTransaction(Transaction& txn, const Transaction& other);
 
 std::ostream& operator<<(std::ostream& os, const Transaction& txn);
-bool operator==(const Transaction& txn1, const Transaction txn2);
-
 std::ostream& operator<<(std::ostream& os, const MasterMetadata& metadata);
+
+bool operator==(const Transaction& txn1, const Transaction txn2);
+bool operator==(const MasterMetadata& metadata1, const MasterMetadata& metadata2);
+bool operator==(const ValueEntry& val1, const ValueEntry& val2);
+template <typename K, typename V>
+bool operator==(google::protobuf::Map<K, V> map1, google::protobuf::Map<K, V> map2) {
+  if (map1.size() != map2.size()) {
+    return false;
+  }
+  for (const auto& key_value : map1) {
+    auto& key = key_value.first;
+    auto& value = key_value.second;
+    if (!map2.contains(key) || !(map2.at(key) == value)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Extract txns from a batch
+ */
+vector<Transaction*> Unbatch(internal::Batch* batch);
 
 }  // namespace slog

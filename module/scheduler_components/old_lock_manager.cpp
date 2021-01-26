@@ -101,40 +101,32 @@ unordered_set<TxnId> OldLockState::Release(TxnId txn_id) {
   return holders_;
 }
 
-bool OldLockManager::AcceptTransaction(const TxnHolder& txn_holder) {
-  if (txn_holder.keys_in_partition().empty()) {
-    return false;
-  }
-  auto txn_id = txn_holder.transaction()->internal().id();
-  num_locks_waited_[txn_id] += txn_holder.keys_in_partition().size();
+AcquireLocksResult OldLockManager::AcquireLocks(const Transaction& txn) {
+  auto txn_id = txn.internal().id();
 
-  if (num_locks_waited_[txn_id] == 0) {
-    num_locks_waited_.erase(txn_id);
-    return true;
-  }
-  return false;
-}
+  // Add 1 as a placeholder for keys from unarrived lock-only txns
+  auto ins = num_locks_waited_.try_emplace(txn_id, txn.keys_size());
 
-AcquireLocksResult OldLockManager::AcquireLocks(const TxnHolder& txn_holder) {
-  if (txn_holder.keys_in_partition().empty()) {
-    return AcquireLocksResult::WAITING;
-  }
-
-  auto txn_id = txn_holder.transaction()->internal().id();
   int num_locks_acquired = 0;
-  for (auto& pair : txn_holder.keys_in_partition()) {
-    auto key = pair.first;
-    auto mode = pair.second;
+  for (const auto& kv : txn.keys()) {
+    // Skip keys that does not belong to the assigned home
+    if (static_cast<int>(kv.second.metadata().master()) != txn.internal().home()) {
+      continue;
+    }
+
+    auto& key = kv.first;
     auto& lock_state = lock_table_[key];
+
     DCHECK(!lock_state.Contains(txn_id)) << "Txn requested lock twice: " << txn_id << ", " << key;
+
     auto before_mode = lock_state.mode;
-    switch (mode) {
-      case LockMode::READ:
+    switch (kv.second.type()) {
+      case KeyType::READ:
         if (lock_state.AcquireReadLock(txn_id)) {
           num_locks_acquired++;
         }
         break;
-      case LockMode::WRITE:
+      case KeyType::WRITE:
         if (lock_state.AcquireWriteLock(txn_id)) {
           num_locks_acquired++;
         }
@@ -148,28 +140,22 @@ AcquireLocksResult OldLockManager::AcquireLocks(const TxnHolder& txn_holder) {
     }
   }
 
-  if (num_locks_acquired > 0) {
-    num_locks_waited_[txn_id] -= num_locks_acquired;
-    if (num_locks_waited_[txn_id] == 0) {
-      num_locks_waited_.erase(txn_id);
-      return AcquireLocksResult::ACQUIRED;
-    }
+  auto it = ins.first;
+  // Minus 1 to compensate for the placeholder
+  it->second -= num_locks_acquired;
+  if (it->second == 0) {
+    num_locks_waited_.erase(it);
+    return AcquireLocksResult::ACQUIRED;
   }
   return AcquireLocksResult::WAITING;
 }
 
-AcquireLocksResult OldLockManager::AcceptTxnAndAcquireLocks(const TxnHolder& txn_holder) {
-  AcceptTransaction(txn_holder);
-  return AcquireLocks(txn_holder);
-}
-
-vector<TxnId> OldLockManager::ReleaseLocks(const TxnHolder& txn_holder) {
+vector<TxnId> OldLockManager::ReleaseLocks(const Transaction& txn) {
   vector<TxnId> result;
-  auto txn_id = txn_holder.transaction()->internal().id();
+  auto txn_id = txn.internal().id();
 
-  for (const auto& pair : txn_holder.keys_in_partition()) {
-    auto& key = pair.first;
-    auto lock_state_it = lock_table_.find(key);
+  for (const auto& kv : txn.keys()) {
+    auto lock_state_it = lock_table_.find(kv.first);
     if (lock_state_it == lock_table_.end()) {
       continue;
     }
@@ -182,14 +168,16 @@ vector<TxnId> OldLockManager::ReleaseLocks(const TxnHolder& txn_holder) {
         num_locked_keys_--;
       }
       if (lock_table_.size() > kLockTableSizeLimit) {
-        lock_table_.erase(key);
+        lock_table_.erase(kv.first);
       }
     }
 
     for (auto new_txn : new_grantees) {
-      num_locks_waited_[new_txn]--;
-      if (num_locks_waited_[new_txn] == 0) {
-        num_locks_waited_.erase(new_txn);
+      auto it = num_locks_waited_.find(new_txn);
+      DCHECK(it != num_locks_waited_.end());
+      it->second--;
+      if (it->second == 0) {
+        num_locks_waited_.erase(it);
         result.push_back(new_txn);
       }
     }
