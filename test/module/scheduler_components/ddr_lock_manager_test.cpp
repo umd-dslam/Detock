@@ -27,8 +27,8 @@ class DDRLockManagerTest : public ::testing::Test {
   }
 
   bool HasSignalFromResolver() {
-    zmq::message_t msg;
-    return socket.recv(msg, zmq::recv_flags::dontwait) > 0;
+    auto env = RecvEnvelope(socket, true /* dont_wait */);
+    return env != nullptr;
   }
 };
 
@@ -247,8 +247,8 @@ TEST_F(DDRLockManagerTest, IncompleteDeadlock) {
   lock_manager.StartDeadlockResolver(context, 0, 1ms, true /* init_only */);
 
   auto configs = MakeTestConfigurations("locking", 3, 1);
-  auto holder1 =
-      MakeTestTxnHolder(configs[0], 1000, {{"A", KeyType::READ, 1}, {"B", KeyType::WRITE, 0}, {"C", KeyType::WRITE, 2}});
+  auto holder1 = MakeTestTxnHolder(configs[0], 1000,
+                                   {{"A", KeyType::READ, 1}, {"B", KeyType::WRITE, 0}, {"C", KeyType::WRITE, 2}});
   auto holder2 = MakeTestTxnHolder(configs[0], 2000, {{"B", KeyType::READ, 0}, {"A", KeyType::WRITE, 1}});
 
   // A lock-only txn is missing for txn1
@@ -353,8 +353,7 @@ TEST_F(DDRLockManagerTest, ConcurrentResolver) {
     } else {
       LOG(INFO) << "Deadlock resolved after releasing txn3";
       // This case happens when the resolver resolves the deadlock after the txn3 releasing locks
-      zmq::message_t msg;
-      (void)socket.recv(msg);
+      RecvEnvelope(socket);
       auto ready_txns = lock_manager.GetReadyTxns();
       ASSERT_THAT(ready_txns, ElementsAre(ids[1]));
     }
