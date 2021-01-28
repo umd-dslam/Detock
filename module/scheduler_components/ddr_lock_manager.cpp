@@ -120,11 +120,11 @@ class DeadlockResolver : public Module {
 
       for (auto txn_id : to_be_updated) {
         auto new_txn_it = txn_info_.find(txn_id);
-        DCHECK(new_txn_it != txn_info_.end());
+        CHECK(new_txn_it != txn_info_.end());
         auto& new_txn = new_txn_it->second;
 
         auto txn_it = lm_.txn_info_.find(txn_id);
-        DCHECK(txn_it != lm_.txn_info_.end());
+        CHECK(txn_it != lm_.txn_info_.end());
         auto& txn = txn_it->second;
 
         // Replace the prefix of the waited-by list by the deadlock-resolved waited-by list
@@ -413,10 +413,13 @@ void DDRLockManager::GetStats(rapidjson::Document& stats, uint32_t level) const 
   using rapidjson::StringRef;
 
   auto& alloc = stats.GetAllocator();
+
+  stats.AddMember(StringRef(LOCK_TABLE_TYPE), 1, alloc);
+
   {
     lock_guard<mutex> guard(mut_txn_info_);
     stats.AddMember(StringRef(NUM_TXNS_WAITING_FOR_LOCK), txn_info_.size(), alloc);
-    if (level >= 1) {
+    if (level == 1) {
       // Collect number of locks waited per txn
       // TODO: Give this another name. For this lock manager, this is
       // number of txn waited, not the number of locks.
@@ -436,6 +439,7 @@ void DDRLockManager::GetStats(rapidjson::Document& stats, uint32_t level) const 
       auto& lock_state = pair.second;
       rapidjson::Value entry(rapidjson::kArrayType);
       rapidjson::Value key_json(key.c_str(), alloc);
+      // [key, write_lock_requester, [read_lock_requesters]]
       entry.PushBack(key_json, alloc)
           .PushBack(lock_state.write_lock_requester().value_or(0), alloc)
           .PushBack(ToJsonArray(lock_state.read_lock_requesters(), alloc), alloc);
