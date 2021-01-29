@@ -84,7 +84,6 @@ TEST_F(E2ETest, BasicSingleHomeSingleParition) {
   ASSERT_EQ(txn2_resp.internal().type(), TransactionType::SINGLE_HOME);
   ASSERT_EQ(txn2_resp.keys_size(), 1);
   ASSERT_EQ(txn2_resp.keys().at("A").value(), "newA");
-  ;
 }
 
 TEST_F(E2ETest, MultiPartitionTxn) {
