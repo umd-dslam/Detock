@@ -89,8 +89,6 @@ class DeadlockResolver;
  * transactions hold separate locks for the same key, then one has an
  * incorrect master and will be aborted. Remaster transactions request the
  * locks for both <key, old replica> and <key, new replica>.
- *
- * TODO: aborts can be detected here, before transactions are dispatched
  */
 class DDRLockManager {
  public:
