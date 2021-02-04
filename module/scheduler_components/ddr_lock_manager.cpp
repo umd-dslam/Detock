@@ -84,7 +84,7 @@ class DeadlockResolver : public Module {
     std::reverse(topo_order_.begin(), topo_order_.end());
 
     vector<TxnId> to_be_updated;
-    int num_sscs = 0;
+    int num_sccs = 0;
     // Form the strongly connected components. This time, We traverse on
     // the tranpose graph. For each stable component with more than 1 member,
     // perform deterministic deadlock resolving
@@ -94,21 +94,21 @@ class DeadlockResolver : public Module {
 
       auto& node = it->second;
       if (node.comp_type == ComponentType::UNASSIGNED) {
-        ssc_.clear();
+        scc_.clear();
         auto is_stable = FormStronglyConnectedComponent(node);
         if (!is_stable) {
           // Set all nodes in the current component to unstable
-          for (auto id : ssc_) {
+          for (auto id : scc_) {
             auto node_it = aux_graph_.find(id);
-            DCHECK(node_it != aux_graph_.end());
+            CHECK(node_it != aux_graph_.end());
             node_it->second.comp_type = ComponentType::UNSTABLE;
           }
-        } else if (ssc_.size() > 1) {
+        } else if (scc_.size() > 1) {
           // If this component is stable and has more than 1 element, resolve the deadlock
           ResolveDeadlock();
           // The info of txns in this scc will be updated in the lock manager
-          to_be_updated.insert(to_be_updated.end(), ssc_.begin(), ssc_.end());
-          num_sscs++;
+          to_be_updated.insert(to_be_updated.end(), scc_.begin(), scc_.end());
+          num_sccs++;
         }
       }
     }
@@ -155,8 +155,8 @@ class DeadlockResolver : public Module {
       SendEnvelope(signal_, move(env));
     }
 
-    if (num_sscs) {
-      VLOG(3) << "Deadlock group(s) found and resolved: " << num_sscs;
+    if (num_sccs) {
+      VLOG(3) << "Deadlock group(s) found and resolved: " << num_sccs;
       if (ready_txns.empty()) {
         VLOG(3) << "No txn becomes ready after resolving deadlock";
       } else {
@@ -194,7 +194,7 @@ class DeadlockResolver : public Module {
 
   // Returns true if the component is stable
   bool FormStronglyConnectedComponent(Node& node) {
-    ssc_.push_back(node.id);
+    scc_.push_back(node.id);
     // Assume the current component is stable
     node.comp_type = ComponentType::STABLE;
 
@@ -214,26 +214,48 @@ class DeadlockResolver : public Module {
   }
 
   void ResolveDeadlock() {
-    DCHECK_GE(ssc_.size(), 2);
+    DCHECK_GE(scc_.size(), 2);
 
-    std::sort(ssc_.begin(), ssc_.end());
-    for (int i = ssc_.size() - 1; i >= 0; --i) {
-      auto txn_it = txn_info_.find(ssc_[i]);
-      CHECK(txn_it != txn_info_.end()) << "SSC contains unknown txn: " << ssc_[i];
+    // Sort the SCC to ensure determinism
+    std::sort(scc_.begin(), scc_.end());
+
+    // Create edges between consecutive nodes in the scc and remove all other edges.
+    // For example, if the SCC is:
+    //    1 --> 4
+    //    ^   ^ |
+    //    |  /  |   
+    //    | /   v
+    //    7 <-- 3
+    //
+    // It becomes:
+    //    1 --> 3 --> 4 --> 7
+    //
+    // Note that we only remove edges between nodes in the same SCC.
+    //
+    for (int i = scc_.size() - 1; i >= 0; --i) {
+      auto txn_it = txn_info_.find(scc_[i]);
+      CHECK(txn_it != txn_info_.end()) << "scc contains unknown txn: " << scc_[i];
       auto& txn = txn_it->second;
-      CHECK(txn.is_complete()) << "SSC contains incomplete txn: " << ssc_[i];
+      CHECK(txn.is_complete()) << "scc contains incomplete txn: " << scc_[i];
 
-      // Don't add edge if this is the last element of in the component list
-      bool new_edge_added = static_cast<size_t>(i) == ssc_.size() - 1;
+      // Don't add new edge if this is the last element of in the component list
+      bool new_edge_added = static_cast<size_t>(i) == scc_.size() - 1;
+
+      // Traverse the edge list
       for (size_t j = 0; j < txn.waited_by.size(); j++) {
-        if (std::binary_search(ssc_.begin(), ssc_.end(), txn.waited_by[j])) {
+        // Only consider edges connecting the current node to another node in the same SCC
+        if (std::binary_search(scc_.begin(), scc_.end(), txn.waited_by[j])) {
           auto waiting_txn = txn_info_.find(txn.waited_by[j]);
           CHECK(waiting_txn != txn_info_.end());
+
           if (!new_edge_added) {
-            txn.waited_by[j] = ssc_[i + 1];
-            // Since i goes in reverse order, ssc_[i + 1] is already checked for
-            // existence and stuff at this point
-            ++(txn_info_.find(ssc_[i + 1])->second.num_waiting_for);
+            // If a new edge is not added yet, add one now by overwriting current edge
+            txn.waited_by[j] = scc_[i + 1];
+
+            // Update the counter on the other node
+            // Since i goes in reverse order, it is certain that scc_[i + 1] exists in the txn_info_ map
+            ++(txn_info_.find(scc_[i + 1])->second.num_waiting_for);
+
             new_edge_added = true;
           } else {
             // Setting to kSentinelTxnId effectively removes this edge
@@ -242,7 +264,7 @@ class DeadlockResolver : public Module {
           --waiting_txn->second.num_waiting_for;
         }
       }
-      // There is at least one waited-by txn for each txn in an ssc so there
+      // There is at least one waited-by txn for each txn in an scc so there
       // must be one empty slot for the new edge
       CHECK(new_edge_added) << "Cannot find slot to add new edge";
     }
@@ -256,7 +278,7 @@ class DeadlockResolver : public Module {
   unordered_map<TxnId, TxnInfo> txn_info_;
   unordered_map<TxnId, Node> aux_graph_;
   vector<TxnId> topo_order_;
-  vector<TxnId> ssc_;
+  vector<TxnId> scc_;
 };
 
 optional<TxnId> LockQueueTail::AcquireReadLock(TxnId txn_id) {
@@ -465,7 +487,6 @@ void DDRLockManager::GetStats(rapidjson::Document& stats, uint32_t level) const 
       auto& lock_state = pair.second;
       rapidjson::Value entry(rapidjson::kArrayType);
       rapidjson::Value key_json(key.c_str(), alloc);
-      // [key, write_lock_requester, [read_lock_requesters]]
       entry.PushBack(key_json, alloc)
           .PushBack(lock_state.write_lock_requester().value_or(0), alloc)
           .PushBack(ToJsonArray(lock_state.read_lock_requesters(), alloc), alloc);
