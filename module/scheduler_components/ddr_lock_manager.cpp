@@ -223,7 +223,7 @@ class DeadlockResolver : public Module {
     // For example, if the SCC is:
     //    1 --> 4
     //    ^   ^ |
-    //    |  /  |   
+    //    |  /  |
     //    | /   v
     //    7 <-- 3
     //
