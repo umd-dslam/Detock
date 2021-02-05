@@ -2,6 +2,10 @@
 
 #include <glog/logging.h>
 
+#include <chrono>
+#include <string>
+#include <thread>
+
 #include "common/proto_utils.h"
 #include "common/string_utils.h"
 
@@ -15,8 +19,8 @@ namespace {
 const string SPACE(" \t\n\v\f\r");
 }  // namespace
 
-const std::unordered_map<string, size_t> KeyValueCommands::COMMAND_NUM_ARGS = {
-    {"GET", 1}, {"SET", 2}, {"DEL", 1}, {"COPY", 2}, {"EQ", 2}};
+const std::unordered_map<string, size_t> KeyValueCommands::COMMAND_NUM_ARGS = {{"GET", 1},  {"SET", 2}, {"DEL", 1},
+                                                                               {"COPY", 2}, {"EQ", 2},  {"SLEEP", 1}};
 
 void KeyValueCommands::Execute(Transaction& txn) {
   Reset();
@@ -55,6 +59,8 @@ void KeyValueCommands::Execute(Transaction& txn) {
         Abort() << "Key = " << args_[0] << ". Expected value = " << args_[1]
                 << ". Actual value = " << it->second.value();
       }
+    } else if (cmd_ == "SLEEP") {
+      std::this_thread::sleep_for(std::chrono::seconds(std::stoi(args_[0])));
     }
   }
 
