@@ -268,6 +268,8 @@ class DeadlockResolver : public Module {
       // must be one empty slot for the new edge
       CHECK(new_edge_added) << "Cannot find slot to add new edge";
     }
+
+    ++lm_.num_deadlocks_resolved_;
   }
 
   DDRLockManager& lm_;
@@ -455,7 +457,7 @@ void DDRLockManager::GetStats(rapidjson::Document& stats, uint32_t level) const 
   auto& alloc = stats.GetAllocator();
 
   stats.AddMember(StringRef(LOCK_MANAGER_TYPE), 1, alloc);
-
+  stats.AddMember(StringRef(NUM_DEADLOCKS_RESOLVED), num_deadlocks_resolved_.load(), alloc);
   {
     lock_guard<mutex> guard(mut_txn_info_);
     stats.AddMember(StringRef(NUM_TXNS_WAITING_FOR_LOCK), txn_info_.size(), alloc);

@@ -50,6 +50,7 @@ const char NUM_TXNS_WAITING_FOR_LOCK[] = "num_txns_waiting_for_lock";
 const char NUM_WAITING_FOR_PER_TXN[] = "num_waiting_for_per_txn";
 const char LOCK_TABLE[] = "lock_table";
 const char WAITED_BY_GRAPH[] = "waited_by_graph";
+const char NUM_DEADLOCKS_RESOLVED[] = "num_deadlocks_resolved";
 const char TXN_ID[] = "id";
 const char TXN_DONE[] = "done";
 const char TXN_ABORTING[] = "aborting";

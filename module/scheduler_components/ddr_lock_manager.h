@@ -6,6 +6,7 @@
 #endif
 #define LOCK_MANAGER
 
+#include <atomic>
 #include <list>
 #include <mutex>
 #include <optional>
@@ -151,6 +152,9 @@ class DDRLockManager {
 
   vector<TxnId> ready_txns_;
   std::mutex mut_ready_txns_;
+
+  // For stats
+  std::atomic<long> num_deadlocks_resolved_ = 0;
 
   // This must defined the end so that it is destroyed before the shared resources
   std::unique_ptr<ModuleRunner> dl_resolver_;

@@ -9,9 +9,9 @@
 #include "proto/api.pb.h"
 #include "rapidjson/document.h"
 #include "rapidjson/istreamwrapper.h"
+#include "rapidjson/prettywriter.h"
 #include "rapidjson/stringbuffer.h"
 #include "rapidjson/writer.h"
-#include "rapidjson/prettywriter.h"
 #include "service/service_utils.h"
 
 DEFINE_string(host, "localhost", "Hostname of the SLOG server to connect to");
@@ -151,9 +151,17 @@ string LockModeStr(LockMode mode) {
   return "<error>";
 }
 
-void PrintSchedulerStats(const rapidjson::Document& stats, uint32_t level) { 
+void PrintSchedulerStats(const rapidjson::Document& stats, uint32_t level) {
+  // 0: OLD or RMA. 1: DDR
+  auto lock_man_type = stats[LOCK_MANAGER_TYPE].GetInt();
+
   cout << "Number of active txns: " << stats[NUM_ALL_TXNS].GetUint() << "\n";
-  cout << "\nACTIVE TRANSACTIONS\n\n";
+  if (lock_man_type == 1) {
+    cout << "Number of deadlocks resolved: " << stats[NUM_DEADLOCKS_RESOLVED].GetUint() << "\n";
+  }
+
+  cout << "\nACTIVE TRANSACTIONS\n";
+
   if (level == 0) {
     TRUNCATED_FOR_EACH(txn_id, stats[ALL_TXNS].GetArray()) { cout << txn_id.GetUint() << " "; }
   } else if (level >= 1) {
@@ -166,19 +174,16 @@ void PrintSchedulerStats(const rapidjson::Document& stats, uint32_t level) {
       cout << TXN_EXPECTED_NUM_LO << ": " << txn[TXN_EXPECTED_NUM_LO].GetInt() << "\n";
     }
   }
-  
+
   cout << "\n";
   cout << "Waiting txns: " << stats[NUM_TXNS_WAITING_FOR_LOCK].GetUint() << "\n";
-
-  // 0: OLD or RMA. 1: DDR
-  auto lock_man_type = stats[LOCK_MANAGER_TYPE].GetInt();
 
   if (lock_man_type == 0) {
     cout << "Locked keys: " << stats[NUM_LOCKED_KEYS].GetUint() << "\n";
   }
 
   if (level >= 1) {
-    cout << "\n\nTRANSACTION DEPENDENCIES\n\n";
+    cout << "\n\nTRANSACTION DEPENDENCIES\n";
     if (lock_man_type == 0) {
       cout << setw(10) << "Txn" << setw(18) << "# waiting for"
            << "\n";
@@ -200,7 +205,7 @@ void PrintSchedulerStats(const rapidjson::Document& stats, uint32_t level) {
   }
 
   if (level >= 2) {
-    cout << "\n\nLOCK TABLE\n\n";
+    cout << "\n\nLOCK TABLE\n";
     TRUNCATED_FOR_EACH(it, stats[LOCK_TABLE].GetArray()) {
       const auto& entry = it.GetArray();
       if (lock_man_type == 0) {
