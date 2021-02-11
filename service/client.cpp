@@ -154,7 +154,6 @@ string LockModeStr(LockMode mode) {
 void PrintSchedulerStats(const rapidjson::Document& stats, uint32_t level) {
   // 0: OLD or RMA. 1: DDR
   auto lock_man_type = stats[LOCK_MANAGER_TYPE].GetInt();
-
   cout << "Number of active txns: " << stats[NUM_ALL_TXNS].GetUint() << "\n";
   if (lock_man_type == 1) {
     cout << "Number of deadlocks resolved: " << stats[NUM_DEADLOCKS_RESOLVED].GetUint() << "\n";

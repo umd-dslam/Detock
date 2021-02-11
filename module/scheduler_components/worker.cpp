@@ -271,8 +271,11 @@ void Worker::Commit(TxnId txn_id) {
       if (config_->key_is_in_local_partition(key)) {
         Record record;
         storage_->Read(key, record);
-        record.metadata = Metadata(txn.remaster().new_master(), key_it->second.metadata().counter() + 1);
+        auto new_counter = key_it->second.metadata().counter() + 1;
+        record.metadata = Metadata(txn.remaster().new_master(), new_counter);
         storage_->Write(key, record);
+
+        state.txn_holder->SetRemasterResult(key, new_counter);
       }
       break;
     }
@@ -351,28 +354,12 @@ void Worker::SendToCoordinatingServer(TxnId txn_id) {
   auto completed_sub_txn = env.mutable_request()->mutable_completed_subtxn();
   completed_sub_txn->set_partition(config_->local_partition());
 
-  auto& txn = txn_holder->txn();
-  if (!config_->return_dummy_txn()) {
-    completed_sub_txn->set_allocated_txn(&txn);
-  } else {
-    auto dummy_txn = completed_sub_txn->mutable_txn();
-    dummy_txn->set_status(txn.status());
-    dummy_txn->set_abort_reason(txn.abort_reason());
-    dummy_txn->mutable_internal()->set_id(txn.internal().id());
-    dummy_txn->mutable_internal()->set_type(txn.internal().type());
-    dummy_txn->mutable_internal()->set_coordinating_server(txn.internal().coordinating_server());
-    dummy_txn->mutable_internal()->mutable_involved_partitions()->CopyFrom(txn.internal().involved_partitions());
-    dummy_txn->mutable_internal()->mutable_involved_replicas()->CopyFrom(txn.internal().involved_replicas());
-    dummy_txn->mutable_internal()->mutable_events()->CopyFrom(txn.internal().events());
-    dummy_txn->mutable_internal()->mutable_event_times()->CopyFrom(txn.internal().event_times());
-    dummy_txn->mutable_internal()->mutable_event_machines()->CopyFrom(txn.internal().event_machines());
+  auto txn = txn_holder->Release();
+  if (config_->return_dummy_txn()) {
+    txn->mutable_keys()->clear();
   }
-
-  Send(env, txn.internal().coordinating_server(), kServerChannel);
-
-  if (!config_->return_dummy_txn()) {
-    completed_sub_txn->release_txn();
-  }
+  completed_sub_txn->set_allocated_txn(txn);
+  Send(env, txn->internal().coordinating_server(), kServerChannel);
 }
 
 TransactionState& Worker::TxnState(TxnId txn_id) {

@@ -169,7 +169,7 @@ class DeadlockResolver : public Module {
   }
 
  private:
-  void FindTopoOrderAndTranspose(TxnInfo& txn) {
+  void FindTopoOrderAndTranspose(DDRLockManager::TxnInfo& txn) {
     for (auto n : txn.waited_by) {
       if (n == kSentinelTxnId) {
         continue;
@@ -277,7 +277,7 @@ class DeadlockResolver : public Module {
   Channel signal_chan_;
   milliseconds check_interval_;
 
-  unordered_map<TxnId, TxnInfo> txn_info_;
+  unordered_map<TxnId, DDRLockManager::TxnInfo> txn_info_;
   unordered_map<TxnId, Node> aux_graph_;
   vector<TxnId> topo_order_;
   vector<TxnId> scc_;
@@ -396,41 +396,38 @@ AcquireLocksResult DDRLockManager::AcquireLocks(const Transaction& txn) {
   }
 }
 
-vector<TxnId> DDRLockManager::ReleaseLocks(const Transaction& txn) {
-  auto txn_id = txn.internal().id();
-  {
-    lock_guard<mutex> guard(mut_txn_info_);
+vector<TxnId> DDRLockManager::ReleaseLocks(TxnId txn_id) {
+  lock_guard<mutex> guard(mut_txn_info_);
 
-    auto txn_info_it = txn_info_.find(txn_id);
-    if (txn_info_it == txn_info_.end()) {
-      return {};
-    }
-    auto& txn_info = txn_info_it->second;
-    if (!txn_info.is_ready()) {
-      LOG(FATAL) << "Releasing unready txn is forbidden";
-    }
-    vector<TxnId> result;
-    for (auto blocked_txn_id : txn_info.waited_by) {
-      if (blocked_txn_id == kSentinelTxnId) {
-        continue;
-      }
-      auto it = txn_info_.find(blocked_txn_id);
-      if (it == txn_info_.end()) {
-        LOG(ERROR) << "Blocked txn " << blocked_txn_id << " does not exist";
-        continue;
-      }
-      auto& blocked_txn = it->second;
-      blocked_txn.num_waiting_for--;
-      if (blocked_txn.is_ready()) {
-        // While the waited_by list might contain duplicates, the blocked
-        // txn only becomes ready when its last entry in the waited_by list
-        // is accounted for.
-        result.push_back(blocked_txn_id);
-      }
-    }
-    txn_info_.erase(txn_id);
-    return result;
+  auto txn_info_it = txn_info_.find(txn_id);
+  if (txn_info_it == txn_info_.end()) {
+    return {};
   }
+  auto& txn_info = txn_info_it->second;
+  if (!txn_info.is_ready()) {
+    LOG(FATAL) << "Releasing unready txn is forbidden";
+  }
+  vector<TxnId> result;
+  for (auto blocked_txn_id : txn_info.waited_by) {
+    if (blocked_txn_id == kSentinelTxnId) {
+      continue;
+    }
+    auto it = txn_info_.find(blocked_txn_id);
+    if (it == txn_info_.end()) {
+      LOG(ERROR) << "Blocked txn " << blocked_txn_id << " does not exist";
+      continue;
+    }
+    auto& blocked_txn = it->second;
+    blocked_txn.num_waiting_for--;
+    if (blocked_txn.is_ready()) {
+      // While the waited_by list might contain duplicates, the blocked
+      // txn only becomes ready when its last entry in the waited_by list
+      // is accounted for.
+      result.push_back(blocked_txn_id);
+    }
+  }
+  txn_info_.erase(txn_id);
+  return result;
 }
 
 /**

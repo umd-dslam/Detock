@@ -54,19 +54,6 @@ class LockQueueTail {
   vector<TxnId> read_lock_requesters_;
 };
 
-struct TxnInfo {
-  TxnInfo(TxnId txn_id, int unarrived) : id(txn_id), num_waiting_for(0), unarrived_lock_requests(unarrived) {}
-
-  const TxnId id;
-  // This list must only grow
-  vector<TxnId> waited_by;
-  int num_waiting_for;
-  int unarrived_lock_requests;
-
-  bool is_complete() const { return unarrived_lock_requests == 0; }
-  bool is_ready() const { return num_waiting_for == 0 && unarrived_lock_requests == 0; }
-};
-
 class DeadlockResolver;
 
 /**
@@ -134,7 +121,7 @@ class DDRLockManager {
    * @return    A set of IDs of transactions that are able to obtain
    *            all of their locks thanks to this release.
    */
-  vector<TxnId> ReleaseLocks(const Transaction& txn);
+  vector<TxnId> ReleaseLocks(TxnId txn_id);
 
   /**
    * Gets current statistics of the lock manager
@@ -146,8 +133,21 @@ class DDRLockManager {
  private:
   friend class DeadlockResolver;
 
-  unordered_map<KeyReplica, LockQueueTail> lock_table_;
+  struct TxnInfo {
+    TxnInfo(TxnId txn_id, int unarrived) : id(txn_id), num_waiting_for(0), unarrived_lock_requests(unarrived) {}
+
+    const TxnId id;
+    // This list must only grow
+    vector<TxnId> waited_by;
+    int num_waiting_for;
+    int unarrived_lock_requests;
+
+    bool is_complete() const { return unarrived_lock_requests == 0; }
+    bool is_ready() const { return num_waiting_for == 0 && unarrived_lock_requests == 0; }
+  };
+
   unordered_map<TxnId, TxnInfo> txn_info_;
+  unordered_map<KeyReplica, LockQueueTail> lock_table_;
   mutable std::mutex mut_txn_info_;
 
   vector<TxnId> ready_txns_;
