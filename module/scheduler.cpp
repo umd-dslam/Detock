@@ -135,7 +135,7 @@ void Scheduler::ProcessStatsRequest(const internal::StatsRequest& stats_request)
 }
 
 // Handle responses from the workers
-bool Scheduler::OnPollTimeout() {
+bool Scheduler::OnCustomSocket() {
   auto& worker_socket = GetCustomSocket(0);
 
   zmq::message_t msg;
