@@ -17,7 +17,7 @@ using EnvelopePtr = std::unique_ptr<internal::Envelope>;
 class TxnHolder {
  public:
   TxnHolder(const ConfigurationPtr& config, Transaction* txn)
-      : id_(txn->internal().id()),
+      : txn_id_(txn->internal().id()),
         main_txn_(txn->internal().home()),
         lo_txns_(config->num_replicas()),
         remaster_result_(std::nullopt),
@@ -46,7 +46,7 @@ class TxnHolder {
     return txn;
   }
 
-  TxnId id() const { return id_; }
+  TxnId txn_id() const { return txn_id_; }
   Transaction& txn() const { return *lo_txns_[main_txn_]; }
   Transaction& lock_only_txn(size_t i) const { return *lo_txns_[i]; }
 
@@ -67,7 +67,7 @@ class TxnHolder {
   bool deadlocked() const { return deadlocked_; }
 
  private:
-  TxnId id_;
+  TxnId txn_id_;
   size_t main_txn_;
   std::vector<std::unique_ptr<Transaction>> lo_txns_;
   std::optional<pair<Key, uint32_t>> remaster_result_;
