@@ -130,10 +130,11 @@ message LocalQueueOrder {
 
 message RemoteReadResult {
     uint32 txn_id = 1;
-    uint32 partition = 2;
-    map<string, ValueEntry> reads = 3;
-    bool will_abort = 4;
-    string abort_reason = 5;
+    bool deadlocked = 2;
+    uint32 partition = 3;
+    map<string, ValueEntry> reads = 4;
+    bool will_abort = 5;
+    string abort_reason = 6;
 }
 
 message CompletedSubtransaction {

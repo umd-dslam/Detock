@@ -58,41 +58,41 @@ class Worker : public NetworkedModule {
   /**
    * Drives most of the phase transition of a transaction
    */
-  void AdvanceTransaction(TxnId txn_id);
+  void AdvanceTransaction(const RunId& run_id);
 
   /**
    * Checks master metadata information and reads local data to the transaction
    * buffer, then broadcast local data to other partitions
    */
-  void ReadLocalStorage(TxnId txn_id);
+  void ReadLocalStorage(const RunId& run_id);
 
   /**
    * Executes the code inside the transaction
    */
-  void Execute(TxnId txn_id);
+  void Execute(const RunId& run_id);
 
   /**
    * Applies the writes to local storage
    */
-  void Commit(TxnId txn_id);
+  void Commit(const RunId& run_id);
 
   /**
    * Returns the result back to the scheduler and cleans up the transaction state
    */
-  void Finish(TxnId txn_id);
+  void Finish(const RunId& run_id);
 
-  void BroadcastReads(TxnId txn_id);
+  void BroadcastReads(const RunId& run_id);
 
-  void SendToCoordinatingServer(TxnId txn_id);
+  void SendToCoordinatingServer(const RunId& txn_id);
 
   // Precondition: txn_id must exists in txn states table
-  TransactionState& TxnState(TxnId txn_id);
+  TransactionState& TxnState(const RunId& run_id);
 
   ConfigurationPtr config_;
   std::shared_ptr<Storage<Key, Record>> storage_;
   std::unique_ptr<Commands> commands_;
 
-  std::unordered_map<TxnId, TransactionState> txn_states_;
+  std::map<RunId, TransactionState> txn_states_;
 };
 
 }  // namespace slog

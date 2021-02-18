@@ -32,8 +32,12 @@ class SchedulerTest : public ::testing::Test {
   static const uint32_t kNumReplicas = 2;
   static const uint32_t kNumPartitions = 3;
 
+  virtual ConfigVec MakeConfigs() {
+    return MakeTestConfigurations("scheduler", kNumReplicas, kNumPartitions);
+  }
+
   void SetUp() {
-    ConfigVec configs = MakeTestConfigurations("scheduler", kNumReplicas, kNumPartitions);
+    ConfigVec configs = MakeConfigs();
 
     for (size_t i = 0; i < kNumMachines; i++) {
       test_slogs[i] = make_unique<TestSlog>(configs[i]);
@@ -405,8 +409,7 @@ TEST_F(SchedulerTest, AbortMultiHomeMultiPartition2Active) {
                                  {{"A", KeyType::READ, {{0, 1}}},
                                   {"D", KeyType::READ, {{1, 0}}},
                                   {"Y", KeyType::WRITE, {{1, 1}}},
-                                  {"X", KeyType::WRITE, {{0, 0}}}},
-                                 "");
+                                  {"X", KeyType::WRITE, {{0, 0}}}});
 
   auto lo_txn_0 = GenerateLockOnlyTxn(txn, 0);
   auto lo_txn_1 = GenerateLockOnlyTxn(txn, 1);
@@ -420,6 +423,72 @@ TEST_F(SchedulerTest, AbortMultiHomeMultiPartition2Active) {
   LOG(INFO) << output_txn;
   ASSERT_EQ(output_txn.status(), TransactionStatus::ABORTED);
 }
+
+#ifdef LOCK_MANAGER_DDR
+class SchedulerTestWithDeadlockResolver : public SchedulerTest {
+ protected:
+  static const size_t kNumMachines = 6;
+  static const uint32_t kNumReplicas = 2;
+  static const uint32_t kNumPartitions = 3;
+
+  ConfigVec MakeConfigs() final {
+    internal::Configuration add_on;
+    add_on.set_ddr_interval(10);
+    return MakeTestConfigurations("scheduler", kNumReplicas, kNumPartitions, add_on);
+  }
+};
+
+TEST_F(SchedulerTestWithDeadlockResolver, PartitionedDeadlock) {
+  auto txn1 = MakeTestTransaction(test_slogs[0]->config(), 1000,
+                                  {{"A", KeyType::READ, {{0, 1}}},
+                                   {"X", KeyType::WRITE, {{1, 1}}}},
+                                  "GET A SET X test", 0);
+  auto lo_txn_1_0 = GenerateLockOnlyTxn(txn1, 0);
+  auto lo_txn_1_1 = GenerateLockOnlyTxn(txn1, 1);
+  delete txn1;
+
+  auto txn2 = MakeTestTransaction(test_slogs[0]->config(), 2000,
+                                  {{"A", KeyType::WRITE, {{0, 1}}},
+                                   {"X", KeyType::READ, {{1, 1}}}},
+                                   "COPY X A", 1);
+  auto lo_txn_2_0 = GenerateLockOnlyTxn(txn2, 0);
+  auto lo_txn_2_1 = GenerateLockOnlyTxn(txn2, 1);
+  delete txn2;
+
+  // This would cause a partitioned deadlock. After the deadlock is resolved, the
+  // txns must be run in the order txn1 then txn2
+  SendTransaction(lo_txn_1_0);
+  SendTransaction(lo_txn_2_0);
+  SendTransaction(lo_txn_2_1);
+  SendTransaction(lo_txn_1_1);
+
+  {
+    auto output_txn = ReceiveMultipleAndMerge(0, 2);
+    LOG(INFO) << output_txn;
+    ASSERT_EQ(output_txn.internal().id(), 1000);
+    ASSERT_EQ(output_txn.status(), TransactionStatus::COMMITTED);
+    ASSERT_EQ(output_txn.keys_size(), 2);
+    ASSERT_EQ(output_txn.keys().at("A").type(), KeyType::READ);
+    ASSERT_EQ(output_txn.keys().at("A").value(), "valueA");
+    ASSERT_EQ(output_txn.keys().at("X").type(), KeyType::WRITE);
+    ASSERT_EQ(output_txn.keys().at("X").value(), "valueX");
+    ASSERT_EQ(output_txn.keys().at("X").new_value(), "test");
+  }
+
+  {
+    auto output_txn = ReceiveMultipleAndMerge(1, 2);
+    LOG(INFO) << output_txn;
+    ASSERT_EQ(output_txn.internal().id(), 2000);
+    ASSERT_EQ(output_txn.status(), TransactionStatus::COMMITTED);
+    ASSERT_EQ(output_txn.keys_size(), 2);
+    ASSERT_EQ(output_txn.keys().at("X").type(), KeyType::READ);
+    ASSERT_EQ(output_txn.keys().at("X").value(), "test");
+    ASSERT_EQ(output_txn.keys().at("A").type(), KeyType::WRITE);
+    ASSERT_EQ(output_txn.keys().at("A").value(), "valueA");
+    ASSERT_EQ(output_txn.keys().at("A").new_value(), "test");
+  }
+}
+#endif
 
 int main(int argc, char* argv[]) {
   ::testing::InitGoogleTest(&argc, argv);

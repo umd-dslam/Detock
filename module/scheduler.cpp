@@ -29,7 +29,7 @@ Scheduler::Scheduler(const ConfigurationPtr& config, const shared_ptr<Broker>& b
 #endif
 
 #ifdef LOCK_MANAGER_DDR
-  lock_manager_.InitializeDeadlockResolver(config, broker, kSchedulerChannel);
+  lock_manager_.InitializeDeadlockResolver(config, broker, kSchedulerChannel, poll_timeout);
 #endif
 }
 

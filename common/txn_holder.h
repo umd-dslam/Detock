@@ -13,6 +13,12 @@
 namespace slog {
 
 using EnvelopePtr = std::unique_ptr<internal::Envelope>;
+using RunId = pair<TxnId, bool>;
+
+inline std::ostream& operator<<(std::ostream& os, const RunId& run_id) {
+  os << "(" << run_id.first << ", " << run_id.second << ")";
+  return os;
+}
 
 class TxnHolder {
  public:
@@ -46,6 +52,7 @@ class TxnHolder {
     return txn;
   }
 
+  RunId run_id() const { return {txn_id_, deadlocked_}; }
   TxnId txn_id() const { return txn_id_; }
   Transaction& txn() const { return *lo_txns_[main_txn_]; }
   Transaction& lock_only_txn(size_t i) const { return *lo_txns_[i]; }
@@ -64,7 +71,6 @@ class TxnHolder {
   int expected_num_lock_only_txns() const { return expected_num_lo_txns_; }
 
   void SetDeadlocked(bool d) { deadlocked_ = d; }
-  bool deadlocked() const { return deadlocked_; }
 
  private:
   TxnId txn_id_;

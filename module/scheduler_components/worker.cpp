@@ -12,7 +12,13 @@
 #include "common/proto_utils.h"
 #include "module/scheduler.h"
 
+using std::make_pair;
+
 namespace slog {
+
+namespace {
+uint32_t MakeTag(const RunId& run_id) { return run_id.first * 10 + run_id.second; }
+}
 
 using internal::Envelope;
 using internal::Request;
@@ -40,14 +46,14 @@ void Worker::OnInternalRequestReceived(EnvelopePtr&& env) {
     LOG(FATAL) << "Invalid request for worker";
   }
   auto& read_result = env->request().remote_read_result();
-  auto txn_id = read_result.txn_id();
-  auto state_it = txn_states_.find(txn_id);
+  auto run_id = make_pair(read_result.txn_id(), read_result.deadlocked());
+  auto state_it = txn_states_.find(run_id);
   if (state_it == txn_states_.end()) {
-    VLOG(1) << "Transaction " << txn_id << " does not exist for remote read result";
+    VLOG(1) << "Transaction " << run_id << " does not exist for remote read result";
     return;
   }
 
-  VLOG(2) << "Got remote read result for txn " << txn_id;
+  VLOG(2) << "Got remote read result for txn " << run_id;
 
   auto& state = state_it->second;
   auto& txn = state.txn_holder->txn();
@@ -66,19 +72,19 @@ void Worker::OnInternalRequestReceived(EnvelopePtr&& env) {
     }
   }
 
-  state.remote_reads_waiting_on -= 1;
+  state.remote_reads_waiting_on--;
 
   // Move the transaction to a new phase if all remote reads arrive
   if (state.remote_reads_waiting_on == 0) {
     if (state.phase == TransactionState::Phase::WAIT_REMOTE_READ) {
       state.phase = TransactionState::Phase::EXECUTE;
-      VLOG(3) << "Execute txn " << txn_id << " after receving all remote read results";
+      VLOG(3) << "Execute txn " << run_id << " after receving all remote read results";
     } else {
       LOG(FATAL) << "Invalid phase";
     }
   }
 
-  AdvanceTransaction(txn_id);
+  AdvanceTransaction(run_id);
 }
 
 bool Worker::OnCustomSocket() {
@@ -90,36 +96,37 @@ bool Worker::OnCustomSocket() {
   }
 
   auto txn_holder = *msg.data<TxnHolder*>();
+  auto run_id = txn_holder->run_id();
   auto& txn = txn_holder->txn();
-  auto txn_id = txn.internal().id();
 
   TRACE(txn.mutable_internal(), TransactionEvent::ENTER_WORKER);
 
   // Create a state for the new transaction
-  auto [iter, ok] = txn_states_.try_emplace(txn_id, txn_holder);
+  // TODO: Clean up txns that later got into a deadlock
+  auto [iter, ok] = txn_states_.try_emplace(run_id, txn_holder);
 
-  DCHECK(ok) << "Transaction " << txn_id << " has already been dispatched to this worker";
+  DCHECK(ok) << "Transaction " << run_id << " has already been dispatched to this worker";
 
   iter->second.phase = TransactionState::Phase::READ_LOCAL_STORAGE;
 
   // Establish a redirection at broker for this txn so that we can receive remote reads
   auto redirect_env = NewEnvelope();
-  redirect_env->mutable_request()->mutable_broker_redirect()->set_tag(txn_id);
+  redirect_env->mutable_request()->mutable_broker_redirect()->set_tag(MakeTag(run_id));
   redirect_env->mutable_request()->mutable_broker_redirect()->set_channel(channel());
   Send(move(redirect_env), kBrokerChannel);
 
-  VLOG(3) << "Initialized state for txn " << txn_id;
+  VLOG(3) << "Initialized state for txn " << run_id;
 
-  AdvanceTransaction(txn_id);
+  AdvanceTransaction(run_id);
 
   return true;
 }
 
-void Worker::AdvanceTransaction(TxnId txn_id) {
-  auto& state = TxnState(txn_id);
+void Worker::AdvanceTransaction(const RunId& run_id) {
+  auto& state = TxnState(run_id);
   switch (state.phase) {
     case TransactionState::Phase::READ_LOCAL_STORAGE:
-      ReadLocalStorage(txn_id);
+      ReadLocalStorage(run_id);
       [[fallthrough]];
     case TransactionState::Phase::WAIT_REMOTE_READ:
       if (state.phase == TransactionState::Phase::WAIT_REMOTE_READ) {
@@ -129,24 +136,24 @@ void Worker::AdvanceTransaction(TxnId txn_id) {
       [[fallthrough]];
     case TransactionState::Phase::EXECUTE:
       if (state.phase == TransactionState::Phase::EXECUTE) {
-        Execute(txn_id);
+        Execute(run_id);
       }
       [[fallthrough]];
     case TransactionState::Phase::COMMIT:
       if (state.phase == TransactionState::Phase::COMMIT) {
-        Commit(txn_id);
+        Commit(run_id);
       }
       [[fallthrough]];
     case TransactionState::Phase::FINISH:
-      Finish(txn_id);
+      Finish(run_id);
       // Never fallthrough after this point because Finish and PreAbort
       // has already destroyed the state object
       break;
   }
 }
 
-void Worker::ReadLocalStorage(TxnId txn_id) {
-  auto& state = TxnState(txn_id);
+void Worker::ReadLocalStorage(const RunId& run_id) {
+  auto& state = TxnState(run_id);
   auto txn_holder = state.txn_holder;
   auto& txn = txn_holder->txn();
 
@@ -162,7 +169,7 @@ void Worker::ReadLocalStorage(TxnId txn_id) {
         break;
       }
       case VerifyMasterResult::WAITING: {
-        LOG(FATAL) << "Transaction " << txn_id << " was sent to worker with a high counter";
+        LOG(FATAL) << "Transaction " << run_id << " was sent to worker with a high counter";
         break;
       }
       default:
@@ -192,27 +199,32 @@ void Worker::ReadLocalStorage(TxnId txn_id) {
     }
   }
 
-  BroadcastReads(txn_id);
+  BroadcastReads(run_id);
 
   // Set the number of remote reads that this partition needs to wait for
   state.remote_reads_waiting_on = 0;
-  const auto& active_partitions = txn.internal().active_partitions();
-  if (std::find(active_partitions.begin(), active_partitions.end(), config_->local_partition()) !=
-      active_partitions.end()) {
-    // Active partition needs remote reads from all partitions
+#ifdef LOCK_MANAGER_DDR
+  // If DDR is used, all partitions have to wait
+  const auto& waiting_partitions = txn.internal().involved_partitions();
+#else
+  const auto& waiting_partitions = txn.internal().active_partitions();
+#endif
+  if (std::find(waiting_partitions.begin(), waiting_partitions.end(), config_->local_partition()) !=
+      waiting_partitions.end()) {
+    // Waiting partition needs remote reads from all partitions
     state.remote_reads_waiting_on = txn.internal().involved_partitions_size() - 1;
   }
   if (state.remote_reads_waiting_on == 0) {
-    VLOG(3) << "Execute txn " << txn_id << " without remote reads";
+    VLOG(3) << "Execute txn " << run_id << " without remote reads";
     state.phase = TransactionState::Phase::EXECUTE;
   } else {
-    VLOG(3) << "Defer executing txn " << txn_id << " until having enough remote reads";
+    VLOG(3) << "Defer executing txn " << run_id << " until having enough remote reads";
     state.phase = TransactionState::Phase::WAIT_REMOTE_READ;
   }
 }
 
-void Worker::Execute(TxnId txn_id) {
-  auto& state = TxnState(txn_id);
+void Worker::Execute(const RunId& run_id) {
+  auto& state = TxnState(run_id);
   auto& txn = state.txn_holder->txn();
 
   switch (txn.procedure_case()) {
@@ -233,14 +245,14 @@ void Worker::Execute(TxnId txn_id) {
   state.phase = TransactionState::Phase::COMMIT;
 }
 
-void Worker::Commit(TxnId txn_id) {
-  auto& state = TxnState(txn_id);
+void Worker::Commit(const RunId& run_id) {
+  auto& state = TxnState(run_id);
   auto& txn = state.txn_holder->txn();
   switch (txn.procedure_case()) {
     case Transaction::kCode: {
       // Apply all writes to local storage if the transaction is not aborted
       if (txn.status() != TransactionStatus::COMMITTED) {
-        VLOG(3) << "Txn " << txn_id << " aborted with reason: " << txn.abort_reason();
+        VLOG(3) << "Txn " << run_id << " aborted with reason: " << txn.abort_reason();
         break;
       }
       for (const auto& [key, value] : txn.keys()) {
@@ -261,7 +273,7 @@ void Worker::Commit(TxnId txn_id) {
           storage_->Delete(key);
         }
       }
-      VLOG(3) << "Committed txn " << txn_id;
+      VLOG(3) << "Committed txn " << run_id;
       break;
     }
     case Transaction::kRemaster: {
@@ -284,37 +296,44 @@ void Worker::Commit(TxnId txn_id) {
   state.phase = TransactionState::Phase::FINISH;
 }
 
-void Worker::Finish(TxnId txn_id) {
-  TRACE(TxnState(txn_id).txn_holder->txn().mutable_internal(), TransactionEvent::EXIT_WORKER);
+void Worker::Finish(const RunId& run_id) {
+  TRACE(TxnState(run_id).txn_holder->txn().mutable_internal(), TransactionEvent::EXIT_WORKER);
 
   // This must happen before the sending to scheduler below. Otherwise,
   // the scheduler may destroy the transaction holder before we can
   // send the transaction to the server.
-  SendToCoordinatingServer(txn_id);
+  SendToCoordinatingServer(run_id);
 
   // Notify the scheduler that we're done
   zmq::message_t msg(sizeof(TxnId));
-  *msg.data<TxnId>() = txn_id;
+  *msg.data<TxnId>() = run_id.first;
   GetCustomSocket(0).send(msg, zmq::send_flags::none);
 
   // Remove the redirection at broker for this txn
   auto redirect_env = NewEnvelope();
-  redirect_env->mutable_request()->mutable_broker_redirect()->set_tag(txn_id);
+  redirect_env->mutable_request()->mutable_broker_redirect()->set_tag(MakeTag(run_id));
   redirect_env->mutable_request()->mutable_broker_redirect()->set_stop(true);
   Send(move(redirect_env), kBrokerChannel);
 
   // Done with this txn. Remove it from the state map
-  txn_states_.erase(txn_id);
+  txn_states_.erase(run_id);
 
-  VLOG(3) << "Finished with txn " << txn_id;
+  VLOG(3) << "Finished with txn " << run_id;
 }
 
-void Worker::BroadcastReads(TxnId txn_id) {
-  auto& state = TxnState(txn_id);
+void Worker::BroadcastReads(const RunId& run_id) {
+  auto& state = TxnState(run_id);
   auto txn_holder = state.txn_holder;
   auto& txn = txn_holder->txn();
 
-  if (txn.internal().active_partitions().empty()) {
+#ifdef LOCK_MANAGER_DDR
+  // If DDR is used, all partitions have to wait
+  const auto& waiting_partitions = txn.internal().involved_partitions();
+#else
+  const auto& waiting_partitions = txn.internal().active_partitions();
+#endif
+
+  if (waiting_partitions.empty()) {
     return;
   }
 
@@ -325,7 +344,8 @@ void Worker::BroadcastReads(TxnId txn_id) {
   // Send abort result and local reads to all remote active partitions
   Envelope env;
   auto rrr = env.mutable_request()->mutable_remote_read_result();
-  rrr->set_txn_id(txn_id);
+  rrr->set_txn_id(run_id.first);
+  rrr->set_deadlocked(run_id.second);
   rrr->set_partition(local_partition);
   rrr->set_will_abort(aborted);
   rrr->set_abort_reason(txn.abort_reason());
@@ -336,16 +356,16 @@ void Worker::BroadcastReads(TxnId txn_id) {
     }
   }
 
-  for (auto p : txn.internal().active_partitions()) {
+  for (auto p : waiting_partitions) {
     if (p != local_partition) {
       auto machine_id = config_->MakeMachineId(local_replica, p);
-      Send(env, std::move(machine_id), txn_id);
+      Send(env, std::move(machine_id), MakeTag(run_id));
     }
   }
 }
 
-void Worker::SendToCoordinatingServer(TxnId txn_id) {
-  auto& state = TxnState(txn_id);
+void Worker::SendToCoordinatingServer(const RunId& run_id) {
+  auto& state = TxnState(run_id);
   auto txn_holder = state.txn_holder;
 
   // Send the txn back to the coordinating server
@@ -361,8 +381,8 @@ void Worker::SendToCoordinatingServer(TxnId txn_id) {
   Send(env, txn->internal().coordinating_server(), kServerChannel);
 }
 
-TransactionState& Worker::TxnState(TxnId txn_id) {
-  auto state_it = txn_states_.find(txn_id);
+TransactionState& Worker::TxnState(const RunId& run_id) {
+  auto state_it = txn_states_.find(run_id);
   DCHECK(state_it != txn_states_.end());
   return state_it->second;
 }
