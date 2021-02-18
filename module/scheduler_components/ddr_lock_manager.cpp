@@ -3,6 +3,7 @@
 #include <glog/logging.h>
 
 #include <algorithm>
+#include <queue>
 
 #include "connection/zmq_utils.h"
 
@@ -12,13 +13,16 @@ using std::make_unique;
 using std::move;
 using std::mutex;
 using std::optional;
+using std::queue;
+using std::shared_ptr;
 using std::unique_ptr;
 
 namespace slog {
 
 /**
  * Periodically, the deadlock resolver wakes up, takes a snapshot of the dependency graph,
- * deterministically resolve the deadlocks, if any, and applies any changes to the original graph.
+ * broadcast the local graph to other partitions, deterministically resolve the deadlocks using the combination
+ * of graphs from all partitions, and applies any changes to the original graph.
  * It finds strongly connected components in the graph and only resolves the "stable" components.
  * The original graph might still grow while the resolver is running so care must be taken such that
  * we don't remove new addition of the orignal graph while applying back the modified-but-outdated
@@ -29,81 +33,259 @@ namespace slog {
  * and the waited-by list will only grow. Therefore, it is safe to the resolver to make any change to
  * the waiting-for counter, and the snapshotted prefix of the waited-by list.
  */
-class DeadlockResolver : public Module {
-  enum class ComponentType { UNASSIGNED, STABLE, UNSTABLE };
+class DeadlockResolver : public NetworkedModule {
+ public:
+  DeadlockResolver(DDRLockManager& lock_manager, const ConfigurationPtr& config, const shared_ptr<Broker>& broker,
+                   Channel signal_chan, optional<milliseconds> poll_timeout)
+      : NetworkedModule("DeadlockResolver", broker, kDeadlockResolverChannel, poll_timeout),
+        lm_(lock_manager),
+        config_(config),
+        signal_chan_(signal_chan) {
+    partitioned_graph_.resize(config->num_partitions());
+  }
+
+  void OnInternalRequestReceived(EnvelopePtr&& env) final {
+    auto partition = config_->UnpackMachineId(env->from()).second;
+    auto& remote_graph = partitioned_graph_[partition];
+
+    // Acquire remote graph
+    remote_graph.clear();
+    auto nodes = env->request().graph().nodes();
+    for (const auto& node : nodes) {
+      auto ins = remote_graph.try_emplace(node.vertex(), node.vertex(), node.num_partitions(), true);
+      auto& edges = ins.first->second.edges;
+      edges.insert(edges.end(), node.edges().begin(), node.edges().end());
+    }
+  }
+
+  void Initialize() final { ScheduleNextRun(); }
+
+  void Run() {
+    BuildLocalGraph();
+
+    BroadcastLocalGraph();
+
+    BuildTotalGraph();
+
+    topo_order_.clear();
+    for (auto& n : total_graph_) {
+      if (!n.second.is_visited) {
+        FindTopoOrderAndBuildTransposeGraph(n.second);
+      }
+    }
+    std::reverse(topo_order_.begin(), topo_order_.end());
+
+    CheckAndResolveDeadlocks();
+  }
+
+ private:
+  DDRLockManager& lm_;
+  ConfigurationPtr config_;
+  Channel signal_chan_;
+
+  unordered_map<TxnId, DDRLockManager::TxnInfo> txn_info_;
+
   struct Node {
-    explicit Node(TxnId txn_id, bool is_complete)
-        : id(txn_id), is_complete(is_complete), visited(false), comp_type(ComponentType::UNASSIGNED) {}
+    explicit Node(TxnId vertex, int num_partitions, bool is_stable)
+        : vertex(vertex), num_partitions(num_partitions), is_stable(is_stable), is_visited(false) {}
 
-    const TxnId id;
-    const bool is_complete;
+    const TxnId vertex;
+    const int num_partitions;
 
+    bool is_stable;
+    bool is_visited;
+    vector<TxnId> edges;
     vector<TxnId> redges;
-    bool visited;
-    ComponentType comp_type;
   };
 
- public:
-  DeadlockResolver(DDRLockManager& lock_manager, zmq::context_t& context, Channel signal_chan,
-                   milliseconds check_interval)
-      : Module("DeadlockResolver"),
-        lm_(lock_manager),
-        signal_(context, ZMQ_PUSH),
-        signal_chan_(signal_chan),
-        check_interval_(check_interval) {}
+  using Graph = unordered_map<TxnId, Node>;
+  vector<Graph> partitioned_graph_;
+  Graph total_graph_;
+  vector<TxnId> topo_order_;
+  vector<TxnId> scc_;
 
-  void SetUp() final { signal_.connect(MakeInProcChannelAddress(signal_chan_)); }
+  void ScheduleNextRun() {
+    if (config_->ddr_interval() > 0ms) {
+      NewTimedCallback(config_->ddr_interval(), [this] {
+        Run();
+        ScheduleNextRun();
+      });
+    }
+  }
 
-  bool Loop() final {
-    std::this_thread::sleep_for(check_interval_);
-
-    // Take a snapshot of the txn dependency graph
+  void BuildLocalGraph() {
+    // Take a snapshot of the txn info in the lock manager
     {
       lock_guard<mutex> guard(lm_.mut_txn_info_);
       txn_info_ = lm_.txn_info_;
     }
 
-    // The resolver uses num_waiting_for field to record the amount that the actual value of
-    // num_waiting_for in the lock manager would increase/decrease after resolving deadlocks
-    for (auto& it : txn_info_) {
-      it.second.num_waiting_for = 0;
-    }
+    queue<TxnId> unstables;
 
-    // Find topological order and build the tranpose graph
-    topo_order_.clear();
-    aux_graph_.clear();
-    for (auto& it : txn_info_) {
-      auto txn = it.second;
-      auto ins = aux_graph_.try_emplace(txn.id, txn.id, txn.is_complete());
-      auto& node = ins.first->second;
-      if (!node.visited) {
-        node.visited = true;
-        FindTopoOrderAndTranspose(txn);
+    // Construct the local graph
+    auto& local_graph = partitioned_graph_[config_->local_partition()];
+    local_graph.clear();
+    for (const auto& [vertex, info] : txn_info_) {
+      auto ins = local_graph.try_emplace(vertex, vertex, info.num_partitions, info.is_stable());
+      auto& edges = ins.first->second.edges;
+      edges.reserve(info.waited_by.size());
+      for (auto v : info.waited_by) {
+        if (v != kSentinelTxnId) {
+          edges.push_back(v);
+        }
+      }
+      if (!info.is_stable()) {
+        unstables.push(vertex);
       }
     }
-    std::reverse(topo_order_.begin(), topo_order_.end());
+
+    // Propagate unstability to reachable vertices
+    while (!unstables.empty()) {
+      auto it = local_graph.find(unstables.front());
+      DCHECK(it != local_graph.end());
+      unstables.pop();
+
+      for (auto next : it->second.edges) {
+        auto next_it = local_graph.find(next);
+        DCHECK(next_it != local_graph.end()) << "Dangling edge";
+        if (next_it->second.is_stable) {
+          next_it->second.is_stable = false;
+          unstables.push(next);
+        }
+      }
+    }
+
+    // Remove unstable vertices. Dangling edges may exist after this
+    for (auto it = local_graph.begin(); it != local_graph.end();) {
+      if (!it->second.is_stable) {
+        it = local_graph.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+
+  void BroadcastLocalGraph() {
+    auto env = NewEnvelope();
+    auto adjs = env->mutable_request()->mutable_graph()->mutable_nodes();
+    auto& local_graph = partitioned_graph_[config_->local_partition()];
+    adjs->Reserve(local_graph.size());
+    for (const auto& [vertex, node] : local_graph) {
+      auto adj = adjs->Add();
+      adj->set_vertex(vertex);
+      adj->set_num_partitions(node.num_partitions);
+      adj->mutable_edges()->Add(node.edges.begin(), node.edges.end());
+    }
+    vector<MachineId> destinations;
+    for (uint32_t p = 0; p < config_->num_partitions(); p++) {
+      if (p != config_->local_partition()) {
+        destinations.push_back(config_->MakeMachineId(config_->local_replica(), p));
+      }
+    }
+    Send(move(env), destinations, kDeadlockResolverChannel);
+
+    VLOG_EVERY_N(3, 20) << "Local graph is being broadcasted";
+  }
+
+  void BuildTotalGraph() {
+    // Map of vertex => (expected number of partitions, actual number of partitions)
+    unordered_map<TxnId, pair<int, int>> vertices;
+    for (auto& g : partitioned_graph_) {
+      for (const auto& [vertex, node] : g) {
+        auto ins = vertices.try_emplace(vertex, node.num_partitions, 0);
+        ins.first->second.second++;
+      }
+    }
+
+    queue<TxnId> unstables;
+
+    // Build total graph from graphs across the partitions
+    total_graph_.clear();
+    for (const auto& [vertex, partition_info] : vertices) {
+      auto [expected_num_partitions, actual_num_partitions] = partition_info;
+      bool is_stable = expected_num_partitions == actual_num_partitions;
+      auto ins = total_graph_.try_emplace(vertex, vertex, expected_num_partitions, is_stable);
+      auto& edges = ins.first->second.edges;
+      // We allow duplicate edges, which do not affect correctnect
+      for (auto& g : partitioned_graph_) {
+        if (auto it = g.find(vertex); it != g.end()) {
+          edges.insert(edges.end(), it->second.edges.begin(), it->second.edges.end());
+        }
+      }
+      if (!is_stable) {
+        unstables.push(vertex);
+      }
+    }
+
+    // Propagate unstability to reachable vertices
+    while (!unstables.empty()) {
+      auto it = total_graph_.find(unstables.front());
+      DCHECK(it != total_graph_.end());
+      unstables.pop();
+
+      for (auto next : it->second.edges) {
+        auto next_it = total_graph_.find(next);
+        // Dangling edges are a possibility so need to check for existence of `next`
+        if (next_it != total_graph_.end() && next_it->second.is_stable) {
+          next_it->second.is_stable = false;
+          unstables.push(next);
+        }
+      }
+    }
+
+    // Remove unstable vertices
+    for (auto it = total_graph_.begin(); it != total_graph_.end();) {
+      if (!it->second.is_stable) {
+        it = total_graph_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+
+  void FindTopoOrderAndBuildTransposeGraph(Node& node) {
+    node.is_visited = true;
+    for (auto next : node.edges) {
+      auto next_it = total_graph_.find(next);
+      // Dangling edges are a possibility so need to check for existence of `next`
+      if (next_it != total_graph_.end()) {
+        auto& next_node = next_it->second;
+        next_node.redges.push_back(node.vertex);
+        if (!next_node.is_visited) {
+          FindTopoOrderAndBuildTransposeGraph(next_node);
+        }
+      }
+    }
+    topo_order_.push_back(node.vertex);
+  }
+
+  void CheckAndResolveDeadlocks() {
+    // num_waiting_for field is used to store the number of other txns that a txn is waiting
+    // for. To avoid race condition (specifically, lost writes) because the deadlock resolver is
+    // running in parallel to the lock manager, here, num_waiting_for field is used to record the
+    // amount that num_waiting_for would increase/decrease after resolving deadlocks. At the end,
+    // of the deadlock resolving process, this value will be added to the current num_waiting_for
+    // in the lock manager
+    for (auto& p : txn_info_) {
+      p.second.num_waiting_for = 0;
+    }
+
+    for (auto& p : total_graph_) {
+      p.second.is_visited = false;
+    }
 
     vector<TxnId> to_be_updated;
     int num_sccs = 0;
     // Form the strongly connected components. This time, We traverse on
-    // the tranpose graph. For each stable component with more than 1 member,
-    // perform deterministic deadlock resolving
-    for (auto txn_id : topo_order_) {
-      auto it = aux_graph_.find(txn_id);
-      CHECK(it != aux_graph_.end()) << "Topo order contains unknown txn: " << txn_id;
-
-      auto& node = it->second;
-      if (node.comp_type == ComponentType::UNASSIGNED) {
+    // the tranpose graph. For each component with more than 1 member, perform
+    // deterministic deadlock resolving
+    for (auto vertex : topo_order_) {
+      auto it = total_graph_.find(vertex);
+      CHECK(it != total_graph_.end()) << "Topo order contains unknown vertex: " << vertex;
+      if (!it->second.is_visited) {
         scc_.clear();
-        auto is_stable = FormStronglyConnectedComponent(node);
-        if (!is_stable) {
-          // Set all nodes in the current component to unstable
-          for (auto id : scc_) {
-            auto node_it = aux_graph_.find(id);
-            CHECK(node_it != aux_graph_.end());
-            node_it->second.comp_type = ComponentType::UNSTABLE;
-          }
-        } else if (scc_.size() > 1) {
+        FormStronglyConnectedComponent(it->second);
+        if (scc_.size() > 1) {
           // If this component is stable and has more than 1 element, resolve the deadlock
           ResolveDeadlock();
           // The info of txns in this scc will be updated in the lock manager
@@ -120,12 +302,16 @@ class DeadlockResolver : public Module {
 
       for (auto txn_id : to_be_updated) {
         auto new_txn_it = txn_info_.find(txn_id);
-        CHECK(new_txn_it != txn_info_.end());
+        if (new_txn_it == txn_info_.end()) {
+          continue;
+        }
         auto& new_txn = new_txn_it->second;
 
         auto txn_it = lm_.txn_info_.find(txn_id);
         CHECK(txn_it != lm_.txn_info_.end());
         auto& txn = txn_it->second;
+
+        txn.deadlocked = new_txn.deadlocked;
 
         // Replace the prefix of the waited-by list by the deadlock-resolved waited-by list
         std::copy(new_txn.waited_by.begin(), new_txn.waited_by.end(), txn.waited_by.begin());
@@ -152,7 +338,7 @@ class DeadlockResolver : public Module {
       // Send signal that there are new ready txns
       auto env = make_unique<internal::Envelope>();
       env->mutable_request()->mutable_signal();
-      SendEnvelope(signal_, move(env));
+      Send(move(env), signal_chan_);
     }
 
     if (num_sccs) {
@@ -165,52 +351,16 @@ class DeadlockResolver : public Module {
     } else {
       VLOG_EVERY_N(4, 100) << "No stable deadlock found";
     }
-    return false;
   }
 
- private:
-  void FindTopoOrderAndTranspose(DDRLockManager::TxnInfo& txn) {
-    for (auto n : txn.waited_by) {
-      if (n == kSentinelTxnId) {
-        continue;
-      }
-
-      auto it = txn_info_.find(n);
-      CHECK(it != txn_info_.end()) << "Corrupted graph. Unknown txn: " << n;
-
-      auto& neighbor = it->second;
-      // Build tranpose graph
-      auto ins = aux_graph_.try_emplace(neighbor.id, neighbor.id, neighbor.is_complete());
-      auto& node = ins.first->second;
-      node.redges.push_back(txn.id);
-      if (!node.visited) {
-        node.visited = true;
-        FindTopoOrderAndTranspose(neighbor);
+  void FormStronglyConnectedComponent(Node& node) {
+    node.is_visited = true;
+    scc_.push_back(node.vertex);
+    for (auto next : node.redges) {
+      if (auto it = total_graph_.find(next); it != total_graph_.end() && !it->second.is_visited) {
+        FormStronglyConnectedComponent(it->second);
       }
     }
-    // Establish topological order
-    topo_order_.push_back(txn.id);
-  }
-
-  // Returns true if the component is stable
-  bool FormStronglyConnectedComponent(Node& node) {
-    scc_.push_back(node.id);
-    // Assume the current component is stable
-    node.comp_type = ComponentType::STABLE;
-
-    bool is_stable = node.is_complete;
-    for (auto n : node.redges) {
-      auto it = aux_graph_.find(n);
-      CHECK(it != aux_graph_.end()) << "Corrupted auxiliary graph. Unknown node: " << n;
-
-      auto& neighbor = it->second;
-      if (neighbor.comp_type == ComponentType::UNASSIGNED) {
-        is_stable &= FormStronglyConnectedComponent(neighbor);
-      } else if (neighbor.comp_type == ComponentType::UNSTABLE) {
-        is_stable = false;
-      }
-    }
-    return is_stable;
   }
 
   void ResolveDeadlock() {
@@ -232,55 +382,63 @@ class DeadlockResolver : public Module {
     //
     // Note that we only remove edges between nodes in the same SCC.
     //
-    for (int i = scc_.size() - 1; i >= 0; --i) {
-      auto txn_it = txn_info_.find(scc_[i]);
-      CHECK(txn_it != txn_info_.end()) << "scc contains unknown txn: " << scc_[i];
-      auto& txn = txn_it->second;
-      CHECK(txn.is_complete()) << "scc contains incomplete txn: " << scc_[i];
+    int prev_local = scc_.size() - 1;
+    while (prev_local >= 0 && txn_info_.find(scc_[prev_local]) == txn_info_.end()) {
+      --prev_local;
+    }
+    if (prev_local <= 0) {
+      return;
+    }
 
-      // Don't add new edge if this is the last element of in the component list
-      bool new_edge_added = static_cast<size_t>(i) == scc_.size() - 1;
+    for (int i = prev_local; i >= 0; --i) {
+      auto it = txn_info_.find(scc_[i]);
+      if (it == txn_info_.end()) {
+        continue;
+      }
+      auto& info = it->second;
+      CHECK(info.is_stable()) << "scc contains unstable txn: " << scc_[i];
 
-      // Traverse the edge list
-      for (size_t j = 0; j < txn.waited_by.size(); j++) {
-        // Only consider edges connecting the current node to another node in the same SCC
-        if (std::binary_search(scc_.begin(), scc_.end(), txn.waited_by[j])) {
-          auto waiting_txn = txn_info_.find(txn.waited_by[j]);
+      info.deadlocked = true;
+
+      // Remove old edges
+      for (size_t j = 0; j < info.waited_by.size(); j++) {
+        // Only remove edges connecting the current node to another node in the same SCC
+        if (std::binary_search(scc_.begin(), scc_.end(), info.waited_by[j])) {
+          auto waiting_txn = txn_info_.find(info.waited_by[j]);
           CHECK(waiting_txn != txn_info_.end());
 
-          if (!new_edge_added) {
-            // If a new edge is not added yet, add one now by overwriting current edge
-            txn.waited_by[j] = scc_[i + 1];
+          // Setting to kSentinelTxnId effectively removes this edge
+          info.waited_by[j] = kSentinelTxnId;
 
-            // Update the counter on the other node
-            // Since i goes in reverse order, it is certain that scc_[i + 1] exists in the txn_info_ map
-            ++(txn_info_.find(scc_[i + 1])->second.num_waiting_for);
-
-            new_edge_added = true;
-          } else {
-            // Setting to kSentinelTxnId effectively removes this edge
-            txn.waited_by[j] = kSentinelTxnId;
-          }
+          // Decrement the incoming edge counter
           --waiting_txn->second.num_waiting_for;
         }
       }
-      // There is at least one waited-by txn for each txn in an scc so there
-      // must be one empty slot for the new edge
-      CHECK(new_edge_added) << "Cannot find slot to add new edge";
+
+      if (i != prev_local) {
+        // Add the new edge from scc_[i] to scc_[prev_local]
+        auto new_edge_added = false;
+        for (size_t j = 0; j < info.waited_by.size(); j++) {
+          // Add to the first empty slot
+          if (info.waited_by[j] == kSentinelTxnId) {
+            // Add new edge to the edge list of scc_[i]
+            info.waited_by[j] = scc_[prev_local];
+            // Update the counter of scc_[prev_local]
+            ++(txn_info_.find(scc_[prev_local])->second.num_waiting_for);
+            new_edge_added = true;
+            break;
+          }
+        }
+        // An empty slot is always added when the txn info is initialized so
+        // this should always work
+        CHECK(new_edge_added) << "Cannot find slot to add new edge";
+      }
+
+      prev_local = i;
     }
 
     ++lm_.num_deadlocks_resolved_;
   }
-
-  DDRLockManager& lm_;
-  zmq::socket_t signal_;
-  Channel signal_chan_;
-  milliseconds check_interval_;
-
-  unordered_map<TxnId, DDRLockManager::TxnInfo> txn_info_;
-  unordered_map<TxnId, Node> aux_graph_;
-  vector<TxnId> topo_order_;
-  vector<TxnId> scc_;
 };
 
 optional<TxnId> LockQueueTail::AcquireReadLock(TxnId txn_id) {
@@ -302,20 +460,27 @@ vector<TxnId> LockQueueTail::AcquireWriteLock(TxnId txn_id) {
   return deps;
 }
 
-void DDRLockManager::StartDeadlockResolver(zmq::context_t& context, Channel signal_chan, milliseconds check_interval,
-                                           bool init_only) {
-  dl_resolver_ = MakeRunnerFor<DeadlockResolver>(*this, context, signal_chan, check_interval);
-  if (!init_only) {
+void DDRLockManager::InitializeDeadlockResolver(const ConfigurationPtr& config, const shared_ptr<Broker>& broker,
+                                                Channel signal_chan, optional<milliseconds> poll_timeout) {
+  dl_resolver_ = MakeRunnerFor<DeadlockResolver>(*this, config, broker, signal_chan, poll_timeout);
+}
+
+void DDRLockManager::StartDeadlockResolver() {
+  if (dl_resolver_) {
     dl_resolver_->StartInNewThread();
   }
 }
 
-bool DDRLockManager::ResolveDeadlock() {
-  if (!dl_resolver_ || dl_resolver_->is_running()) {
-    return false;
+// For testing only
+bool DDRLockManager::ResolveDeadlock(bool recv_remote_message) {
+  if (dl_resolver_ && !dl_resolver_->is_running()) {
+    if (recv_remote_message) {
+      dl_resolver_->StartOnce();
+    }
+    std::dynamic_pointer_cast<DeadlockResolver>(dl_resolver_->module())->Run();
+    return true;
   }
-  dl_resolver_->StartOnce();
-  return true;
+  return false;
 }
 
 vector<TxnId> DDRLockManager::GetReadyTxns() {
@@ -368,7 +533,8 @@ AcquireLocksResult DDRLockManager::AcquireLocks(const Transaction& txn) {
     lock_guard<mutex> guard(mut_txn_info_);
     // A remaster txn only has one key K but it acquires locks on (K, RO) and (K, RN)
     // where RO and RN are the old and new region respectively.
-    auto ins = txn_info_.try_emplace(txn_id, txn_id, is_remaster ? 2 : txn.keys_size());
+    auto ins = txn_info_.try_emplace(txn_id, txn_id, txn.internal().involved_partitions_size(),
+                                     is_remaster ? 2 : txn.keys_size());
     auto& txn_info = ins.first->second;
     txn_info.unarrived_lock_requests -= num_relevant_locks;
     // Add current txn to the waited_by list of each blocking txn
@@ -396,7 +562,7 @@ AcquireLocksResult DDRLockManager::AcquireLocks(const Transaction& txn) {
   }
 }
 
-vector<TxnId> DDRLockManager::ReleaseLocks(TxnId txn_id) {
+vector<pair<TxnId, bool>> DDRLockManager::ReleaseLocks(TxnId txn_id) {
   lock_guard<mutex> guard(mut_txn_info_);
 
   auto txn_info_it = txn_info_.find(txn_id);
@@ -407,7 +573,7 @@ vector<TxnId> DDRLockManager::ReleaseLocks(TxnId txn_id) {
   if (!txn_info.is_ready()) {
     LOG(FATAL) << "Releasing unready txn is forbidden";
   }
-  vector<TxnId> result;
+  vector<pair<TxnId, bool>> result;
   for (auto blocked_txn_id : txn_info.waited_by) {
     if (blocked_txn_id == kSentinelTxnId) {
       continue;
@@ -423,7 +589,7 @@ vector<TxnId> DDRLockManager::ReleaseLocks(TxnId txn_id) {
       // While the waited_by list might contain duplicates, the blocked
       // txn only becomes ready when its last entry in the waited_by list
       // is accounted for.
-      result.push_back(blocked_txn_id);
+      result.emplace_back(blocked_txn_id, blocked_txn.deadlocked);
     }
   }
   txn_info_.erase(txn_id);

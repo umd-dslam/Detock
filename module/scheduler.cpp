@@ -29,13 +29,15 @@ Scheduler::Scheduler(const ConfigurationPtr& config, const shared_ptr<Broker>& b
 #endif
 
 #ifdef LOCK_MANAGER_DDR
-  if (config_->ddr_interval() > 0ms) {
-    lock_manager_.StartDeadlockResolver(*broker->context(), kSchedulerChannel, config_->ddr_interval());
-  }
+  lock_manager_.InitializeDeadlockResolver(config, broker, kSchedulerChannel);
 #endif
 }
 
 void Scheduler::Initialize() {
+#ifdef LOCK_MANAGER_DDR
+  lock_manager_.StartDeadlockResolver();
+#endif
+
   for (auto& worker : workers_) {
     worker->StartInNewThread();
   }
@@ -56,8 +58,14 @@ void Scheduler::OnInternalRequestReceived(EnvelopePtr&& env) {
 #ifdef LOCK_MANAGER_DDR
     case Request::kSignal: {
       auto ready_txns = lock_manager_.GetReadyTxns();
-      for (auto ready_txns : ready_txns) {
-        Dispatch(ready_txns);
+      for (auto ready_txn : ready_txns) {
+        auto it = active_txns_.find(ready_txn);
+        DCHECK(it != active_txns_.end());
+
+        // Txns coming from the ready txns list are those used to get into deadlocks
+        it->second.SetDeadlocked(true);
+
+        Dispatch(ready_txn);
       }
       break;
     }
@@ -147,7 +155,14 @@ bool Scheduler::OnCustomSocket() {
   // Release locks held by this txn then dispatch the txns that become ready thanks to this release.
   auto unblocked_txns = lock_manager_.ReleaseLocks(txn_id);
   for (auto unblocked_txn : unblocked_txns) {
+#ifdef LOCK_MANAGER_DDR
+    auto it = active_txns_.find(unblocked_txn.first);
+    DCHECK(it != active_txns_.end());
+    it->second.SetDeadlocked(unblocked_txn.second);
+    Dispatch(unblocked_txn.first);
+#else
     Dispatch(unblocked_txn);
+#endif
   }
 
   VLOG(2) << "Released locks of txn " << txn_id;

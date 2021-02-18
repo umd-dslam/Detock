@@ -81,7 +81,7 @@ class Worker : public NetworkedModule {
    */
   void Finish(TxnId txn_id);
 
-  void NotifyOtherPartitions(TxnId txn_id);
+  void BroadcastReads(TxnId txn_id);
 
   void SendToCoordinatingServer(TxnId txn_id);
 

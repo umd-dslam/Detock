@@ -20,7 +20,7 @@
 #include "common/json_utils.h"
 #include "common/txn_holder.h"
 #include "common/types.h"
-#include "module/base/module.h"
+#include "module/base/networked_module.h"
 
 using std::list;
 using std::optional;
@@ -81,21 +81,26 @@ class DeadlockResolver;
 class DDRLockManager {
  public:
   /**
-   * Starts the deadlock resolver in a new thread
-   *
-   * @param context zmq context to create the signal socket
-   * @param signal_chan channel to receive signal from the deadlock resolver when there are new ready txns after
-   *                    resolving deadlocks
-   * @param check_interval interval between the times the deadlock resolver wakes up
-   * @param init_only only initialize the resolver without actually run it
+   * Initializes the deadlock resolver
+   * @param config       Config object
+   * @param broker       A broker to help the resolver to send/receive external messages
+   * @param signal_chan  Channel to receive signal from the deadlock resolver when there are new ready txns after
+   *                     resolving deadlocks
+   * @param poll_timeout Timeout for polling in the resolver
    */
-  void StartDeadlockResolver(zmq::context_t& context, Channel signal_chan, milliseconds check_interval,
-                             bool init_only = false);
+  void InitializeDeadlockResolver(const ConfigurationPtr& config, const shared_ptr<Broker>& broker, Channel signal_chan,
+                                  optional<milliseconds> poll_timeout = kModuleTimeout);
+
   /**
-   * Runs the deadlock resolving algorithm synchronously. Return false if the resolver is not initialized yet or
-   * it is already running in a background thread.
+   * Starts the deadlock resolver in a new thread
    */
-  bool ResolveDeadlock();
+  void StartDeadlockResolver();
+
+  /**
+   * Runs the deadlock resolving algorithm manually. Return false if the resolver is not initialized yet or
+   * it is already running in a background thread. For testing only.
+   */
+  bool ResolveDeadlock(bool recv_remote_message = false);
 
   /**
    * Gets the list of txns that become ready after resolving deadlocks
@@ -118,10 +123,11 @@ class DDRLockManager {
    *
    * @param txn_holder Holder of the transaction whose locks are released.
    *            LockOnly txn is not accepted.
-   * @return    A set of IDs of transactions that are able to obtain
-   *            all of their locks thanks to this release.
+   * @return    A list of <txn_id, deadlocked>, where txn_id is the id of
+   *            the txn being unblocked and deadlocked indicates whether
+   *            the txn was in a deadlock.
    */
-  vector<TxnId> ReleaseLocks(TxnId txn_id);
+  vector<pair<TxnId, bool>> ReleaseLocks(TxnId txn_id);
 
   /**
    * Gets current statistics of the lock manager
@@ -134,15 +140,25 @@ class DDRLockManager {
   friend class DeadlockResolver;
 
   struct TxnInfo {
-    TxnInfo(TxnId txn_id, int unarrived) : id(txn_id), num_waiting_for(0), unarrived_lock_requests(unarrived) {}
+    TxnInfo(TxnId txn_id, int num_partitions, int unarrived)
+        : id(txn_id),
+          num_partitions(num_partitions),
+          num_waiting_for(0),
+          unarrived_lock_requests(unarrived),
+          deadlocked(false) {
+      // Add an empty slot in case the deadlock resolver need to add a new edge
+      waited_by.push_back(kSentinelTxnId);
+    }
 
     const TxnId id;
+    const int num_partitions;
     // This list must only grow
     vector<TxnId> waited_by;
     int num_waiting_for;
     int unarrived_lock_requests;
+    bool deadlocked;
 
-    bool is_complete() const { return unarrived_lock_requests == 0; }
+    bool is_stable() const { return unarrived_lock_requests == 0; }
     bool is_ready() const { return num_waiting_for == 0 && unarrived_lock_requests == 0; }
   };
 

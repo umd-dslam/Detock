@@ -120,6 +120,7 @@ MachineId Configuration::MakeMachineId(uint32_t replica, uint32_t partition) con
 
 std::pair<uint32_t, uint32_t> Configuration::UnpackMachineId(MachineId machine_id) const {
   auto np = num_partitions();
+  // (replica, partition)
   return std::make_pair(machine_id / np, machine_id % np);
 }
 

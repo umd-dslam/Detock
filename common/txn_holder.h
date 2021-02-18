@@ -23,6 +23,7 @@ class TxnHolder {
         remaster_result_(std::nullopt),
         aborting_(false),
         done_(false),
+        deadlocked_(false),
         num_lo_txns_(0),
         expected_num_lo_txns_(txn->internal().involved_replicas_size()) {
     lo_txns_[main_txn_].reset(txn);
@@ -62,6 +63,9 @@ class TxnHolder {
   int num_lock_only_txns() const { return num_lo_txns_; }
   int expected_num_lock_only_txns() const { return expected_num_lo_txns_; }
 
+  void SetDeadlocked(bool d) { deadlocked_ = d; }
+  bool deadlocked() const { return deadlocked_; }
+
  private:
   TxnId id_;
   size_t main_txn_;
@@ -69,6 +73,7 @@ class TxnHolder {
   std::optional<pair<Key, uint32_t>> remaster_result_;
   bool aborting_;
   bool done_;
+  bool deadlocked_;
   int num_lo_txns_;
   int expected_num_lo_txns_;
 };

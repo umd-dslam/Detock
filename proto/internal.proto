@@ -58,6 +58,7 @@ message Request {
         CompletedSubtransaction completed_subtxn = 12;
         StatsRequest stats = 13;
         Signal signal = 14;
+        Graph graph = 15;
     }
 }
 
@@ -149,6 +150,16 @@ message StatsRequest {
  * Generic signal message
  */
 message Signal {
+}
+
+message Node {
+    uint32 vertex = 1;
+    repeated uint32 edges = 2;
+    int32 num_partitions = 3;
+}
+
+message Graph {
+    repeated Node nodes = 1;
 }
 
 /***********************************************

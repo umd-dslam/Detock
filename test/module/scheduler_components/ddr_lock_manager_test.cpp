@@ -3,6 +3,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <deque>
 #include <numeric>
 
 #include "common/proto_utils.h"
@@ -13,26 +14,8 @@ using namespace slog;
 using testing::ElementsAre;
 using testing::UnorderedElementsAre;
 
-class DDRLockManagerTest : public ::testing::Test {
- protected:
-  // This must be define first so that it is destroyed last, thus avoid blocking
-  zmq::context_t context;
-  zmq::socket_t socket;
+TEST(DDRLockManagerTest, GetAllLocksOnFirstTry) {
   DDRLockManager lock_manager;
-
-  void SetUp() {
-    context.set(zmq::ctxopt::blocky, false);
-    socket = zmq::socket_t(context, ZMQ_PULL);
-    socket.bind(MakeInProcChannelAddress(0));
-  }
-
-  bool HasSignalFromResolver() {
-    auto env = RecvEnvelope(socket, true /* dont_wait */);
-    return env != nullptr;
-  }
-};
-
-TEST_F(DDRLockManagerTest, GetAllLocksOnFirstTry) {
   auto configs = MakeTestConfigurations("locking", 1, 1);
   auto holder = MakeTestTxnHolder(
       configs[0], 100, {{"readA", KeyType::READ, 0}, {"readB", KeyType::READ, 0}, {"writeC", KeyType::WRITE, 0}});
@@ -41,7 +24,8 @@ TEST_F(DDRLockManagerTest, GetAllLocksOnFirstTry) {
   ASSERT_TRUE(result.empty());
 }
 
-TEST_F(DDRLockManagerTest, ReadLocks) {
+TEST(DDRLockManagerTest, ReadLocks) {
+  DDRLockManager lock_manager;
   auto configs = MakeTestConfigurations("locking", 1, 1);
   auto holder1 = MakeTestTxnHolder(configs[0], 100, {{"readA", KeyType::READ, 0}, {"readB", KeyType::READ, 0}});
   auto holder2 = MakeTestTxnHolder(configs[0], 200, {{"readB", KeyType::READ, 0}, {"readC", KeyType::READ, 0}});
@@ -51,7 +35,8 @@ TEST_F(DDRLockManagerTest, ReadLocks) {
   ASSERT_TRUE(lock_manager.ReleaseLocks(holder2.id()).empty());
 }
 
-TEST_F(DDRLockManagerTest, WriteLocks) {
+TEST(DDRLockManagerTest, WriteLocks) {
+  DDRLockManager lock_manager;
   auto configs = MakeTestConfigurations("locking", 1, 1);
   auto holder1 = MakeTestTxnHolder(configs[0], 100, {{"writeA", KeyType::WRITE, 0}, {"writeB", KeyType::WRITE, 0}});
   auto holder2 = MakeTestTxnHolder(configs[0], 200, {{"readA", KeyType::READ, 0}, {"writeA", KeyType::WRITE, 0}});
@@ -64,7 +49,8 @@ TEST_F(DDRLockManagerTest, WriteLocks) {
   ASSERT_EQ(lock_manager.AcquireLocks(holder1.lock_only_txn(0)), AcquireLocksResult::WAITING);
 }
 
-TEST_F(DDRLockManagerTest, ReleaseLocksAndReturnMultipleNewLockHolders) {
+TEST(DDRLockManagerTest, ReleaseLocksAndReturnMultipleNewLockHolders) {
+  DDRLockManager lock_manager;
   auto configs = MakeTestConfigurations("locking", 1, 1);
   auto holder1 =
       MakeTestTxnHolder(configs[0], 100, {{"A", KeyType::READ, 0}, {"B", KeyType::WRITE, 0}, {"C", KeyType::WRITE, 0}});
@@ -79,17 +65,18 @@ TEST_F(DDRLockManagerTest, ReleaseLocksAndReturnMultipleNewLockHolders) {
 
   auto result = lock_manager.ReleaseLocks(holder1.id());
   ASSERT_EQ(result.size(), 2U);
-  ASSERT_THAT(result, UnorderedElementsAre(200, 400));
+  ASSERT_THAT(result, UnorderedElementsAre(make_pair(200, false), make_pair(400, false)));
 
   ASSERT_TRUE(lock_manager.ReleaseLocks(holder4.id()).empty());
 
   result = lock_manager.ReleaseLocks(holder2.id());
-  ASSERT_THAT(result, ElementsAre(300));
+  ASSERT_THAT(result, ElementsAre(make_pair(300, false)));
 
   ASSERT_TRUE(lock_manager.ReleaseLocks(holder3.id()).empty());
 }
 
-TEST_F(DDRLockManagerTest, PartiallyAcquiredLocks) {
+TEST(DDRLockManagerTest, PartiallyAcquiredLocks) {
+  DDRLockManager lock_manager;
   auto configs = MakeTestConfigurations("locking", 1, 1);
   auto holder1 =
       MakeTestTxnHolder(configs[0], 100, {{"A", KeyType::READ, 0}, {"B", KeyType::WRITE, 0}, {"C", KeyType::WRITE, 0}});
@@ -101,13 +88,14 @@ TEST_F(DDRLockManagerTest, PartiallyAcquiredLocks) {
   ASSERT_EQ(lock_manager.AcquireLocks(holder3.lock_only_txn(0)), AcquireLocksResult::WAITING);
 
   auto result = lock_manager.ReleaseLocks(holder1.id());
-  ASSERT_THAT(result, ElementsAre(200));
+  ASSERT_THAT(result, ElementsAre(make_pair(200, false)));
 
   result = lock_manager.ReleaseLocks(holder2.id());
-  ASSERT_THAT(result, ElementsAre(300));
+  ASSERT_THAT(result, ElementsAre(make_pair(300, false)));
 }
 
-TEST_F(DDRLockManagerTest, AcquireLocksWithLockOnly1) {
+TEST(DDRLockManagerTest, AcquireLocksWithLockOnly1) {
+  DDRLockManager lock_manager;
   auto configs = MakeTestConfigurations("locking", 2, 1);
   auto holder1 =
       MakeTestTxnHolder(configs[0], 100, {{"A", KeyType::READ, 0}, {"B", KeyType::WRITE, 0}, {"C", KeyType::WRITE, 0}});
@@ -118,10 +106,11 @@ TEST_F(DDRLockManagerTest, AcquireLocksWithLockOnly1) {
   ASSERT_EQ(lock_manager.AcquireLocks(holder2.lock_only_txn(1)), AcquireLocksResult::ACQUIRED);
 
   auto result = lock_manager.ReleaseLocks(holder2.id());
-  ASSERT_THAT(result, ElementsAre(100));
+  ASSERT_THAT(result, ElementsAre(make_pair(100, false)));
 }
 
-TEST_F(DDRLockManagerTest, AcquireLocksWithLockOnly2) {
+TEST(DDRLockManagerTest, AcquireLocksWithLockOnly2) {
+  DDRLockManager lock_manager;
   auto configs = MakeTestConfigurations("locking", 2, 1);
   auto holder1 =
       MakeTestTxnHolder(configs[0], 100, {{"A", KeyType::READ, 0}, {"B", KeyType::WRITE, 0}, {"C", KeyType::WRITE, 0}});
@@ -132,10 +121,11 @@ TEST_F(DDRLockManagerTest, AcquireLocksWithLockOnly2) {
   ASSERT_EQ(lock_manager.AcquireLocks(holder2.lock_only_txn(0)), AcquireLocksResult::WAITING);
 
   auto result = lock_manager.ReleaseLocks(holder1.id());
-  ASSERT_THAT(result, ElementsAre(200));
+  ASSERT_THAT(result, ElementsAre(make_pair(200, false)));
 }
 
-TEST_F(DDRLockManagerTest, MultiEdgeBetweenTwoTxns) {
+TEST(DDRLockManagerTest, MultiEdgeBetweenTwoTxns) {
+  DDRLockManager lock_manager;
   auto configs = MakeTestConfigurations("locking", 3, 1);
   auto holder1 = MakeTestTxnHolder(configs[0], 100, {{"A", KeyType::WRITE, 1}, {"B", KeyType::WRITE, 2}});
   auto holder2 = MakeTestTxnHolder(configs[0], 200, {{"A", KeyType::READ, 1}, {"B", KeyType::READ, 2}});
@@ -146,13 +136,14 @@ TEST_F(DDRLockManagerTest, MultiEdgeBetweenTwoTxns) {
   ASSERT_EQ(lock_manager.AcquireLocks(holder2.lock_only_txn(2)), AcquireLocksResult::WAITING);
 
   auto result = lock_manager.ReleaseLocks(holder1.id());
-  ASSERT_THAT(result, ElementsAre(200));
+  ASSERT_THAT(result, ElementsAre(make_pair(200, false)));
 
   result = lock_manager.ReleaseLocks(holder2.id());
   ASSERT_TRUE(result.empty());
 }
 
-TEST_F(DDRLockManagerTest, KeyReplicaLocks) {
+TEST(DDRLockManagerTest, KeyReplicaLocks) {
+  DDRLockManager lock_manager;
   auto configs = MakeTestConfigurations("locking", 3, 1);
   auto holder1 = MakeTestTxnHolder(configs[0], 100, {{"writeA", KeyType::WRITE, 2}, {"writeB", KeyType::WRITE, 2}});
   auto holder2 = MakeTestTxnHolder(configs[0], 200, {{"readA", KeyType::READ, 1}, {"writeA", KeyType::WRITE, 1}});
@@ -162,7 +153,8 @@ TEST_F(DDRLockManagerTest, KeyReplicaLocks) {
 }
 
 #ifdef REMASTER_PROTOCOL_COUNTERLESS
-TEST_F(DDRLockManagerTest, RemasterTxn) {
+TEST(DDRLockManagerTest, RemasterTxn) {
+  DDRLockManager lock_manager;
   auto configs = MakeTestConfigurations("locking", 3, 1);
   auto holder = MakeTestTxnHolder(configs[0], 100, {{"A", KeyType::WRITE, 2}}, 1 /* new_master */);
 
@@ -176,7 +168,8 @@ TEST_F(DDRLockManagerTest, RemasterTxn) {
 }
 #endif
 
-TEST_F(DDRLockManagerTest, EnsureStateIsClean) {
+TEST(DDRLockManagerTest, EnsureStateIsClean) {
+  DDRLockManager lock_manager;
   auto configs = MakeTestConfigurations("locking", 1, 1);
   auto holder1 =
       MakeTestTxnHolder(configs[0], 100, {{"A", KeyType::READ, 0}, {"B", KeyType::WRITE, 0}, {"C", KeyType::WRITE, 0}});
@@ -192,7 +185,8 @@ TEST_F(DDRLockManagerTest, EnsureStateIsClean) {
   ASSERT_TRUE(lock_manager.ReleaseLocks(holder3.id()).empty());
 }
 
-TEST_F(DDRLockManagerTest, LongChain) {
+TEST(DDRLockManagerTest, LongChain) {
+  DDRLockManager lock_manager;
   auto configs = MakeTestConfigurations("locking", 1, 1);
   auto holder1 = MakeTestTxnHolder(configs[0], 100, {{"A", KeyType::WRITE, 0}});
   auto holder2 = MakeTestTxnHolder(configs[0], 200, {{"A", KeyType::READ, 0}});
@@ -207,123 +201,247 @@ TEST_F(DDRLockManagerTest, LongChain) {
   ASSERT_EQ(lock_manager.AcquireLocks(holder5.lock_only_txn(0)), AcquireLocksResult::WAITING);
 
   auto result = lock_manager.ReleaseLocks(holder1.id());
-  ASSERT_THAT(result, UnorderedElementsAre(200, 300));
+  ASSERT_THAT(result, UnorderedElementsAre(make_pair(200, false), make_pair(300, false)));
 
   ASSERT_TRUE(lock_manager.ReleaseLocks(holder2.id()).empty());
   result = lock_manager.ReleaseLocks(holder3.id());
-  ASSERT_THAT(result, ElementsAre(400));
+  ASSERT_THAT(result, ElementsAre(make_pair(400, false)));
 
   result = lock_manager.ReleaseLocks(holder4.id());
-  ASSERT_THAT(result, ElementsAre(500));
+  ASSERT_THAT(result, ElementsAre(make_pair(500, false)));
 
   ASSERT_TRUE(lock_manager.ReleaseLocks(holder5.id()).empty());
 }
 
-TEST_F(DDRLockManagerTest, SimpleDeadlock) {
-  lock_manager.StartDeadlockResolver(context, 0, 1ms, true /* init_only */);
+class DDRLockManagerWithResolverTest : public ::testing::Test {
+  std::vector<std::shared_ptr<Broker>> brokers_;
+  std::vector<zmq::socket_t> signal_sockets_;
 
-  auto configs = MakeTestConfigurations("locking", 2, 1);
-  auto holder1 = MakeTestTxnHolder(configs[0], 1000, {{"A", KeyType::READ, 0}, {"B", KeyType::WRITE, 1}});
-  auto holder2 = MakeTestTxnHolder(configs[0], 2000, {{"B", KeyType::READ, 1}, {"A", KeyType::WRITE, 0}});
+ protected:
+  std::deque<DDRLockManager> lock_managers;
 
-  ASSERT_EQ(lock_manager.AcquireLocks(holder1.lock_only_txn(0)), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(holder2.lock_only_txn(0)), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(holder2.lock_only_txn(1)), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(holder1.lock_only_txn(1)), AcquireLocksResult::WAITING);
+  slog::ConfigVec Initialize(int num_replicas, int num_partitions, int ddr_interval = 0) {
+    internal::Configuration add_on;
+    add_on.set_ddr_interval(ddr_interval);
+    auto configs = MakeTestConfigurations("locking", num_replicas, num_partitions, add_on);
 
-  lock_manager.ResolveDeadlock();
-  ASSERT_TRUE(HasSignalFromResolver());
+    for (auto config : configs) {
+      auto broker = brokers_.emplace_back(Broker::New(config, kTestModuleTimeout));
+      auto& signal_socket = signal_sockets_.emplace_back(*broker->context(), ZMQ_PULL);
+      signal_socket.bind(MakeInProcChannelAddress(kSchedulerChannel));
+      auto& lm = lock_managers.emplace_back();
+      // When ddr_interval = 0, we want to manually control when the deadlock resolver
+      // runs, so we set poll_timeout to empty so that we can synchronously wait for
+      // remote message.
+      optional<milliseconds> poll_timeout;
+      if (ddr_interval > 0) {
+        poll_timeout = kTestModuleTimeout;
+      }
+      lm.InitializeDeadlockResolver(config, broker, kSchedulerChannel, poll_timeout);
+    }
 
-  auto ready_txns = lock_manager.GetReadyTxns();
+    return configs;
+  }
+
+  void StartBrokers() {
+    for (auto& broker : brokers_) {
+      broker->StartInNewThread();
+    }
+  }
+
+  bool HasSignalFromResolver(int i, bool dont_wait = true) {
+    auto env = RecvEnvelope(signal_sockets_[i], dont_wait);
+    return env != nullptr;
+  }
+};
+
+TEST_F(DDRLockManagerWithResolverTest, SimpleDeadlock) {
+  auto configs = Initialize(2, 1);
+
+  auto holder1 = MakeTestTxnHolder(configs[0], 1000, {{"A", KeyType::WRITE, 0}, {"B", KeyType::WRITE, 1}});
+  auto holder2 = MakeTestTxnHolder(configs[0], 2000, {{"B", KeyType::WRITE, 1}, {"A", KeyType::WRITE, 0}});
+
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder1.lock_only_txn(0)), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder2.lock_only_txn(0)), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder2.lock_only_txn(1)), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder1.lock_only_txn(1)), AcquireLocksResult::WAITING);
+
+  lock_managers[0].ResolveDeadlock();
+  ASSERT_TRUE(HasSignalFromResolver(0));
+
+  auto ready_txns = lock_managers[0].GetReadyTxns();
   ASSERT_THAT(ready_txns, ElementsAre(1000));
 
-  auto result = lock_manager.ReleaseLocks(holder1.id());
-  ASSERT_THAT(result, ElementsAre(2000));
+  auto result = lock_managers[0].ReleaseLocks(holder1.id());
+  ASSERT_THAT(result, ElementsAre(make_pair(2000, true)));
 
-  ASSERT_TRUE(lock_manager.ReleaseLocks(holder2.id()).empty());
+  ASSERT_TRUE(lock_managers[0].ReleaseLocks(holder2.id()).empty());
 }
 
-TEST_F(DDRLockManagerTest, IncompleteDeadlock) {
-  lock_manager.StartDeadlockResolver(context, 0, 1ms, true /* init_only */);
+TEST_F(DDRLockManagerWithResolverTest, SimplePartitionedDeadlock) {
+  auto configs = Initialize(2, 2);
 
-  auto configs = MakeTestConfigurations("locking", 3, 1);
-  auto holder1 = MakeTestTxnHolder(configs[0], 1000,
-                                   {{"A", KeyType::READ, 1}, {"B", KeyType::WRITE, 0}, {"C", KeyType::WRITE, 2}});
-  auto holder2 = MakeTestTxnHolder(configs[0], 2000, {{"B", KeyType::READ, 0}, {"A", KeyType::WRITE, 1}});
+  StartBrokers();
 
-  // A lock-only txn is missing for txn1
-  ASSERT_EQ(lock_manager.AcquireLocks(holder1.lock_only_txn(0)), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(holder2.lock_only_txn(0)), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(holder2.lock_only_txn(1)), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(holder1.lock_only_txn(1)), AcquireLocksResult::WAITING);
+  // Partition 0
+  auto holder1_0 = MakeTestTxnHolder(configs[0], 1000, {{"A", KeyType::WRITE, 0}, {"B", KeyType::WRITE, 1}});
+  auto holder2_0 = MakeTestTxnHolder(configs[0], 2000, {{"A", KeyType::WRITE, 0}, {"B", KeyType::WRITE, 1}});
+  // Lock queues on this partition:
+  // A: 1000 2000
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder1_0.lock_only_txn(0)), AcquireLocksResult::ACQUIRED);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder2_0.lock_only_txn(0)), AcquireLocksResult::WAITING);
 
-  // There is already a deadlock but txn 1000 is still incomplete
-  lock_manager.ResolveDeadlock();
-  ASSERT_FALSE(HasSignalFromResolver());
+  // Partition 0 does not see any deadlock yet
+  lock_managers[0].ResolveDeadlock();
+  ASSERT_FALSE(HasSignalFromResolver(0));
 
-  // All txns are complete after this point
-  ASSERT_EQ(lock_manager.AcquireLocks(holder1.lock_only_txn(2)), AcquireLocksResult::WAITING);
+  // Partition 1
+  auto holder2_1 = MakeTestTxnHolder(configs[1], 2000, {{"A", KeyType::WRITE, 0}, {"B", KeyType::WRITE, 1}});
+  auto holder1_1 = MakeTestTxnHolder(configs[1], 1000, {{"A", KeyType::WRITE, 0}, {"B", KeyType::WRITE, 1}});
+  // Lock queues on this partition:
+  // B: 2000 1000
+  ASSERT_EQ(lock_managers[1].AcquireLocks(holder2_1.lock_only_txn(1)), AcquireLocksResult::ACQUIRED);
+  ASSERT_EQ(lock_managers[1].AcquireLocks(holder1_1.lock_only_txn(1)), AcquireLocksResult::WAITING);
 
-  // Now deadlock can be resolved
-  lock_manager.ResolveDeadlock();
-  ASSERT_TRUE(HasSignalFromResolver());
+  // Partition 1 sees the deadlock since the partition 0 has already sent its view in above call
+  // to ResolveDeadlock
+  {
+    lock_managers[1].ResolveDeadlock(true);
+    ASSERT_TRUE(HasSignalFromResolver(1));
 
-  auto ready_txns = lock_manager.GetReadyTxns();
-  ASSERT_THAT(ready_txns, ElementsAre(1000));
+    auto ready_txns = lock_managers[1].GetReadyTxns();
+    ASSERT_THAT(ready_txns, ElementsAre(1000));
 
-  auto result = lock_manager.ReleaseLocks(holder1.id());
-  ASSERT_THAT(result, ElementsAre(2000));
+    auto result = lock_managers[1].ReleaseLocks(1000);
+    ASSERT_THAT(result, ElementsAre(make_pair(2000, true)));
+    ASSERT_TRUE(lock_managers[1].ReleaseLocks(2000).empty());
+  }
 
-  ASSERT_TRUE(lock_manager.ReleaseLocks(holder2.id()).empty());
+  // Partition 0 now sees the deadlock
+  {
+    lock_managers[0].ResolveDeadlock(true);
+    ASSERT_TRUE(HasSignalFromResolver(0));
+
+    auto ready_txns = lock_managers[0].GetReadyTxns();
+    ASSERT_THAT(ready_txns, ElementsAre(1000));
+
+    auto result = lock_managers[0].ReleaseLocks(1000);
+    ASSERT_THAT(result, ElementsAre(make_pair(2000, true)));
+    ASSERT_TRUE(lock_managers[0].ReleaseLocks(2000).empty());
+  }
 }
 
-TEST_F(DDRLockManagerTest, CompleteButUnstableDeadlock) {
-  lock_manager.StartDeadlockResolver(context, 0, 1ms, true /* init_only */);
+TEST_F(DDRLockManagerWithResolverTest, UnstableDeadlock) {
+  auto configs = Initialize(2, 1);
 
-  auto configs = MakeTestConfigurations("locking", 2, 1);
   auto holder1 = MakeTestTxnHolder(configs[0], 1000,
                                    {{"A", KeyType::READ, 1}, {"B", KeyType::WRITE, 0}, {"C", KeyType::WRITE, 0}});
   auto holder2 = MakeTestTxnHolder(configs[0], 2000, {{"B", KeyType::READ, 0}, {"A", KeyType::WRITE, 1}});
   auto holder3 = MakeTestTxnHolder(configs[0], 3000, {{"C", KeyType::READ, 0}, {"D", KeyType::WRITE, 1}});
 
-  // Txn1 and Txn2 forms a deadlock. Their component depends on Txn3, which is still
-  // incomplete
-  ASSERT_EQ(lock_manager.AcquireLocks(holder3.lock_only_txn(0)), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(holder1.lock_only_txn(0)), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(holder2.lock_only_txn(0)), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(holder2.lock_only_txn(1)), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(holder1.lock_only_txn(1)), AcquireLocksResult::WAITING);
+  // Txn1 and Txn2 forms a deadlock. They both depend on Txn3, which is still incomplete
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder3.lock_only_txn(0)), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder1.lock_only_txn(0)), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder2.lock_only_txn(0)), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder2.lock_only_txn(1)), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder1.lock_only_txn(1)), AcquireLocksResult::WAITING);
 
   // No deadlock is resolved because the component is not stable due to its dependency on
   // the incomplete txn
-  lock_manager.ResolveDeadlock();
-  ASSERT_FALSE(HasSignalFromResolver());
+  lock_managers[0].ResolveDeadlock();
+  ASSERT_FALSE(HasSignalFromResolver(0));
 
   // All txns are complete after this point
-  ASSERT_EQ(lock_manager.AcquireLocks(holder3.lock_only_txn(1)), AcquireLocksResult::ACQUIRED);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder3.lock_only_txn(1)), AcquireLocksResult::ACQUIRED);
 
   // The deadlock should be resolved after this but its head txn is not yet immediately ready
-  lock_manager.ResolveDeadlock();
-  ASSERT_FALSE(HasSignalFromResolver());
-  ASSERT_TRUE(lock_manager.GetReadyTxns().empty());
+  lock_managers[0].ResolveDeadlock();
+  ASSERT_FALSE(HasSignalFromResolver(0));
+  ASSERT_TRUE(lock_managers[0].GetReadyTxns().empty());
 
   // Release txn3 so the next one from the deadlock is ready
-  auto result = lock_manager.ReleaseLocks(holder3.id());
-  ASSERT_THAT(result, ElementsAre(1000));
+  auto result = lock_managers[0].ReleaseLocks(holder3.id());
+  ASSERT_THAT(result, ElementsAre(make_pair(1000, true)));
 
-  result = lock_manager.ReleaseLocks(holder1.id());
-  ASSERT_THAT(result, ElementsAre(2000));
+  result = lock_managers[0].ReleaseLocks(holder1.id());
+  ASSERT_THAT(result, ElementsAre(make_pair(2000, true)));
 
-  ASSERT_TRUE(lock_manager.ReleaseLocks(holder2.id()).empty());
+  ASSERT_TRUE(lock_managers[0].ReleaseLocks(holder2.id()).empty());
 }
 
-TEST_F(DDRLockManagerTest, ConcurrentResolver) {
+TEST_F(DDRLockManagerWithResolverTest, UnstablePartitionedDeadlock) {
+  // Partition 0: A, C, E
+  // Partition 1: B
+  auto configs = Initialize(2, 2);
+
+  StartBrokers();
+
+  // Partition 0
+  auto holder1_0 = MakeTestTxnHolder(configs[0], 1000,
+                                     {{"A", KeyType::WRITE, 1}, {"C", KeyType::WRITE, 0}, {"E", KeyType::WRITE, 0}});
+  auto holder2_0 = MakeTestTxnHolder(configs[0], 2000,
+                                     {{"A", KeyType::WRITE, 1}, {"B", KeyType::WRITE, 1}, {"E", KeyType::WRITE, 0}});
+  auto holder3_0 = MakeTestTxnHolder(configs[0], 3000, {{"C", KeyType::WRITE, 0}, {"B", KeyType::WRITE, 1}});
+
+  // Txn1 and Txn2 forms a deadlock. Their component depends on Txn3, which cannot be seen as a whole
+  // from the current partition
+  // Lock queues on partition 0:
+  // A: 2000 1000
+  // C: 3000 1000
+  // E: 1000 2000
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder3_0.lock_only_txn(0)), AcquireLocksResult::ACQUIRED);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder1_0.lock_only_txn(0)), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder2_0.lock_only_txn(0)), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder2_0.lock_only_txn(1)), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder1_0.lock_only_txn(1)), AcquireLocksResult::WAITING);
+
+  // Partition 1
+  auto holder2_1 = MakeTestTxnHolder(configs[1], 2000,
+                                     {{"A", KeyType::WRITE, 1}, {"B", KeyType::WRITE, 1}, {"E", KeyType::WRITE, 0}});
+  auto holder3_1 = MakeTestTxnHolder(configs[1], 3000, {{"C", KeyType::WRITE, 0}, {"B", KeyType::WRITE, 1}});
+  // Lock queues on partition 1:
+  // B: 3000 2000
+  ASSERT_EQ(lock_managers[1].AcquireLocks(holder3_1.lock_only_txn(1)), AcquireLocksResult::ACQUIRED);
+  ASSERT_EQ(lock_managers[1].AcquireLocks(holder2_1.lock_only_txn(1)), AcquireLocksResult::WAITING);
+
+  // No deadlock is resolved on partition because the component is not stable due to its dependency on
+  // the incomplete txn
+  lock_managers[0].ResolveDeadlock();
+  ASSERT_FALSE(HasSignalFromResolver(0));
+
+  // Partition 1 sees the deadlock but the deadlock is irrevalent to this partition
+  lock_managers[1].ResolveDeadlock(true);
+  ASSERT_FALSE(HasSignalFromResolver(1));
+
+  // Partition 0 can see the deadlock now
+  lock_managers[0].ResolveDeadlock(true);
+  ASSERT_FALSE(HasSignalFromResolver(0));
+
+  // On partition 0, release txn3 so the next one from the deadlock is ready
+  auto result = lock_managers[0].ReleaseLocks(3000);
+  ASSERT_THAT(result, ElementsAre(make_pair(1000, true)));
+  result = lock_managers[0].ReleaseLocks(1000);
+  ASSERT_THAT(result, ElementsAre(make_pair(2000, true)));
+  ASSERT_TRUE(lock_managers[0].ReleaseLocks(2000).empty());
+
+  // On partition 1
+  result = lock_managers[1].ReleaseLocks(3000);
+  ASSERT_THAT(result, ElementsAre(make_pair(2000, true)));
+  ASSERT_TRUE(lock_managers[0].ReleaseLocks(2000).empty());
+}
+
+TEST_F(DDRLockManagerWithResolverTest, ConcurrentResolver) {
+  auto configs = Initialize(2, 1, 1);
+
+  StartBrokers();
+
   // This resolver runs in a different thread so this test might or might not run into
   // a faulty execution. The interval is set to a low number in hope that it is more
   // probable to expose a bug, if any.
-  lock_manager.StartDeadlockResolver(context, 0, 0ms);
+  lock_managers[0].StartDeadlockResolver();
+
   // Loop multiple times to increase the chance of bugs showing
-  for (int i = 0; i < 50; i++) {
+  for (int i = 0; i < 20; i++) {
     // Change txn ids at every loop so that they are all uniques
     std::array<TxnId, 7> ids;
     std::iota(ids.begin(), ids.end(), (i + 1) * 1000);
@@ -336,43 +454,42 @@ TEST_F(DDRLockManagerTest, ConcurrentResolver) {
     auto holder6 = MakeTestTxnHolder(configs[0], ids[6], {{"A", KeyType::READ, 1}});
 
     // Txn1 and Txn2 forms a deadlock. Other txns have to wait until this deadlock is resolved
-    ASSERT_EQ(lock_manager.AcquireLocks(holder3.lock_only_txn(0)), AcquireLocksResult::ACQUIRED);
-    ASSERT_EQ(lock_manager.AcquireLocks(holder1.lock_only_txn(0)), AcquireLocksResult::WAITING);
-    ASSERT_EQ(lock_manager.AcquireLocks(holder2.lock_only_txn(0)), AcquireLocksResult::WAITING);
-    ASSERT_EQ(lock_manager.AcquireLocks(holder2.lock_only_txn(1)), AcquireLocksResult::WAITING);
-    ASSERT_EQ(lock_manager.AcquireLocks(holder1.lock_only_txn(1)), AcquireLocksResult::WAITING);
-    ASSERT_EQ(lock_manager.AcquireLocks(holder4.lock_only_txn(1)), AcquireLocksResult::WAITING);
-    ASSERT_EQ(lock_manager.AcquireLocks(holder5.lock_only_txn(0)), AcquireLocksResult::WAITING);
-    ASSERT_EQ(lock_manager.AcquireLocks(holder6.lock_only_txn(1)), AcquireLocksResult::WAITING);
+    ASSERT_EQ(lock_managers[0].AcquireLocks(holder3.lock_only_txn(0)), AcquireLocksResult::ACQUIRED);
+    ASSERT_EQ(lock_managers[0].AcquireLocks(holder1.lock_only_txn(0)), AcquireLocksResult::WAITING);
+    ASSERT_EQ(lock_managers[0].AcquireLocks(holder2.lock_only_txn(0)), AcquireLocksResult::WAITING);
+    ASSERT_EQ(lock_managers[0].AcquireLocks(holder2.lock_only_txn(1)), AcquireLocksResult::WAITING);
+    ASSERT_EQ(lock_managers[0].AcquireLocks(holder1.lock_only_txn(1)), AcquireLocksResult::WAITING);
+    ASSERT_EQ(lock_managers[0].AcquireLocks(holder4.lock_only_txn(1)), AcquireLocksResult::WAITING);
+    ASSERT_EQ(lock_managers[0].AcquireLocks(holder5.lock_only_txn(0)), AcquireLocksResult::WAITING);
+    ASSERT_EQ(lock_managers[0].AcquireLocks(holder6.lock_only_txn(1)), AcquireLocksResult::WAITING);
 
-    auto result = lock_manager.ReleaseLocks(holder3.id());
+    this_thread::sleep_for((i % 2) * 1ms);
+    auto result = lock_managers[0].ReleaseLocks(holder3.id());
     if (!result.empty()) {
       LOG(INFO) << "Deadlock resolved before releasing txn3";
       // This case happens when the resolver resolves the deadlock before txn3 releasing locks
-      ASSERT_THAT(result, ElementsAre(ids[1]));
+      ASSERT_THAT(result, ElementsAre(make_pair(ids[1], true)));
     } else {
       LOG(INFO) << "Deadlock resolved after releasing txn3";
       // This case happens when the resolver resolves the deadlock after the txn3 releasing locks
-      RecvEnvelope(socket);
-      auto ready_txns = lock_manager.GetReadyTxns();
+      ASSERT_TRUE(HasSignalFromResolver(0, false /* dont_wait */));
+      auto ready_txns = lock_managers[0].GetReadyTxns();
       ASSERT_THAT(ready_txns, ElementsAre(ids[1]));
     }
 
-    result = lock_manager.ReleaseLocks(holder1.id());
-    ASSERT_THAT(result, UnorderedElementsAre(ids[2], ids[5]));
-    ASSERT_TRUE(lock_manager.ReleaseLocks(holder5.id()).empty());
+    result = lock_managers[0].ReleaseLocks(holder1.id());
+    ASSERT_THAT(result, UnorderedElementsAre(make_pair(ids[2], true), make_pair(ids[5], false)));
+    ASSERT_TRUE(lock_managers[0].ReleaseLocks(holder5.id()).empty());
 
-    result = lock_manager.ReleaseLocks(holder2.id());
-    ASSERT_THAT(result, UnorderedElementsAre(ids[4], ids[6]));
-    ASSERT_TRUE(lock_manager.ReleaseLocks(holder4.id()).empty());
-    ASSERT_TRUE(lock_manager.ReleaseLocks(holder6.id()).empty());
+    result = lock_managers[0].ReleaseLocks(holder2.id());
+    ASSERT_THAT(result, UnorderedElementsAre(make_pair(ids[4], false), make_pair(ids[6], false)));
+    ASSERT_TRUE(lock_managers[0].ReleaseLocks(holder4.id()).empty());
+    ASSERT_TRUE(lock_managers[0].ReleaseLocks(holder6.id()).empty());
   }
 }
 
-TEST_F(DDRLockManagerTest, MultipleDeadlocks) {
-  lock_manager.StartDeadlockResolver(context, 0, 1ms, true /* init_only */);
-
-  auto configs = MakeTestConfigurations("locking", 3, 1);
+TEST_F(DDRLockManagerWithResolverTest, MultipleDeadlocks) {
+  auto configs = Initialize(3, 1);
   // The key names are the edges that will be formed from these txns
   auto holder1 = MakeTestTxnHolder(
       configs[0], 1000, {{"1->2", KeyType::WRITE, 0}, {"2->1", KeyType::WRITE, 1}, {"4->1", KeyType::WRITE, 2}});
@@ -410,69 +527,69 @@ TEST_F(DDRLockManagerTest, MultipleDeadlocks) {
   auto& txn9_8to9 = holder9.lock_only_txn(0);
   auto& txn9_9to8 = holder9.lock_only_txn(1);
 
-  ASSERT_EQ(lock_manager.AcquireLocks(txn1_1to2), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(txn2_1to2), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(txn2_2to1), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(txn1_2to1), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(txn1_1to2), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(txn2_1to2), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(txn2_2to1), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(txn1_2to1), AcquireLocksResult::WAITING);
 
-  lock_manager.ResolveDeadlock();
-  ASSERT_FALSE(HasSignalFromResolver());
+  lock_managers[0].ResolveDeadlock();
+  ASSERT_FALSE(HasSignalFromResolver(0));
 
-  ASSERT_EQ(lock_manager.AcquireLocks(txn3_3to4), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(txn4_3to4), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(txn4_4to3), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(txn3_4to3), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(txn3_3to4), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(txn4_3to4), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(txn4_4to3), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(txn3_4to3), AcquireLocksResult::WAITING);
 
-  lock_manager.ResolveDeadlock();
-  ASSERT_FALSE(HasSignalFromResolver());
+  lock_managers[0].ResolveDeadlock();
+  ASSERT_FALSE(HasSignalFromResolver(0));
 
-  ASSERT_EQ(lock_manager.AcquireLocks(txn4_4to1), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(txn1_4to1), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(txn2_2to3), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(txn3_2to3), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(txn4_4to1), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(txn1_4to1), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(txn2_2to3), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(txn3_2to3), AcquireLocksResult::WAITING);
 
-  ASSERT_EQ(lock_manager.AcquireLocks(txn5_5to6), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(txn6_5to6), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(txn6_6to7), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(txn7_6to7), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(txn7_7to5), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(txn5_7to5), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(txn5_5to6), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(txn6_5to6), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(txn6_6to7), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(txn7_6to7), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(txn7_7to5), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(txn5_7to5), AcquireLocksResult::WAITING);
 
   // The two deadlock components become stable and can be resolved
-  lock_manager.ResolveDeadlock();
-  ASSERT_TRUE(HasSignalFromResolver());
+  lock_managers[0].ResolveDeadlock();
+  ASSERT_TRUE(HasSignalFromResolver(0));
 
-  ASSERT_EQ(lock_manager.AcquireLocks(txn8_8to9), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(txn9_8to9), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(txn9_9to8), AcquireLocksResult::WAITING);
-  ASSERT_EQ(lock_manager.AcquireLocks(txn8_9to8), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(txn8_8to9), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(txn9_8to9), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(txn9_9to8), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(txn8_9to8), AcquireLocksResult::WAITING);
 
   // The new deadlock component becomes stable and can be resolved. The new ready
   // txns are appended to the ready txn list
-  lock_manager.ResolveDeadlock();
-  ASSERT_TRUE(HasSignalFromResolver());
+  lock_managers[0].ResolveDeadlock();
+  ASSERT_TRUE(HasSignalFromResolver(0));
 
-  auto ready_txns = lock_manager.GetReadyTxns();
+  auto ready_txns = lock_managers[0].GetReadyTxns();
   ASSERT_THAT(ready_txns, UnorderedElementsAre(1000, 5000, 8000));
 
-  auto result = lock_manager.ReleaseLocks(holder1.id());
-  ASSERT_THAT(result, ElementsAre(2000));
-  result = lock_manager.ReleaseLocks(holder2.id());
-  ASSERT_THAT(result, ElementsAre(3000));
-  result = lock_manager.ReleaseLocks(holder3.id());
-  ASSERT_THAT(result, ElementsAre(4000));
-  result = lock_manager.ReleaseLocks(holder4.id());
+  auto result = lock_managers[0].ReleaseLocks(holder1.id());
+  ASSERT_THAT(result, ElementsAre(make_pair(2000, true)));
+  result = lock_managers[0].ReleaseLocks(holder2.id());
+  ASSERT_THAT(result, ElementsAre(make_pair(3000, true)));
+  result = lock_managers[0].ReleaseLocks(holder3.id());
+  ASSERT_THAT(result, ElementsAre(make_pair(4000, true)));
+  result = lock_managers[0].ReleaseLocks(holder4.id());
   ASSERT_TRUE(result.empty());
 
-  result = lock_manager.ReleaseLocks(holder5.id());
-  ASSERT_THAT(result, ElementsAre(6000));
-  result = lock_manager.ReleaseLocks(holder6.id());
-  ASSERT_THAT(result, ElementsAre(7000));
-  result = lock_manager.ReleaseLocks(holder7.id());
+  result = lock_managers[0].ReleaseLocks(holder5.id());
+  ASSERT_THAT(result, ElementsAre(make_pair(6000, true)));
+  result = lock_managers[0].ReleaseLocks(holder6.id());
+  ASSERT_THAT(result, ElementsAre(make_pair(7000, true)));
+  result = lock_managers[0].ReleaseLocks(holder7.id());
   ASSERT_TRUE(result.empty());
 
-  result = lock_manager.ReleaseLocks(holder8.id());
-  ASSERT_THAT(result, ElementsAre(9000));
-  result = lock_manager.ReleaseLocks(holder9.id());
+  result = lock_managers[0].ReleaseLocks(holder8.id());
+  ASSERT_THAT(result, ElementsAre(make_pair(9000, true)));
+  result = lock_managers[0].ReleaseLocks(holder9.id());
   ASSERT_TRUE(result.empty());
 }

@@ -192,7 +192,7 @@ void Worker::ReadLocalStorage(TxnId txn_id) {
     }
   }
 
-  NotifyOtherPartitions(txn_id);
+  BroadcastReads(txn_id);
 
   // Set the number of remote reads that this partition needs to wait for
   state.remote_reads_waiting_on = 0;
@@ -309,7 +309,7 @@ void Worker::Finish(TxnId txn_id) {
   VLOG(3) << "Finished with txn " << txn_id;
 }
 
-void Worker::NotifyOtherPartitions(TxnId txn_id) {
+void Worker::BroadcastReads(TxnId txn_id) {
   auto& state = TxnState(txn_id);
   auto txn_holder = state.txn_holder;
   auto& txn = txn_holder->txn();
