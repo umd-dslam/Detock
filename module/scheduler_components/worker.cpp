@@ -190,7 +190,7 @@ void Worker::ReadLocalStorage(const RunId& run_id) {
           txn.set_abort_reason("Outdated master");
           break;
         }
-        value.set_value(record.value);
+        value.set_value(record.to_string());
       } else if (txn.procedure_case() == Transaction::kRemaster) {
         txn.set_status(TransactionStatus::ABORTED);
         txn.set_abort_reason("Remaster non-existent key " + key);
@@ -264,7 +264,7 @@ void Worker::Commit(const RunId& run_id) {
           if (!storage_->Read(key, record)) {
             record.metadata = value.metadata();
           }
-          record.value = value.new_value();
+          record.SetValue(value.new_value());
           storage_->Write(key, record);
         }
       }
