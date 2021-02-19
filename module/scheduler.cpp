@@ -65,6 +65,8 @@ void Scheduler::OnInternalRequestReceived(EnvelopePtr&& env) {
         // Txns coming from the ready txns list are those used to get into deadlocks
         it->second.SetDeadlocked(true);
 
+        VLOG(2) << "Txn " << ready_txn << " became ready after resolving a deadlock";
+
         Dispatch(ready_txn);
       }
       break;
@@ -294,7 +296,7 @@ void Scheduler::Dispatch(TxnId txn_id) {
   *msg.data<TxnHolder*>() = &txn_holder;
   GetCustomSocket(0).send(msg, zmq::send_flags::none);
 
-  VLOG(2) << "Dispatched txn " << txn_id;
+  VLOG(2) << "Dispatched txn " << txn_holder.run_id();
 }
 
 // Disable pre-dispatch abort when DDR is used. Removing this method is sufficient to disable the

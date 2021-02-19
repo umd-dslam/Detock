@@ -166,9 +166,12 @@ class DeadlockResolver : public NetworkedModule {
   }
 
   void BroadcastLocalGraph() {
+    auto& local_graph = partitioned_graph_[config_->local_partition()];
+    if (local_graph.empty()) {
+      return;
+    }
     auto env = NewEnvelope();
     auto adjs = env->mutable_request()->mutable_graph()->mutable_nodes();
-    auto& local_graph = partitioned_graph_[config_->local_partition()];
     adjs->Reserve(local_graph.size());
     for (const auto& [vertex, node] : local_graph) {
       auto adj = adjs->Add();
