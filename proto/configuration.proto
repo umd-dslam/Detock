@@ -102,4 +102,6 @@ message Configuration {
     bool bypass_mh_orderer = 15;
     // Deadlock checking/resolving interval in ms. Set to 0 to disable deadlock resolving thread
     uint64 ddr_interval = 16;
+    // Pin each module to a cpu
+    bool pin_to_cpus = 17;
 }

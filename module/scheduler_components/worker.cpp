@@ -351,8 +351,10 @@ void Worker::BroadcastReads(const RunId& run_id) {
   rrr->set_abort_reason(txn.abort_reason());
   if (!aborted) {
     auto reads_to_be_sent = rrr->mutable_reads();
-    for (const auto& kv : txn.keys()) {
-      reads_to_be_sent->insert(kv);
+    for (const auto& [key, value] : txn.keys()) {
+      auto& read = (*reads_to_be_sent)[key];
+      read.set_value(value.value());
+      read.set_type(value.type());
     }
   }
 

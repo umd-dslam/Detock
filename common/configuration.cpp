@@ -174,4 +174,6 @@ bool Configuration::bypass_mh_orderer() const { return config_.bypass_mh_orderer
 
 milliseconds Configuration::ddr_interval() const { return milliseconds(config_.ddr_interval()); };
 
+bool Configuration::pin_to_cpus() const { return config_.pin_to_cpus(); }
+
 }  // namespace slog

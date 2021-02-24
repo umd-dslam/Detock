@@ -59,6 +59,7 @@ class Configuration {
   bool return_dummy_txn() const;
   bool bypass_mh_orderer() const;
   milliseconds ddr_interval() const;
+  bool pin_to_cpus() const;
 
  private:
   internal::Configuration config_;

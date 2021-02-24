@@ -38,8 +38,10 @@ void Scheduler::Initialize() {
   lock_manager_.StartDeadlockResolver();
 #endif
 
+  auto cpu = config_->pin_to_cpus() ? std::optional<int>(kWorkerChannel) : std::nullopt;
   for (auto& worker : workers_) {
-    worker->StartInNewThread();
+    worker->StartInNewThread(cpu);
+    cpu = cpu.has_value() ? std::optional<int>(*cpu + 1) : std::nullopt;
   }
 
   zmq::socket_t worker_socket(*context(), ZMQ_DEALER);
