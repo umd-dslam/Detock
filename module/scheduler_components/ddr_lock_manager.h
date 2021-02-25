@@ -100,7 +100,7 @@ class DDRLockManager {
    * Runs the deadlock resolving algorithm manually. Return false if the resolver is not initialized yet or
    * it is already running in a background thread. For testing only.
    */
-  bool ResolveDeadlock(bool recv_remote_message = false);
+  bool ResolveDeadlock(bool recv_remote_message = false, bool resolve_deadlock = true);
 
   /**
    * Gets the list of txns that become ready after resolving deadlocks

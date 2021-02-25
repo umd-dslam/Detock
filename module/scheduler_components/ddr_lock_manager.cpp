@@ -52,7 +52,8 @@ class DeadlockResolver : public NetworkedModule {
     remote_graph.clear();
     auto nodes = env->request().graph().nodes();
     for (const auto& node : nodes) {
-      auto ins = remote_graph.try_emplace(node.vertex(), node.vertex(), node.num_partitions(), true);
+      auto ins = remote_graph.try_emplace(node.vertex(), node.vertex(), node.num_partitions(), node.deadlocked(),
+                                          true /* is_stable */);
       auto& edges = ins.first->second.edges;
       edges.insert(edges.end(), node.edges().begin(), node.edges().end());
     }
@@ -86,12 +87,17 @@ class DeadlockResolver : public NetworkedModule {
   unordered_map<TxnId, DDRLockManager::TxnInfo> txn_info_;
 
   struct Node {
-    explicit Node(TxnId vertex, int num_partitions, bool is_stable)
-        : vertex(vertex), num_partitions(num_partitions), is_stable(is_stable), is_visited(false) {}
+    explicit Node(TxnId vertex, int num_partitions, bool deadlocked, bool is_stable)
+        : vertex(vertex),
+          num_partitions(num_partitions),
+          deadlocked(deadlocked),
+          is_stable(is_stable),
+          is_visited(false) {}
 
     const TxnId vertex;
     const int num_partitions;
 
+    bool deadlocked;  // Indicate if the vertex was in a deadlock but resolved previously
     bool is_stable;
     bool is_visited;
     vector<TxnId> edges;
@@ -126,7 +132,7 @@ class DeadlockResolver : public NetworkedModule {
     auto& local_graph = partitioned_graph_[config_->local_partition()];
     local_graph.clear();
     for (const auto& [vertex, info] : txn_info_) {
-      auto ins = local_graph.try_emplace(vertex, vertex, info.num_partitions, info.is_stable());
+      auto ins = local_graph.try_emplace(vertex, vertex, info.num_partitions, info.deadlocked, info.is_stable());
       auto& edges = ins.first->second.edges;
       edges.reserve(info.waited_by.size());
       for (auto v : info.waited_by) {
@@ -177,6 +183,7 @@ class DeadlockResolver : public NetworkedModule {
       auto adj = adjs->Add();
       adj->set_vertex(vertex);
       adj->set_num_partitions(node.num_partitions);
+      adj->set_deadlocked(node.deadlocked);
       adj->mutable_edges()->Add(node.edges.begin(), node.edges.end());
     }
     vector<MachineId> destinations;
@@ -190,13 +197,21 @@ class DeadlockResolver : public NetworkedModule {
     VLOG_EVERY_N(3, 20) << "Local graph is being broadcasted";
   }
 
+  struct MergedVertexInfo {
+    MergedVertexInfo(int expected_partitions)
+        : expected_partitions(expected_partitions), actual_partitions(0), deadlocked(false) {}
+    int expected_partitions;
+    int actual_partitions;
+    bool deadlocked;
+  };
+
   void BuildTotalGraph() {
-    // Map of vertex => (expected number of partitions, actual number of partitions)
-    unordered_map<TxnId, pair<int, int>> vertices;
+    unordered_map<TxnId, MergedVertexInfo> vertices;
     for (auto& g : partitioned_graph_) {
       for (const auto& [vertex, node] : g) {
-        auto ins = vertices.try_emplace(vertex, node.num_partitions, 0);
-        ins.first->second.second++;
+        auto ins = vertices.try_emplace(vertex, node.num_partitions);
+        ins.first->second.actual_partitions++;
+        ins.first->second.deadlocked |= node.deadlocked;
       }
     }
 
@@ -204,10 +219,10 @@ class DeadlockResolver : public NetworkedModule {
 
     // Build total graph from graphs across the partitions
     total_graph_.clear();
-    for (const auto& [vertex, partition_info] : vertices) {
-      auto [expected_num_partitions, actual_num_partitions] = partition_info;
-      bool is_stable = expected_num_partitions == actual_num_partitions;
-      auto ins = total_graph_.try_emplace(vertex, vertex, expected_num_partitions, is_stable);
+    for (const auto& [vertex, merged_vertex] : vertices) {
+      bool is_stable = merged_vertex.expected_partitions == merged_vertex.actual_partitions;
+      auto ins = total_graph_.try_emplace(vertex, vertex, merged_vertex.expected_partitions, merged_vertex.deadlocked,
+                                          is_stable);
       auto& edges = ins.first->second.edges;
       // We allow duplicate edges, which do not affect correctnect
       for (auto& g : partitioned_graph_) {
@@ -277,11 +292,9 @@ class DeadlockResolver : public NetworkedModule {
       p.second.is_visited = false;
     }
 
-    vector<TxnId> to_be_updated;
     int num_sccs = 0;
-    // Form the strongly connected components. This time, We traverse on
-    // the tranpose graph. For each component with more than 1 member, perform
-    // deterministic deadlock resolving
+    // Form the strongly connected components. This time, We traverse on the tranpose graph.
+    // For each component with more than 1 member, perform deterministic deadlock resolving
     for (auto vertex : topo_order_) {
       auto it = total_graph_.find(vertex);
       CHECK(it != total_graph_.end()) << "Topo order contains unknown vertex: " << vertex;
@@ -291,9 +304,19 @@ class DeadlockResolver : public NetworkedModule {
         if (scc_.size() > 1) {
           // If this component is stable and has more than 1 element, resolve the deadlock
           ResolveDeadlock();
-          // The info of txns in this scc will be updated in the lock manager
-          to_be_updated.insert(to_be_updated.end(), scc_.begin(), scc_.end());
           num_sccs++;
+        }
+      }
+    }
+
+    // Collect the txns that was for the first time detected to involve in a deadlock
+    vector<TxnId> to_be_updated;
+    for (auto& [txn_id, txn_info] : txn_info_) {
+      if (!txn_info.deadlocked) {
+        const auto& node_it = total_graph_.find(txn_id);
+        if (node_it != total_graph_.end() && node_it->second.deadlocked) {
+          txn_info.deadlocked = true;
+          to_be_updated.push_back(txn_id);
         }
       }
     }
@@ -364,6 +387,9 @@ class DeadlockResolver : public NetworkedModule {
         FormStronglyConnectedComponent(it->second);
       }
     }
+    if (scc_.size() > 1) {
+      node.deadlocked = true;
+    }
   }
 
   void ResolveDeadlock() {
@@ -400,8 +426,6 @@ class DeadlockResolver : public NetworkedModule {
       }
       auto& info = it->second;
       CHECK(info.is_stable()) << "scc contains unstable txn: " << scc_[i];
-
-      info.deadlocked = true;
 
       // Remove old edges
       for (size_t j = 0; j < info.waited_by.size(); j++) {
@@ -475,12 +499,14 @@ void DDRLockManager::StartDeadlockResolver() {
 }
 
 // For testing only
-bool DDRLockManager::ResolveDeadlock(bool recv_remote_message) {
+bool DDRLockManager::ResolveDeadlock(bool recv_remote_message, bool resolve_deadlock) {
   if (dl_resolver_ && !dl_resolver_->is_running()) {
     if (recv_remote_message) {
       dl_resolver_->StartOnce();
     }
-    std::dynamic_pointer_cast<DeadlockResolver>(dl_resolver_->module())->Run();
+    if (resolve_deadlock) {
+      std::dynamic_pointer_cast<DeadlockResolver>(dl_resolver_->module())->Run();
+    }
     return true;
   }
   return false;

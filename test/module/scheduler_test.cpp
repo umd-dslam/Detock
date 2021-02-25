@@ -32,9 +32,7 @@ class SchedulerTest : public ::testing::Test {
   static const uint32_t kNumReplicas = 2;
   static const uint32_t kNumPartitions = 3;
 
-  virtual ConfigVec MakeConfigs() {
-    return MakeTestConfigurations("scheduler", kNumReplicas, kNumPartitions);
-  }
+  virtual ConfigVec MakeConfigs() { return MakeTestConfigurations("scheduler", kNumReplicas, kNumPartitions); }
 
   void SetUp() {
     ConfigVec configs = MakeConfigs();
@@ -439,18 +437,15 @@ class SchedulerTestWithDeadlockResolver : public SchedulerTest {
 };
 
 TEST_F(SchedulerTestWithDeadlockResolver, PartitionedDeadlock) {
-  auto txn1 = MakeTestTransaction(test_slogs[0]->config(), 1000,
-                                  {{"A", KeyType::READ, {{0, 1}}},
-                                   {"X", KeyType::WRITE, {{1, 1}}}},
-                                  "GET A SET X test", 0);
+  auto txn1 =
+      MakeTestTransaction(test_slogs[0]->config(), 1000,
+                          {{"A", KeyType::READ, {{0, 1}}}, {"X", KeyType::WRITE, {{1, 1}}}}, "GET A SET X test", 0);
   auto lo_txn_1_0 = GenerateLockOnlyTxn(txn1, 0);
   auto lo_txn_1_1 = GenerateLockOnlyTxn(txn1, 1);
   delete txn1;
 
   auto txn2 = MakeTestTransaction(test_slogs[0]->config(), 2000,
-                                  {{"A", KeyType::WRITE, {{0, 1}}},
-                                   {"X", KeyType::READ, {{1, 1}}}},
-                                   "COPY X A", 1);
+                                  {{"A", KeyType::WRITE, {{0, 1}}}, {"X", KeyType::READ, {{1, 1}}}}, "COPY X A", 1);
   auto lo_txn_2_0 = GenerateLockOnlyTxn(txn2, 0);
   auto lo_txn_2_1 = GenerateLockOnlyTxn(txn2, 1);
   delete txn2;

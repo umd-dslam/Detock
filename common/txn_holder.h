@@ -27,6 +27,7 @@ class TxnHolder {
         main_txn_(txn->internal().home()),
         lo_txns_(config->num_replicas()),
         remaster_result_(std::nullopt),
+        dispatched_(false),
         aborting_(false),
         done_(false),
         deadlocked_(false),
@@ -60,6 +61,9 @@ class TxnHolder {
   void SetRemasterResult(const Key& key, uint32_t counter) { remaster_result_.emplace(key, counter); }
   std::optional<pair<Key, uint32_t>> remaster_result() const { return remaster_result_; }
 
+  void SetDispatched() { dispatched_ = true; }
+  bool dispatched() const { return dispatched_; }
+
   void SetDone() { done_ = true; }
   bool is_done() const { return done_; }
 
@@ -70,13 +74,17 @@ class TxnHolder {
   int num_lock_only_txns() const { return num_lo_txns_; }
   int expected_num_lock_only_txns() const { return expected_num_lo_txns_; }
 
-  void SetDeadlocked(bool d) { deadlocked_ = d; }
+  void SetDeadlocked(bool d) {
+    deadlocked_ = d;
+    dispatched_ = false;
+  }
 
  private:
   TxnId txn_id_;
   size_t main_txn_;
   std::vector<std::unique_ptr<Transaction>> lo_txns_;
   std::optional<pair<Key, uint32_t>> remaster_result_;
+  bool dispatched_;
   bool aborting_;
   bool done_;
   bool deadlocked_;

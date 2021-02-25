@@ -18,7 +18,7 @@ namespace slog {
 
 namespace {
 uint32_t MakeTag(const RunId& run_id) { return run_id.first * 10 + run_id.second; }
-}
+}  // namespace
 
 using internal::Envelope;
 using internal::Request;

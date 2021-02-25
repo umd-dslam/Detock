@@ -158,6 +158,8 @@ bool Scheduler::OnCustomSocket() {
   auto txn_id = *msg.data<TxnId>();
   // Release locks held by this txn then dispatch the txns that become ready thanks to this release.
   auto unblocked_txns = lock_manager_.ReleaseLocks(txn_id);
+  VLOG(2) << "Released locks of txn " << txn_id;
+
   for (auto unblocked_txn : unblocked_txns) {
 #ifdef LOCK_MANAGER_DDR
     auto it = active_txns_.find(unblocked_txn.first);
@@ -168,8 +170,6 @@ bool Scheduler::OnCustomSocket() {
     Dispatch(unblocked_txn);
 #endif
   }
-
-  VLOG(2) << "Released locks of txn " << txn_id;
 
   auto it = active_txns_.find(txn_id);
   DCHECK(it != active_txns_.end());
@@ -292,11 +292,15 @@ void Scheduler::Dispatch(TxnId txn_id) {
   auto it = active_txns_.find(txn_id);
   auto& txn_holder = it->second;
 
+  CHECK(!txn_holder.dispatched()) << "Txn " << txn_holder.run_id() << " has already been dispatched";
+
   TRACE(txn_holder.txn().mutable_internal(), TransactionEvent::DISPATCHED);
 
   zmq::message_t msg(sizeof(TxnHolder*));
   *msg.data<TxnHolder*>() = &txn_holder;
   GetCustomSocket(0).send(msg, zmq::send_flags::none);
+
+  txn_holder.SetDispatched();
 
   VLOG(2) << "Dispatched txn " << txn_holder.run_id();
 }

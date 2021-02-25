@@ -157,6 +157,7 @@ message Node {
     uint32 vertex = 1;
     repeated uint32 edges = 2;
     int32 num_partitions = 3;
+    bool deadlocked = 4;
 }
 
 message Graph {

@@ -296,8 +296,8 @@ TEST_F(DDRLockManagerWithResolverTest, SimplePartitionedDeadlock) {
   ASSERT_FALSE(HasSignalFromResolver(0));
 
   // Partition 1
-  auto holder2_1 = MakeTestTxnHolder(configs[1], 2000, {{"A", KeyType::WRITE, 0}, {"B", KeyType::WRITE, 1}});
   auto holder1_1 = MakeTestTxnHolder(configs[1], 1000, {{"A", KeyType::WRITE, 0}, {"B", KeyType::WRITE, 1}});
+  auto holder2_1 = MakeTestTxnHolder(configs[1], 2000, {{"A", KeyType::WRITE, 0}, {"B", KeyType::WRITE, 1}});
   // Lock queues on this partition:
   // B: 2000 1000
   ASSERT_EQ(lock_managers[1].AcquireLocks(holder2_1.lock_only_txn(1)), AcquireLocksResult::ACQUIRED);
@@ -305,30 +305,70 @@ TEST_F(DDRLockManagerWithResolverTest, SimplePartitionedDeadlock) {
 
   // Partition 1 sees the deadlock since the partition 0 has already sent its view in above call
   // to ResolveDeadlock
+  lock_managers[1].ResolveDeadlock(true);
+  ASSERT_TRUE(HasSignalFromResolver(1));
   {
-    lock_managers[1].ResolveDeadlock(true);
-    ASSERT_TRUE(HasSignalFromResolver(1));
-
     auto ready_txns = lock_managers[1].GetReadyTxns();
     ASSERT_THAT(ready_txns, ElementsAre(1000));
 
     auto result = lock_managers[1].ReleaseLocks(1000);
     ASSERT_THAT(result, ElementsAre(make_pair(2000, true)));
+
     ASSERT_TRUE(lock_managers[1].ReleaseLocks(2000).empty());
   }
 
   // Partition 0 now sees the deadlock
+  lock_managers[0].ResolveDeadlock(true);
+  ASSERT_TRUE(HasSignalFromResolver(0));
   {
-    lock_managers[0].ResolveDeadlock(true);
-    ASSERT_TRUE(HasSignalFromResolver(0));
-
     auto ready_txns = lock_managers[0].GetReadyTxns();
     ASSERT_THAT(ready_txns, ElementsAre(1000));
 
     auto result = lock_managers[0].ReleaseLocks(1000);
     ASSERT_THAT(result, ElementsAre(make_pair(2000, true)));
+
     ASSERT_TRUE(lock_managers[0].ReleaseLocks(2000).empty());
   }
+}
+
+TEST_F(DDRLockManagerWithResolverTest, IdempotentDeadlockSignal) {
+  auto configs = Initialize(2, 2);
+
+  StartBrokers();
+
+  // Partition 0
+  auto holder1_0 = MakeTestTxnHolder(configs[0], 1000, {{"A", KeyType::WRITE, 0}, {"B", KeyType::WRITE, 1}});
+  auto holder2_0 = MakeTestTxnHolder(configs[0], 2000, {{"A", KeyType::WRITE, 0}, {"B", KeyType::WRITE, 1}});
+  // Lock queues on this partition:
+  // A: 1000 2000
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder1_0.lock_only_txn(0)), AcquireLocksResult::ACQUIRED);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder2_0.lock_only_txn(0)), AcquireLocksResult::WAITING);
+
+  // Partition 1
+  auto holder1_1 = MakeTestTxnHolder(configs[1], 1000, {{"A", KeyType::WRITE, 0}, {"B", KeyType::WRITE, 1}});
+  auto holder2_1 = MakeTestTxnHolder(configs[1], 2000, {{"A", KeyType::WRITE, 0}, {"B", KeyType::WRITE, 1}});
+  // Lock queues on this partition:
+  // B: 2000 1000
+  ASSERT_EQ(lock_managers[1].AcquireLocks(holder2_1.lock_only_txn(1)), AcquireLocksResult::ACQUIRED);
+  ASSERT_EQ(lock_managers[1].AcquireLocks(holder1_1.lock_only_txn(1)), AcquireLocksResult::WAITING);
+
+  // Let partition 1 send its part to partition 0
+  lock_managers[1].ResolveDeadlock(false);
+  ASSERT_FALSE(HasSignalFromResolver(0));
+
+  // Partition 0 resolves the deadlock and send out signal
+  lock_managers[0].ResolveDeadlock(true);
+  ASSERT_TRUE(HasSignalFromResolver(0));
+  ASSERT_THAT(lock_managers[0].GetReadyTxns(), ElementsAre(1000));
+
+  // Let partition 1 send its part to partition 0 again
+  lock_managers[1].ResolveDeadlock(false);
+  ASSERT_FALSE(HasSignalFromResolver(0));
+
+  // Partition 0 resolves the deadlock but no longer send any signal
+  lock_managers[0].ResolveDeadlock(true);
+  ASSERT_FALSE(HasSignalFromResolver(0));
+  ASSERT_TRUE(lock_managers[0].GetReadyTxns().empty());
 }
 
 TEST_F(DDRLockManagerWithResolverTest, UnstableDeadlock) {
@@ -346,8 +386,7 @@ TEST_F(DDRLockManagerWithResolverTest, UnstableDeadlock) {
   ASSERT_EQ(lock_managers[0].AcquireLocks(holder2.lock_only_txn(1)), AcquireLocksResult::WAITING);
   ASSERT_EQ(lock_managers[0].AcquireLocks(holder1.lock_only_txn(1)), AcquireLocksResult::WAITING);
 
-  // No deadlock is resolved because the component is not stable due to its dependency on
-  // the incomplete txn
+  // No deadlock is resolved because the component is not stable due to its dependency on the incomplete txn
   lock_managers[0].ResolveDeadlock();
   ASSERT_FALSE(HasSignalFromResolver(0));
 
@@ -422,12 +461,164 @@ TEST_F(DDRLockManagerWithResolverTest, UnstablePartitionedDeadlock) {
   ASSERT_THAT(result, ElementsAre(make_pair(1000, true)));
   result = lock_managers[0].ReleaseLocks(1000);
   ASSERT_THAT(result, ElementsAre(make_pair(2000, true)));
+
   ASSERT_TRUE(lock_managers[0].ReleaseLocks(2000).empty());
 
   // On partition 1
   result = lock_managers[1].ReleaseLocks(3000);
   ASSERT_THAT(result, ElementsAre(make_pair(2000, true)));
+
   ASSERT_TRUE(lock_managers[0].ReleaseLocks(2000).empty());
+}
+
+TEST_F(DDRLockManagerWithResolverTest, PartitionedDeadlockWithMissingVertex) {
+  auto configs = Initialize(2, 2);
+
+  StartBrokers();
+
+  // Partition 0
+  auto holder1_0 = MakeTestTxnHolder(configs[0], 1000, {{"A", KeyType::WRITE, 0}, {"B", KeyType::WRITE, 1}});
+  auto holder2 = MakeTestTxnHolder(configs[0], 2000, {{"A", KeyType::WRITE, 0}});
+  auto holder3_0 = MakeTestTxnHolder(configs[0], 3000, {{"A", KeyType::WRITE, 0}, {"B", KeyType::WRITE, 1}});
+  // Lock queues on this partition:
+  // A: 1000 2000 3000
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder1_0.lock_only_txn(0)), AcquireLocksResult::ACQUIRED);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder2.lock_only_txn(0)), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder3_0.lock_only_txn(0)), AcquireLocksResult::WAITING);
+
+  // Partition 0 does not see any deadlock yet
+  lock_managers[0].ResolveDeadlock();
+  ASSERT_FALSE(HasSignalFromResolver(0));
+
+  // Partition 1
+  auto holder1_1 = MakeTestTxnHolder(configs[1], 1000, {{"A", KeyType::WRITE, 0}, {"B", KeyType::WRITE, 1}});
+  auto holder3_1 = MakeTestTxnHolder(configs[1], 3000, {{"A", KeyType::WRITE, 0}, {"B", KeyType::WRITE, 1}});
+  // Lock queues on this partition:
+  // B: 3000 1000
+  ASSERT_EQ(lock_managers[1].AcquireLocks(holder3_1.lock_only_txn(1)), AcquireLocksResult::ACQUIRED);
+  ASSERT_EQ(lock_managers[1].AcquireLocks(holder1_1.lock_only_txn(1)), AcquireLocksResult::WAITING);
+
+  // Partition 1 sees the deadlock since the partition 0 has already sent its view in above call to ResolveDeadlock
+  lock_managers[1].ResolveDeadlock(true);
+  ASSERT_TRUE(HasSignalFromResolver(1));
+  {
+    auto ready_txns = lock_managers[1].GetReadyTxns();
+    ASSERT_THAT(ready_txns, ElementsAre(1000));
+
+    auto result = lock_managers[1].ReleaseLocks(1000);
+    ASSERT_THAT(result, ElementsAre(make_pair(3000, true)));
+
+    ASSERT_TRUE(lock_managers[1].ReleaseLocks(3000).empty());
+  }
+
+  // Partition 0 now sees the deadlock
+  lock_managers[0].ResolveDeadlock(true);
+  ASSERT_TRUE(HasSignalFromResolver(0));
+  {
+    auto ready_txns = lock_managers[0].GetReadyTxns();
+    ASSERT_THAT(ready_txns, ElementsAre(1000));
+
+    auto result = lock_managers[0].ReleaseLocks(1000);
+    ASSERT_THAT(result, ElementsAre(make_pair(2000, true)));
+
+    result = lock_managers[0].ReleaseLocks(2000);
+    ASSERT_THAT(result, ElementsAre(make_pair(3000, true)));
+
+    ASSERT_TRUE(lock_managers[0].ReleaseLocks(3000).empty());
+  }
+}
+
+TEST_F(DDRLockManagerWithResolverTest, PartitionedDeadlockAsymmetricalResolving) {
+  auto configs = Initialize(2, 2);
+
+  StartBrokers();
+
+  // Partition 0
+  auto holder1_0 = MakeTestTxnHolder(configs[0], 1000, {{"C", KeyType::WRITE, 0}, {"D", KeyType::WRITE, 1}});
+  auto holder2_0 = MakeTestTxnHolder(configs[0], 2000, {{"C", KeyType::WRITE, 0}, {"B", KeyType::WRITE, 1}});
+  auto holder3_0 = MakeTestTxnHolder(configs[0], 3000, {{"E", KeyType::WRITE, 0}, {"B", KeyType::WRITE, 1}});
+  auto holder4_0 = MakeTestTxnHolder(configs[0], 4000, {{"A", KeyType::WRITE, 0}, {"B", KeyType::WRITE, 1}});
+  auto holder5_0 = MakeTestTxnHolder(configs[0], 5000, {{"A", KeyType::WRITE, 0}, {"D", KeyType::WRITE, 1}});
+  // Lock queues on this partition:
+  // A: 5000 4000
+  // C: 2000 1000
+  // E: 3000
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder5_0.lock_only_txn(0)), AcquireLocksResult::ACQUIRED);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder2_0.lock_only_txn(0)), AcquireLocksResult::ACQUIRED);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder3_0.lock_only_txn(0)), AcquireLocksResult::ACQUIRED);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder1_0.lock_only_txn(0)), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[0].AcquireLocks(holder4_0.lock_only_txn(0)), AcquireLocksResult::WAITING);
+
+  // Partition 0 does not see any deadlock yet
+  lock_managers[0].ResolveDeadlock();
+  ASSERT_FALSE(HasSignalFromResolver(0));
+
+  // Partition 1
+  auto holder1_1 = MakeTestTxnHolder(configs[1], 1000, {{"C", KeyType::WRITE, 0}, {"D", KeyType::WRITE, 1}});
+  auto holder2_1 = MakeTestTxnHolder(configs[1], 2000, {{"C", KeyType::WRITE, 0}, {"B", KeyType::WRITE, 1}});
+  auto holder3_1 = MakeTestTxnHolder(configs[1], 3000, {{"E", KeyType::WRITE, 0}, {"B", KeyType::WRITE, 1}});
+  auto holder4_1 = MakeTestTxnHolder(configs[1], 4000, {{"A", KeyType::WRITE, 0}, {"B", KeyType::WRITE, 1}});
+  auto holder5_1 = MakeTestTxnHolder(configs[1], 5000, {{"A", KeyType::WRITE, 0}, {"D", KeyType::WRITE, 1}});
+  // Lock queues on this partition:
+  // B: 4000 3000 2000
+  // D: 1000 5000
+  ASSERT_EQ(lock_managers[1].AcquireLocks(holder4_1.lock_only_txn(1)), AcquireLocksResult::ACQUIRED);
+  ASSERT_EQ(lock_managers[1].AcquireLocks(holder1_1.lock_only_txn(1)), AcquireLocksResult::ACQUIRED);
+  ASSERT_EQ(lock_managers[1].AcquireLocks(holder3_1.lock_only_txn(1)), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[1].AcquireLocks(holder2_1.lock_only_txn(1)), AcquireLocksResult::WAITING);
+  ASSERT_EQ(lock_managers[1].AcquireLocks(holder5_1.lock_only_txn(1)), AcquireLocksResult::WAITING);
+
+  // Partition 1 sees the deadlock since the partition 0 has already sent its view in above call to ResolveDeadlock
+  lock_managers[1].ResolveDeadlock(true);
+  ASSERT_TRUE(HasSignalFromResolver(1));
+
+  // Receive the remote graph without running deadlock resolving
+  lock_managers[0].ResolveDeadlock(true, false);
+
+  // Send the graph with deadlock resolved to other partition
+  lock_managers[1].ResolveDeadlock();
+  ASSERT_FALSE(HasSignalFromResolver(1));
+
+  // Partition 0 now sees the deadlock. However, the original deadlock is now broken down
+  // to smaller deadlocks. The end result should still be the same as the other partition
+  lock_managers[0].ResolveDeadlock(true);
+  ASSERT_TRUE(HasSignalFromResolver(0));
+
+  {
+    auto ready_txns = lock_managers[0].GetReadyTxns();
+    ASSERT_THAT(ready_txns, UnorderedElementsAre(1000, 3000, 4000));
+
+    auto result = lock_managers[0].ReleaseLocks(1000);
+    ASSERT_THAT(result, ElementsAre(make_pair(2000, true)));
+
+    ASSERT_TRUE(lock_managers[0].ReleaseLocks(2000).empty());
+
+    ASSERT_TRUE(lock_managers[0].ReleaseLocks(3000).empty());
+
+    result = lock_managers[0].ReleaseLocks(4000);
+    ASSERT_THAT(result, ElementsAre(make_pair(5000, true)));
+
+    ASSERT_TRUE(lock_managers[0].ReleaseLocks(5000).empty());
+  }
+
+  {
+    auto ready_txns = lock_managers[1].GetReadyTxns();
+    ASSERT_THAT(ready_txns, ElementsAre(1000));
+
+    auto result = lock_managers[1].ReleaseLocks(1000);
+    ASSERT_THAT(result, ElementsAre(make_pair(2000, true)));
+
+    result = lock_managers[1].ReleaseLocks(2000);
+    ASSERT_THAT(result, ElementsAre(make_pair(3000, true)));
+
+    result = lock_managers[1].ReleaseLocks(3000);
+    ASSERT_THAT(result, ElementsAre(make_pair(4000, true)));
+
+    result = lock_managers[1].ReleaseLocks(4000);
+    ASSERT_THAT(result, ElementsAre(make_pair(5000, true)));
+
+    ASSERT_TRUE(lock_managers[1].ReleaseLocks(5000).empty());
+  }
 }
 
 TEST_F(DDRLockManagerWithResolverTest, ConcurrentResolver) {
