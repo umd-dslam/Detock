@@ -45,4 +45,20 @@ rapidjson::Value ToJsonArray(const Container& container, rapidjson::MemoryPoolAl
       container, [](const auto& value) { return value; }, alloc);
 }
 
+const std::array<int, 11> kPctlLevels = {0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100};
+
+template <typename Container, typename BaseAllocator>
+rapidjson::Value Percentiles(Container& container, rapidjson::MemoryPoolAllocator<BaseAllocator>& alloc) {
+  rapidjson::Value pctls(rapidjson::kArrayType);
+  if (container.empty()) {
+    return pctls;
+  }
+  std::sort(container.begin(), container.end());
+  for (auto p : kPctlLevels) {
+    size_t i = p * (container.size() - 1) / 100;
+    pctls.PushBack(container[i], alloc);
+  }
+  return pctls;
+}
+
 }  // namespace slog

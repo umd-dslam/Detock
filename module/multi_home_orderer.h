@@ -24,27 +24,33 @@ namespace slog {
 class MultiHomeOrderer : public NetworkedModule {
  public:
   MultiHomeOrderer(const ConfigurationPtr& config, const std::shared_ptr<Broker>& broker, milliseconds batch_timeout,
-                   milliseconds poll_timeout = kModuleTimeout);
+                   int max_batch_size, milliseconds poll_timeout = kModuleTimeout);
 
  protected:
   void OnInternalRequestReceived(EnvelopePtr&& env) final;
 
  private:
+  void ProcessForwardBatch(EnvelopePtr&& env);
+  void ProcessStatsRequest(const internal::StatsRequest& stats_request);
+
   void NewBatch();
   BatchId batch_id() const { return batch_id_counter_ * kMaxNumMachines + config_->local_machine_id(); }
   void AddToBatch(Transaction* txn);
   void SendBatch();
 
-  void ProcessForwardBatch(EnvelopePtr&& env);
-
   ConfigurationPtr config_;
   milliseconds batch_timeout_;
+  int max_batch_size_;
   std::vector<std::unique_ptr<internal::Batch>> batch_per_rep_;
   BatchId batch_id_counter_;
   int batch_size_;
-  bool batch_scheduled_;
 
   BatchLog multi_home_batch_log_;
+
+  bool collecting_stats_;
+  steady_clock::time_point batch_starting_time_;
+  std::vector<int> stat_batch_sizes_;
+  std::vector<float> stat_batch_durations_ms_;
 };
 
 }  // namespace slog
