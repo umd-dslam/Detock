@@ -1,5 +1,6 @@
 syntax = "proto3";
 
+import "proto/modules.proto";
 import "proto/transaction.proto";
 
 package slog.internal;
@@ -62,6 +63,11 @@ message SimplePartitioning {
     uint32 record_size_bytes = 2;
 }
 
+message CpuPinning {
+    ModuleId module = 1;
+    uint32 cpu = 2;
+}
+
 /**
  * The schema of a configuration file.
  */
@@ -106,7 +112,7 @@ message Configuration {
     // Deadlock checking/resolving interval in ms. Set to 0 to disable deadlock resolving thread
     uint64 ddr_interval = 18;
     // Pin each module to a cpu
-    bool pin_to_cpus = 19;
+    repeated CpuPinning cpu_pinnings = 19;
     // Return dummy txns back to the client instead of full results
     bool return_dummy_txn = 20;
     // Do not deallocate txns in the worker

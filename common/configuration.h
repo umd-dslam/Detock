@@ -61,7 +61,7 @@ class Configuration {
   vector<TransactionEvent> disabled_tracing_events() const;
   bool bypass_mh_orderer() const;
   milliseconds ddr_interval() const;
-  bool pin_to_cpus() const;
+  vector<int> cpu_pinnings(ModuleId module) const;
   bool return_dummy_txn() const;
   bool do_not_clean_up_txn() const;
 
