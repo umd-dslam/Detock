@@ -96,6 +96,7 @@ bool Worker::OnCustomSocket() {
   }
 
   auto txn_holder = *msg.data<TxnHolder*>();
+  auto& txn = txn_holder->txn();
   auto run_id = txn_holder->run_id();
 
   TRACE(txn.mutable_internal(), TransactionEvent::ENTER_WORKER);
