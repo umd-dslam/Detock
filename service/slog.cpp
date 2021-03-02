@@ -24,9 +24,8 @@
 
 DEFINE_string(config, "slog.conf", "Path to the configuration file");
 DEFINE_string(address, "", "Address of the local machine");
-DEFINE_uint32(replica, 0, "Replica number of the local machine");
-DEFINE_uint32(partition, 0, "Partition number of the local machine");
 DEFINE_string(data_dir, "", "Directory containing intial data");
+DEFINE_uint32(data_threads, 3, "Number of threads used to generate initial data");
 
 using slog::Broker;
 using slog::ConfigurationPtr;
@@ -79,14 +78,13 @@ void LoadData(slog::Storage<Key, Record>& storage, const ConfigurationPtr& confi
 void GenerateData(slog::Storage<Key, Record>& storage, const ConfigurationPtr& config) {
   auto simple_partitioning = config->simple_partitioning();
   auto num_records = simple_partitioning->num_records();
-  auto num_threads = config->num_workers() + 7;
   auto num_partitions = config->num_partitions();
   auto partition = config->local_partition();
 
   // Create a value of specified size by repeating the character 'a'
   string value(simple_partitioning->record_size_bytes(), 'a');
 
-  LOG(INFO) << "Generating ~" << num_records / num_partitions << " records using " << num_threads << " threads. "
+  LOG(INFO) << "Generating ~" << num_records / num_partitions << " records using " << FLAGS_data_threads << " threads. "
             << "Record size = " << simple_partitioning->record_size_bytes() << " bytes";
 
   std::atomic<uint64_t> counter = 0;
@@ -103,11 +101,11 @@ void GenerateData(slog::Storage<Key, Record>& storage, const ConfigurationPtr& c
     num_done++;
   };
   std::vector<std::thread> threads;
-  uint64_t range = num_records / num_threads + 1;
-  for (uint32_t i = 0; i < num_threads; i++) {
+  uint64_t range = num_records / FLAGS_data_threads + 1;
+  for (uint32_t i = 0; i < FLAGS_data_threads; i++) {
     threads.emplace_back(GenerateFn, i * range, (i + 1) * range);
   }
-  while (num_done < num_threads) {
+  while (num_done < FLAGS_data_threads) {
     std::this_thread::sleep_for(5s);
     LOG(INFO) << "Generated " << counter.load() << " records";
   }
@@ -133,7 +131,7 @@ int main(int argc, char* argv[]) {
   LOG(INFO) << "Remastering disabled";
 #endif /* REMASTER_PROTOCOL_SIMPLE */
 
-  auto config = slog::Configuration::FromFile(FLAGS_config, FLAGS_address, FLAGS_replica, FLAGS_partition);
+  auto config = slog::Configuration::FromFile(FLAGS_config, FLAGS_address);
   const auto& all_addresses = config->all_addresses();
   CHECK(std::find(all_addresses.begin(), all_addresses.end(), config->local_address()) != all_addresses.end())
       << "The configuration does not contain the provided "
@@ -162,12 +160,10 @@ int main(int argc, char* argv[]) {
 
   vector<unique_ptr<slog::ModuleRunner>> modules;
   modules.push_back(MakeRunnerFor<slog::Server>(config, broker));
-  modules.push_back(MakeRunnerFor<slog::MultiHomeOrderer>(config, broker, config->sequencer_batch_duration(),
-                                                          config->max_batch_size()));
+  modules.push_back(MakeRunnerFor<slog::MultiHomeOrderer>(config, broker));
   modules.push_back(MakeRunnerFor<slog::LocalPaxos>(config, broker));
-  modules.push_back(MakeRunnerFor<slog::Forwarder>(config, broker, storage, config->forwarder_batch_duration()));
-  modules.push_back(
-      MakeRunnerFor<slog::Sequencer>(config, broker, config->sequencer_batch_duration(), config->max_batch_size()));
+  modules.push_back(MakeRunnerFor<slog::Forwarder>(config, broker, storage));
+  modules.push_back(MakeRunnerFor<slog::Sequencer>(config, broker));
   modules.push_back(MakeRunnerFor<slog::Interleaver>(config, broker));
   modules.push_back(MakeRunnerFor<slog::Scheduler>(config, broker, storage));
 
@@ -185,8 +181,8 @@ int main(int argc, char* argv[]) {
   // New modules cannot be bound to the broker after it starts so start
   // the Broker only after it is used to initialized all modules above.
   auto cpu = config->pin_to_cpus() ? std::optional<int>(0) : std::nullopt;
-  broker->StartInNewThread(cpu);
-  cpu = cpu.has_value() ? std::optional<int>(*cpu + 1) : std::nullopt;
+  auto num_brokers = broker->StartInNewThreads(cpu);
+  cpu = cpu.has_value() ? std::optional<int>(*cpu + num_brokers) : std::nullopt;
   for (auto& module : modules) {
     module->StartInNewThread(cpu);
     cpu = cpu.has_value() ? std::optional<int>(*cpu + 1) : std::nullopt;

@@ -17,24 +17,26 @@ using ConfigurationPtr = std::shared_ptr<const Configuration>;
 
 class Configuration {
  public:
-  static ConfigurationPtr FromFile(const string& file_path, const string& local_address = "",
-                                   uint32_t local_replica = 0U, uint32_t local_partition = 0U);
+  static ConfigurationPtr FromFile(const string& file_path, const string& local_address = "");
 
-  Configuration(const internal::Configuration& config, const string& local_address, uint32_t local_replica,
-                uint32_t local_partition);
+  Configuration(const internal::Configuration& config, const string& local_address);
 
   const string& protocol() const;
   const vector<string>& all_addresses() const;
   const string& address(uint32_t replica, uint32_t partition) const;
-  uint32_t broker_port() const;
+  const string& address(MachineId machine_id) const;
+  uint32_t broker_ports(int i) const;
+  uint32_t broker_ports_size() const;
   uint32_t server_port() const;
   uint32_t num_replicas() const;
   uint32_t num_partitions() const;
   uint32_t num_workers() const;
   vector<MachineId> all_machine_ids() const;
   milliseconds forwarder_batch_duration() const;
+  int forwarder_max_batch_size() const;
   milliseconds sequencer_batch_duration() const;
-  int max_batch_size() const;
+  int sequencer_max_batch_size() const;
+  uint32_t scheduler_max_txns() const;
   uint32_t replication_factor() const;
 
   const string& local_address() const;
@@ -57,10 +59,11 @@ class Configuration {
   uint32_t replication_delay_pct() const;
   uint32_t replication_delay_amount_ms() const;
   vector<TransactionEvent> disabled_tracing_events() const;
-  bool return_dummy_txn() const;
   bool bypass_mh_orderer() const;
   milliseconds ddr_interval() const;
   bool pin_to_cpus() const;
+  bool return_dummy_txn() const;
+  bool do_not_clean_up_txn() const;
 
  private:
   internal::Configuration config_;

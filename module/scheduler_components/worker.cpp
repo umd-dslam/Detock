@@ -97,7 +97,6 @@ bool Worker::OnCustomSocket() {
 
   auto txn_holder = *msg.data<TxnHolder*>();
   auto run_id = txn_holder->run_id();
-  auto& txn = txn_holder->txn();
 
   TRACE(txn.mutable_internal(), TransactionEvent::ENTER_WORKER);
 
@@ -113,7 +112,7 @@ bool Worker::OnCustomSocket() {
   auto redirect_env = NewEnvelope();
   redirect_env->mutable_request()->mutable_broker_redirect()->set_tag(MakeTag(run_id));
   redirect_env->mutable_request()->mutable_broker_redirect()->set_channel(channel());
-  Send(move(redirect_env), kBrokerChannel);
+  Send(move(redirect_env), Broker::MakeChannel(config_->broker_ports_size() - 1));
 
   VLOG(3) << "Initialized state for txn " << run_id;
 
@@ -313,7 +312,7 @@ void Worker::Finish(const RunId& run_id) {
   auto redirect_env = NewEnvelope();
   redirect_env->mutable_request()->mutable_broker_redirect()->set_tag(MakeTag(run_id));
   redirect_env->mutable_request()->mutable_broker_redirect()->set_stop(true);
-  Send(move(redirect_env), kBrokerChannel);
+  Send(move(redirect_env), Broker::MakeChannel(config_->broker_ports_size() - 1));
 
   // Done with this txn. Remove it from the state map
   txn_states_.erase(run_id);
@@ -358,12 +357,15 @@ void Worker::BroadcastReads(const RunId& run_id) {
     }
   }
 
+  vector<MachineId> destinations;
   for (auto p : waiting_partitions) {
     if (p != local_partition) {
-      auto machine_id = config_->MakeMachineId(local_replica, p);
-      Send(env, std::move(machine_id), MakeTag(run_id));
+      destinations.push_back(config_->MakeMachineId(local_replica, p));
     }
   }
+  // Try to use a different broker thread other than the default one so that
+  // a worker would have an exclusive pathway for information passing
+  Send(env, destinations, MakeTag(run_id), config_->broker_ports_size() - 1);
 }
 
 void Worker::SendToCoordinatingServer(const RunId& run_id) {
@@ -383,6 +385,11 @@ void Worker::SendToCoordinatingServer(const RunId& run_id) {
   }
   completed_sub_txn->set_allocated_txn(txn);
   Send(env, txn->internal().coordinating_server(), kServerChannel);
+
+  if (!config_->do_not_clean_up_txn()) {
+    // This is an intentional memory leak
+    completed_sub_txn->release_txn();
+  }
 }
 
 TransactionState& Worker::TxnState(const RunId& run_id) {

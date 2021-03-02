@@ -20,23 +20,12 @@ namespace slog {
 using internal::Envelope;
 using internal::Request;
 using internal::Response;
-namespace {
-
-uint32_t ChooseRandomPartition(const Transaction& txn, std::mt19937& rg) {
-  std::uniform_int_distribution<> idx(0, txn.internal().involved_partitions_size() - 1);
-  return txn.internal().involved_partitions(idx(rg));
-}
-
-}  // namespace
 
 Forwarder::Forwarder(const ConfigurationPtr& config, const shared_ptr<Broker>& broker,
-                     const shared_ptr<LookupMasterIndex<Key, Metadata>>& lookup_master_index,
-                     milliseconds batch_timeout, milliseconds poll_timeout)
+                     const shared_ptr<LookupMasterIndex<Key, Metadata>>& lookup_master_index, milliseconds poll_timeout)
     : NetworkedModule("Forwarder", broker, kForwarderChannel, poll_timeout),
       config_(config),
       lookup_master_index_(lookup_master_index),
-      batch_timeout_(batch_timeout),
-      lookup_request_scheduled_(false),
       batch_size_(0),
       rg_(std::random_device()()),
       collecting_stats_(false) {
@@ -63,13 +52,6 @@ void Forwarder::ProcessForwardTxn(EnvelopePtr&& env) {
   auto txn = env->mutable_request()->mutable_forward_txn()->mutable_txn();
 
   TRACE(txn->mutable_internal(), TransactionEvent::ENTER_FORWARDER);
-
-  try {
-    PopulateInvolvedPartitions(config_, *txn);
-  } catch (std::invalid_argument& e) {
-    LOG(ERROR) << "Only numeric keys are allowed while running in Simple Partitioning mode";
-    return;
-  }
 
   bool need_remote_lookup = false;
   for (auto& [key, value] : *txn->mutable_keys()) {
@@ -109,32 +91,40 @@ void Forwarder::ProcessForwardTxn(EnvelopePtr&& env) {
       partitioned_lookup_request_[p].mutable_request()->mutable_lookup_master()->add_txn_ids(txn->internal().id());
     }
   }
-  batch_size_++;
   pending_transactions_.insert_or_assign(txn->internal().id(), move(env));
 
-  // If the request is not scheduled to be sent yet, schedule one now
-  if (!lookup_request_scheduled_) {
-    NewTimedCallback(batch_timeout_, [this]() {
-      if (collecting_stats_) {
-        stat_batch_sizes_.push_back(batch_size_);
-        stat_batch_durations_ms_.push_back((steady_clock::now() - batch_starting_time_).count() / 1000000.0);
-      }
+  ++batch_size_;
 
-      auto local_rep = config_->local_replica();
-      auto num_partitions = config_->num_partitions();
-      for (uint32_t part = 0; part < num_partitions; part++) {
-        if (!partitioned_lookup_request_[part].request().lookup_master().txn_ids().empty()) {
-          Send(partitioned_lookup_request_[part], config_->MakeMachineId(local_rep, part), kForwarderChannel);
-          partitioned_lookup_request_[part].Clear();
-        }
-      }
-      batch_size_ = 0;
-      lookup_request_scheduled_ = false;
-    });
+  // If this is the first txn in the batch, schedule to send the batch at a later time
+  if (batch_size_ == 1) {
+    NewTimedCallback(config_->forwarder_batch_duration(), [this]() { SendLookupMasterRequestBatch(); });
 
     batch_starting_time_ = steady_clock::now();
-    lookup_request_scheduled_ = true;
   }
+
+  // Batch size is larger than the maximum size, send the batch immediately
+  auto max_batch_size = config_->forwarder_max_batch_size();
+  if (max_batch_size > 0 && batch_size_ >= max_batch_size) {
+    ClearTimedCallbacks();
+    SendLookupMasterRequestBatch();
+  }
+}
+
+void Forwarder::SendLookupMasterRequestBatch() {
+  if (collecting_stats_) {
+    stat_batch_sizes_.push_back(batch_size_);
+    stat_batch_durations_ms_.push_back((steady_clock::now() - batch_starting_time_).count() / 1000000.0);
+  }
+
+  auto local_rep = config_->local_replica();
+  auto num_partitions = config_->num_partitions();
+  for (uint32_t part = 0; part < num_partitions; part++) {
+    if (!partitioned_lookup_request_[part].request().lookup_master().txn_ids().empty()) {
+      Send(partitioned_lookup_request_[part], config_->MakeMachineId(local_rep, part), kForwarderChannel);
+      partitioned_lookup_request_[part].Clear();
+    }
+  }
+  batch_size_ = 0;
 }
 
 void Forwarder::ProcessLookUpMasterRequest(EnvelopePtr&& env) {

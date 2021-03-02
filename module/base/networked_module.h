@@ -27,7 +27,7 @@ struct ChannelOption {
 class NetworkedModule : public Module {
  public:
   NetworkedModule(const std::string& name, const std::shared_ptr<Broker>& broker, ChannelOption chopt,
-                  std::optional<std::chrono::milliseconds> poll_timeout, int recv_retries = 100);
+                  std::optional<std::chrono::milliseconds> poll_timeout);
   ~NetworkedModule();
 
  protected:
@@ -44,11 +44,12 @@ class NetworkedModule : public Module {
   zmq::socket_t& GetCustomSocket(size_t i);
 
   inline static EnvelopePtr NewEnvelope() { return std::make_unique<internal::Envelope>(); }
-  void Send(const internal::Envelope& env, MachineId to_machine_id, Channel to_channel);
-  void Send(EnvelopePtr&& env, MachineId to_machine_id, Channel to_channel);
+  void Send(const internal::Envelope& env, MachineId to_machine_id, Channel to_channel, size_t via_broker = 0);
+  void Send(EnvelopePtr&& env, MachineId to_machine_id, Channel to_channel, size_t via_broker = 0);
   void Send(EnvelopePtr&& env, Channel to_channel);
-  void Send(const internal::Envelope& env, const std::vector<MachineId>& to_machine_ids, Channel to_channel);
-  void Send(EnvelopePtr&& env, const std::vector<MachineId>& to_machine_ids, Channel to_channel);
+  void Send(const internal::Envelope& env, const std::vector<MachineId>& to_machine_ids, Channel to_channel,
+            size_t via_broker = 0);
+  void Send(EnvelopePtr&& env, const std::vector<MachineId>& to_machine_ids, Channel to_channel, size_t via_broker = 0);
 
   void NewTimedCallback(microseconds timeout, std::function<void()>&& cb);
   void ClearTimedCallbacks();
@@ -68,7 +69,6 @@ class NetworkedModule : public Module {
   Sender sender_;
   Poller poller_;
   int recv_retries_;
-  int recv_retries_counter_;
   std::string debug_info_;
 
   std::atomic<uint64_t> work_ = 0;

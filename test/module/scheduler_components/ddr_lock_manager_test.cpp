@@ -245,7 +245,7 @@ class DDRLockManagerWithResolverTest : public ::testing::Test {
 
   void StartBrokers() {
     for (auto& broker : brokers_) {
-      broker->StartInNewThread();
+      broker->StartInNewThreads();
     }
   }
 

@@ -30,7 +30,8 @@ ConfigVec MakeTestConfigurations(string&& prefix, int num_replicas, int num_part
   string addr = "/tmp/test_" + prefix;
 
   common_config.set_protocol("ipc");
-  common_config.set_broker_port(0);
+  common_config.add_broker_ports(0);
+  common_config.add_broker_ports(1);
   common_config.set_num_partitions(num_partitions);
   common_config.mutable_hash_partitioning()->set_partition_key_num_bytes(1);
   common_config.set_sequencer_batch_duration(1);
@@ -52,7 +53,7 @@ ConfigVec MakeTestConfigurations(string&& prefix, int num_replicas, int num_part
       common_config.set_server_port(dis(re));
       int i = rep * num_partitions + part;
       string local_addr = addr + to_string(i);
-      configs.push_back(std::make_shared<Configuration>(common_config, local_addr, rep, part));
+      configs.push_back(std::make_shared<Configuration>(common_config, local_addr));
     }
   }
 
@@ -109,15 +110,9 @@ void TestSlog::Data(Key&& key, Record&& record) {
 
 void TestSlog::AddServerAndClient() { server_ = MakeRunnerFor<Server>(config_, broker_, kTestModuleTimeout); }
 
-void TestSlog::AddForwarder() {
-  forwarder_ =
-      MakeRunnerFor<Forwarder>(config_, broker_, storage_, config_->forwarder_batch_duration(), kTestModuleTimeout);
-}
+void TestSlog::AddForwarder() { forwarder_ = MakeRunnerFor<Forwarder>(config_, broker_, storage_, kTestModuleTimeout); }
 
-void TestSlog::AddSequencer() {
-  sequencer_ = MakeRunnerFor<Sequencer>(config_, broker_, config_->sequencer_batch_duration(),
-                                        config_->max_batch_size(), kTestModuleTimeout);
-}
+void TestSlog::AddSequencer() { sequencer_ = MakeRunnerFor<Sequencer>(config_, broker_, kTestModuleTimeout); }
 
 void TestSlog::AddInterleaver() { interleaver_ = MakeRunnerFor<Interleaver>(config_, broker_, kTestModuleTimeout); }
 
@@ -128,8 +123,7 @@ void TestSlog::AddLocalPaxos() { local_paxos_ = MakeRunnerFor<LocalPaxos>(config
 void TestSlog::AddGlobalPaxos() { global_paxos_ = MakeRunnerFor<GlobalPaxos>(config_, broker_, kTestModuleTimeout); }
 
 void TestSlog::AddMultiHomeOrderer() {
-  multi_home_orderer_ = MakeRunnerFor<MultiHomeOrderer>(config_, broker_, config_->sequencer_batch_duration(),
-                                                        config_->max_batch_size(), kTestModuleTimeout);
+  multi_home_orderer_ = MakeRunnerFor<MultiHomeOrderer>(config_, broker_, kTestModuleTimeout);
 }
 
 void TestSlog::AddOutputChannel(Channel channel) {
@@ -149,10 +143,10 @@ zmq::pollitem_t TestSlog::GetPollItemForChannel(Channel channel) {
           ZMQ_POLLIN, 0 /* revent */};
 }
 
-unique_ptr<Sender> TestSlog::NewSender() { return std::make_unique<Sender>(broker_); }
+unique_ptr<Sender> TestSlog::NewSender() { return std::make_unique<Sender>(broker_->config(), broker_->context()); }
 
 void TestSlog::StartInNewThreads() {
-  broker_->StartInNewThread();
+  broker_->StartInNewThreads();
   if (server_) {
     server_->StartInNewThread();
     string endpoint = "tcp://localhost:" + to_string(config_->server_port());
