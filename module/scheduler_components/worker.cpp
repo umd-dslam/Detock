@@ -20,6 +20,7 @@ namespace {
 uint32_t MakeTag(const RunId& run_id) { return run_id.first * 10 + run_id.second; }
 }  // namespace
 
+using std::make_unique;
 using internal::Envelope;
 using internal::Request;
 using internal::Response;
@@ -28,9 +29,19 @@ Worker::Worker(const ConfigurationPtr& config, const std::shared_ptr<Broker>& br
                const shared_ptr<Storage<Key, Record>>& storage, std::chrono::milliseconds poll_timeout)
     : NetworkedModule("Worker-" + std::to_string(channel), broker, channel, poll_timeout),
       config_(config),
-      storage_(storage),
-      // TODO: change this dynamically based on selected experiment
-      commands_(new KeyValueCommands()) {}
+      storage_(storage) {
+  switch (config_->commands()) {
+    case internal::Commands::DUMMY:
+      commands_ = make_unique<DummyCommands<Key, Record>>(config, storage);
+      break;
+    case internal::Commands::NOOP:
+      commands_ = make_unique<NoopCommands<Key, Record>>();
+      break;
+    default:
+      commands_ = make_unique<KeyValueCommands<Key, Record>>(config, storage);
+      break;
+  }
+}
 
 void Worker::Initialize() {
   zmq::socket_t sched_socket(*context(), ZMQ_DEALER);
@@ -78,6 +89,13 @@ void Worker::OnInternalRequestReceived(EnvelopePtr&& env) {
   if (state.remote_reads_waiting_on == 0) {
     if (state.phase == TransactionState::Phase::WAIT_REMOTE_READ) {
       state.phase = TransactionState::Phase::EXECUTE;
+
+      // Remove the redirection at broker for this txn
+      auto redirect_env = NewEnvelope();
+      redirect_env->mutable_request()->mutable_broker_redirect()->set_tag(MakeTag(run_id));
+      redirect_env->mutable_request()->mutable_broker_redirect()->set_stop(true);
+      Send(move(redirect_env), Broker::MakeChannel(config_->broker_ports_size() - 1));
+
       VLOG(3) << "Execute txn " << run_id << " after receving all remote read results";
     } else {
       LOG(FATAL) << "Invalid phase";
@@ -109,12 +127,6 @@ bool Worker::OnCustomSocket() {
 
   iter->second.phase = TransactionState::Phase::READ_LOCAL_STORAGE;
 
-  // Establish a redirection at broker for this txn so that we can receive remote reads
-  auto redirect_env = NewEnvelope();
-  redirect_env->mutable_request()->mutable_broker_redirect()->set_tag(MakeTag(run_id));
-  redirect_env->mutable_request()->mutable_broker_redirect()->set_channel(channel());
-  Send(move(redirect_env), Broker::MakeChannel(config_->broker_ports_size() - 1));
-
   VLOG(3) << "Initialized state for txn " << run_id;
 
   AdvanceTransaction(run_id);
@@ -137,11 +149,6 @@ void Worker::AdvanceTransaction(const RunId& run_id) {
     case TransactionState::Phase::EXECUTE:
       if (state.phase == TransactionState::Phase::EXECUTE) {
         Execute(run_id);
-      }
-      [[fallthrough]];
-    case TransactionState::Phase::COMMIT:
-      if (state.phase == TransactionState::Phase::COMMIT) {
-        Commit(run_id);
       }
       [[fallthrough]];
     case TransactionState::Phase::FINISH:
@@ -181,16 +188,15 @@ void Worker::ReadLocalStorage(const RunId& run_id) {
     // We don't need to check if keys are in partition here since the assumption is that
     // the out-of-partition keys have already been removed
     for (auto& [key, value] : *(txn.mutable_keys())) {
-      Record record;
-      if (storage_->Read(key, record)) {
+      if (auto record = storage_->Read(key); record != nullptr) {
         // Check whether the store master metadata matches with the information
         // stored in the transaction
-        if (value.metadata().master() != record.metadata.master) {
+        if (value.metadata().master() != record->metadata.master) {
           txn.set_status(TransactionStatus::ABORTED);
           txn.set_abort_reason("Outdated master");
           break;
         }
-        value.set_value(record.to_string());
+        value.set_value(record->to_string());
       } else if (txn.procedure_case() == Transaction::kRemaster) {
         txn.set_status(TransactionStatus::ABORTED);
         txn.set_abort_reason("Remaster non-existent key " + key);
@@ -218,6 +224,12 @@ void Worker::ReadLocalStorage(const RunId& run_id) {
     VLOG(3) << "Execute txn " << run_id << " without remote reads";
     state.phase = TransactionState::Phase::EXECUTE;
   } else {
+    // Establish a redirection at broker for this txn so that we can receive remote reads
+    auto redirect_env = NewEnvelope();
+    redirect_env->mutable_request()->mutable_broker_redirect()->set_tag(MakeTag(run_id));
+    redirect_env->mutable_request()->mutable_broker_redirect()->set_channel(channel());
+    Send(move(redirect_env), Broker::MakeChannel(config_->broker_ports_size() - 1));
+
     VLOG(3) << "Defer executing txn " << run_id << " until having enough remote reads";
     state.phase = TransactionState::Phase::WAIT_REMOTE_READ;
   }
@@ -229,65 +241,28 @@ void Worker::Execute(const RunId& run_id) {
 
   switch (txn.procedure_case()) {
     case Transaction::kCode: {
-      if (txn.status() == TransactionStatus::ABORTED) {
-        break;
+      if (txn.status() != TransactionStatus::ABORTED) {
+        commands_->Execute(txn);
       }
-      // Execute the transaction code
-      commands_->Execute(txn);
-      break;
-    }
-    case Transaction::kRemaster:
-      txn.set_status(TransactionStatus::COMMITTED);
-      break;
-    default:
-      LOG(FATAL) << "Procedure is not set";
-  }
-  state.phase = TransactionState::Phase::COMMIT;
-}
 
-void Worker::Commit(const RunId& run_id) {
-  auto& state = TxnState(run_id);
-  auto& txn = state.txn_holder->txn();
-  switch (txn.procedure_case()) {
-    case Transaction::kCode: {
-      // Apply all writes to local storage if the transaction is not aborted
-      if (txn.status() != TransactionStatus::COMMITTED) {
+      if (txn.status() == TransactionStatus::ABORTED) {
         VLOG(3) << "Txn " << run_id << " aborted with reason: " << txn.abort_reason();
-        break;
+      } else {
+        VLOG(3) << "Committed txn " << run_id;
       }
-      for (const auto& [key, value] : txn.keys()) {
-        if (value.type() == KeyType::READ) {
-          continue;
-        }
-        if (config_->key_is_in_local_partition(key)) {
-          Record record;
-          if (!storage_->Read(key, record)) {
-            record.metadata = value.metadata();
-          }
-          record.SetValue(value.new_value());
-          storage_->Write(key, record);
-        }
-      }
-      for (const auto& key : txn.deleted_keys()) {
-        if (config_->key_is_in_local_partition(key)) {
-          storage_->Delete(key);
-        }
-      }
-      VLOG(3) << "Committed txn " << run_id;
       break;
     }
     case Transaction::kRemaster: {
+      txn.set_status(TransactionStatus::COMMITTED);
       auto key_it = txn.keys().begin();
       const auto& key = key_it->first;
-      if (config_->key_is_in_local_partition(key)) {
-        Record record;
-        storage_->Read(key, record);
-        auto new_counter = key_it->second.metadata().counter() + 1;
-        record.metadata = Metadata(txn.remaster().new_master(), new_counter);
-        storage_->Write(key, record);
+      Record record;
+      storage_->Read(key, record);
+      auto new_counter = key_it->second.metadata().counter() + 1;
+      record.metadata = Metadata(txn.remaster().new_master(), new_counter);
+      storage_->Write(key, record);
 
-        state.txn_holder->SetRemasterResult(key, new_counter);
-      }
+      state.txn_holder->SetRemasterResult(key, new_counter);
       break;
     }
     default:
@@ -308,12 +283,6 @@ void Worker::Finish(const RunId& run_id) {
   zmq::message_t msg(sizeof(TxnId));
   *msg.data<TxnId>() = run_id.first;
   GetCustomSocket(0).send(msg, zmq::send_flags::none);
-
-  // Remove the redirection at broker for this txn
-  auto redirect_env = NewEnvelope();
-  redirect_env->mutable_request()->mutable_broker_redirect()->set_tag(MakeTag(run_id));
-  redirect_env->mutable_request()->mutable_broker_redirect()->set_stop(true);
-  Send(move(redirect_env), Broker::MakeChannel(config_->broker_ports_size() - 1));
 
   // Done with this txn. Remove it from the state map
   txn_states_.erase(run_id);
@@ -386,11 +355,6 @@ void Worker::SendToCoordinatingServer(const RunId& run_id) {
   }
   completed_sub_txn->set_allocated_txn(txn);
   Send(env, txn->internal().coordinating_server(), kServerChannel);
-
-  if (!config_->do_not_clean_up_txn()) {
-    // This is an intentional memory leak
-    completed_sub_txn->release_txn();
-  }
 }
 
 TransactionState& Worker::TxnState(const RunId& run_id) {

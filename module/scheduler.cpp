@@ -73,7 +73,7 @@ void Scheduler::OnInternalRequestReceived(EnvelopePtr&& env) {
 
         VLOG(2) << "Txn " << ready_txn << " became ready after resolving a deadlock";
 
-        Dispatch(ready_txn);
+        Dispatch(ready_txn, false);
       }
       break;
     }
@@ -90,51 +90,47 @@ void Scheduler::OnInternalRequestReceived(EnvelopePtr&& env) {
 // Handle responses from the workers
 bool Scheduler::OnCustomSocket() {
   auto& worker_socket = GetCustomSocket(0);
-  auto max_txns = config_->scheduler_max_txns();
+  zmq::message_t msg;
+  bool has_msg = false;
+  while (worker_socket.recv(msg, zmq::recv_flags::dontwait)) {
+    has_msg = true;
+    auto txn_id = *msg.data<TxnId>();
+    // Release locks held by this txn then dispatch the txns that become ready thanks to this release.
+    auto unblocked_txns = lock_manager_.ReleaseLocks(txn_id);
+    VLOG(2) << "Released locks of txn " << txn_id;
 
-  // TODO: If this loop is not crucial to getting high throughput, remove it. Otherwise, consider
-  // waiting for signal from the deadlock resolver here as well to avoid deadlock.
-  do {
-    zmq::message_t msg;
-    while (worker_socket.recv(msg, zmq::recv_flags::dontwait)) {
-      auto txn_id = *msg.data<TxnId>();
-      // Release locks held by this txn then dispatch the txns that become ready thanks to this release.
-      auto unblocked_txns = lock_manager_.ReleaseLocks(txn_id);
-      VLOG(2) << "Released locks of txn " << txn_id;
-
-      for (auto unblocked_txn : unblocked_txns) {
+    for (auto unblocked_txn : unblocked_txns) {
 #ifdef LOCK_MANAGER_DDR
-        auto it = active_txns_.find(unblocked_txn.first);
-        DCHECK(it != active_txns_.end());
-        it->second.SetDeadlocked(unblocked_txn.second);
-        Dispatch(unblocked_txn.first);
-#else
-        Dispatch(unblocked_txn);
-#endif
-      }
-
-      auto it = active_txns_.find(txn_id);
+      auto it = active_txns_.find(unblocked_txn.first);
       DCHECK(it != active_txns_.end());
-      auto& txn_holder = it->second;
+      it->second.SetDeadlocked(unblocked_txn.second);
+      Dispatch(unblocked_txn.first, false);
+#else
+      Dispatch(unblocked_txn, false);
+#endif
+    }
+
+    auto it = active_txns_.find(txn_id);
+    DCHECK(it != active_txns_.end());
+    auto& txn_holder = it->second;
 
 #if defined(REMASTER_PROTOCOL_SIMPLE) || defined(REMASTER_PROTOCOL_PER_KEY)
-      auto remaster_result = txn_holder.remaster_result();
-      // If a remaster transaction, trigger any unblocked txns
-      if (remaster_result.has_value()) {
-        ProcessRemasterResult(remaster_manager_.RemasterOccured(remaster_result->first, remaster_result->second));
-      }
+    auto remaster_result = txn_holder.remaster_result();
+    // If a remaster transaction, trigger any unblocked txns
+    if (remaster_result.has_value()) {
+      ProcessRemasterResult(remaster_manager_.RemasterOccured(remaster_result->first, remaster_result->second));
+    }
 #endif /* defined(REMASTER_PROTOCOL_SIMPLE) || \
           defined(REMASTER_PROTOCOL_PER_KEY) */
 
-      txn_holder.SetDone();
+    txn_holder.SetDone();
 
-      if (txn_holder.is_ready_for_gc()) {
-        active_txns_.erase(it);
-      }
+    if (txn_holder.is_ready_for_gc()) {
+      active_txns_.erase(it);
     }
-  } while (max_txns > 0 && active_txns_.size() >= max_txns);
+  }
 
-  return true;
+  return has_msg;
 }
 
 void Scheduler::ProcessTransaction(EnvelopePtr&& env) {
@@ -172,7 +168,7 @@ void Scheduler::ProcessTransaction(EnvelopePtr&& env) {
 }
 
 #if defined(REMASTER_PROTOCOL_SIMPLE) || defined(REMASTER_PROTOCOL_PER_KEY)
-void Scheduler::SendToRemasterManager(const Transaction& txn) {
+void Scheduler::SendToRemasterManager(Transaction& txn) {
   switch (remaster_manager_.VerifyMaster(txn)) {
     case VerifyMasterResult::VALID: {
       SendToLockManager(txn);
@@ -211,14 +207,16 @@ void Scheduler::ProcessRemasterResult(RemasterOccurredResult result) {
 #endif /* defined(REMASTER_PROTOCOL_SIMPLE) || \
           defined(REMASTER_PROTOCOL_PER_KEY) */
 
-void Scheduler::SendToLockManager(const Transaction& txn) {
+void Scheduler::SendToLockManager(Transaction& txn) {
   auto txn_id = txn.internal().id();
 
   VLOG(2) << "Trying to acquires locks of txn " << txn_id;
 
+  TRACE(txn.mutable_internal(), TransactionEvent::ENTER_LOCK_MANAGER);
+
   switch (lock_manager_.AcquireLocks(txn)) {
     case AcquireLocksResult::ACQUIRED:
-      Dispatch(txn_id);
+      Dispatch(txn_id, true);
       break;
     case AcquireLocksResult::ABORT:
       TriggerPreDispatchAbort(txn_id);
@@ -232,13 +230,17 @@ void Scheduler::SendToLockManager(const Transaction& txn) {
   }
 }
 
-void Scheduler::Dispatch(TxnId txn_id) {
+void Scheduler::Dispatch(TxnId txn_id, bool is_fast) {
   auto it = active_txns_.find(txn_id);
   auto& txn_holder = it->second;
 
   CHECK(!txn_holder.dispatched()) << "Txn " << txn_holder.run_id() << " has already been dispatched";
 
-  TRACE(txn_holder.txn().mutable_internal(), TransactionEvent::DISPATCHED);
+  if (is_fast) {
+    TRACE(txn_holder.txn().mutable_internal(), TransactionEvent::DISPATCHED_FAST);
+  } else {
+    TRACE(txn_holder.txn().mutable_internal(), TransactionEvent::DISPATCHED_SLOW);
+  }
 
   zmq::message_t msg(sizeof(TxnHolder*));
   *msg.data<TxnHolder*>() = &txn_holder;
@@ -282,12 +284,12 @@ void Scheduler::TriggerPreDispatchAbort(TxnId txn_id) {
   // become ready thanks to this release.
   auto unblocked_txns = lock_manager_.ReleaseLocks(txn_id);
   for (auto unblocked_txn : unblocked_txns) {
-    Dispatch(unblocked_txn);
+    Dispatch(unblocked_txn, false);
   }
 
   // Let a worker handle notifying other partitions and send back to the server.
   txn.set_status(TransactionStatus::ABORTED);
-  Dispatch(txn_id);
+  Dispatch(txn_id, false);
 }
 #endif /* LOCK_MANAGER_DDR */
 

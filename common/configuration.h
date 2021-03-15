@@ -36,7 +36,6 @@ class Configuration {
   int forwarder_max_batch_size() const;
   milliseconds sequencer_batch_duration() const;
   int sequencer_max_batch_size() const;
-  uint32_t scheduler_max_txns() const;
   uint32_t replication_factor() const;
 
   const string& local_address() const;
@@ -63,7 +62,8 @@ class Configuration {
   milliseconds ddr_interval() const;
   vector<int> cpu_pinnings(ModuleId module) const;
   bool return_dummy_txn() const;
-  bool do_not_clean_up_txn() const;
+  int recv_retries() const;
+  internal::Commands commands() const;
 
  private:
   internal::Configuration config_;

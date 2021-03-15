@@ -31,8 +31,6 @@ const size_t kLockTableSizeLimit = 1000000;
 // We never use 0 for txn id
 const TxnId kSentinelTxnId = 0;
 
-const int kRecvRetries = 1000;
-
 /****************************
  *      Statistic Keys
  ****************************/
