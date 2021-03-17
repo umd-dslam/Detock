@@ -78,8 +78,6 @@ class Worker : public NetworkedModule {
 
   void BroadcastReads(const RunId& run_id);
 
-  void SendToCoordinatingServer(const RunId& txn_id);
-
   // Precondition: txn_id must exists in txn states table
   TransactionState& TxnState(const RunId& run_id);
 

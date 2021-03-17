@@ -272,12 +272,30 @@ void Worker::Execute(const RunId& run_id) {
 }
 
 void Worker::Finish(const RunId& run_id) {
-  TRACE(TxnState(run_id).txn_holder->txn().mutable_internal(), TransactionEvent::EXIT_WORKER);
+  auto& state = TxnState(run_id);
+  auto txn = state.txn_holder->Release();
 
+  TRACE(txn->mutable_internal(), TransactionEvent::EXIT_WORKER);
+
+  // Send the txn back to the coordinating server if it is in the same region.
   // This must happen before the sending to scheduler below. Otherwise,
   // the scheduler may destroy the transaction holder before we can
   // send the transaction to the server.
-  SendToCoordinatingServer(run_id);
+  auto coordinator = txn->internal().coordinating_server();
+  if (config_->UnpackMachineId(coordinator).first == config_->local_replica()) {
+    if (config_->return_dummy_txn()) {
+      txn->mutable_keys()->clear();
+      txn->mutable_code()->clear();
+      txn->mutable_remaster()->Clear();
+    }
+    Envelope env;
+    auto completed_sub_txn = env.mutable_request()->mutable_completed_subtxn();
+    completed_sub_txn->set_partition(config_->local_partition());
+    completed_sub_txn->set_allocated_txn(txn);
+    Send(env, txn->internal().coordinating_server(), kServerChannel);
+  } else {
+    delete txn;
+  }
 
   // Notify the scheduler that we're done
   zmq::message_t msg(sizeof(TxnId));
@@ -336,25 +354,6 @@ void Worker::BroadcastReads(const RunId& run_id) {
   // Try to use a different broker thread other than the default one so that
   // a worker would have an exclusive pathway for information passing
   Send(env, destinations, MakeTag(run_id), config_->broker_ports_size() - 1);
-}
-
-void Worker::SendToCoordinatingServer(const RunId& run_id) {
-  auto& state = TxnState(run_id);
-  auto txn_holder = state.txn_holder;
-
-  // Send the txn back to the coordinating server
-  Envelope env;
-  auto completed_sub_txn = env.mutable_request()->mutable_completed_subtxn();
-  completed_sub_txn->set_partition(config_->local_partition());
-
-  auto txn = txn_holder->Release();
-  if (config_->return_dummy_txn()) {
-    txn->mutable_keys()->clear();
-    txn->mutable_code()->clear();
-    txn->mutable_remaster()->Clear();
-  }
-  completed_sub_txn->set_allocated_txn(txn);
-  Send(env, txn->internal().coordinating_server(), kServerChannel);
 }
 
 TransactionState& Worker::TxnState(const RunId& run_id) {
