@@ -55,7 +55,7 @@ Configuration::Configuration(const internal::Configuration& config, const string
   CHECK_LE(config_.broker_ports_size(), kMaxChannel - kBrokerChannel)
       << "Maximum number of broker threads is " << kMaxChannel - kBrokerChannel;
 
-  bool local_address_is_valid = false;
+  bool local_address_is_valid = local_address_.empty();
   for (int r = 0; r < config_.replicas_size(); r++) {
     auto& replica = config_.replicas(r);
     CHECK_EQ((uint32_t)replica.addresses_size(), config_.num_partitions())
@@ -81,21 +81,18 @@ Configuration::Configuration(const internal::Configuration& config, const string
     auto latency_str = Split(config_.replica_latency(local_replica_), ",");
     CHECK_EQ(latency_str.size(), config_.replicas_size()) << "Number of latency values must match number of replicas";
     for (size_t i = 0; i < latency_str.size(); i++) {
-      if (i != local_replica_) {
-        auto lat = std::stoul(latency_str[i]);
-        latency_.push_back(lat);
-        ordered_latency_.emplace_back(lat, i);
-      }
+      auto lat = std::stoul(latency_str[i]);
+      latency_.push_back(lat);
+      ordered_latency_.emplace_back(lat, i);
     }
   } else {
     for (int i = 0; i < config_.replicas_size(); i++) {
-      if (i != static_cast<int>(local_replica_)) {
-        latency_.push_back(0);
-        ordered_latency_.emplace_back(0, i);
-      }
+      latency_.push_back(0);
+      ordered_latency_.emplace_back(0, i);
     }
   }
-  std::sort(ordered_latency_.begin(), ordered_latency_.end());
+  std::swap(ordered_latency_[0], ordered_latency_[local_replica_]);
+  std::sort(ordered_latency_.begin() + 1, ordered_latency_.end());
 }
 
 const string& Configuration::protocol() const { return config_.protocol(); }
