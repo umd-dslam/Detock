@@ -116,7 +116,7 @@ bool Worker::OnCustomSocket() {
   auto& txn = txn_holder->txn();
   auto run_id = txn_holder->run_id();
 
-  TRACE(txn.mutable_internal(), TransactionEvent::ENTER_WORKER);
+  RECORD(txn.mutable_internal(), TransactionEvent::ENTER_WORKER);
 
   // Create a state for the new transaction
   // TODO: Clean up txns that later got into a deadlock
@@ -274,7 +274,7 @@ void Worker::Finish(const RunId& run_id) {
   auto& state = TxnState(run_id);
   auto txn = state.txn_holder->Release();
 
-  TRACE(txn->mutable_internal(), TransactionEvent::EXIT_WORKER);
+  RECORD(txn->mutable_internal(), TransactionEvent::EXIT_WORKER);
 
   // Send the txn back to the coordinating server if it is in the same region.
   // This must happen before the sending to scheduler below. Otherwise,

@@ -93,8 +93,8 @@ void MetricsRepositoryManager::RegisterCurrentThread() {
 
 void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
   try {
-    CSVWriter txn_events_csv(dir + "txn_events.csv", {"event_id", "time", "partition", "replica"});
-    CSVWriter event_names_csv(dir + "event_names.csv", {"id", "event"});
+    CSVWriter txn_events_csv(dir + "/txn_events.csv", {"event_id", "time", "partition", "replica"});
+    CSVWriter event_names_csv(dir + "/event_names.csv", {"id", "event"});
 
     std::list<TransactionEventMetrics::Data> txn_events_data;
     std::lock_guard<std::mutex> guard(mut_);
@@ -111,7 +111,7 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
     for (auto e : event_names) {
       event_names_csv << e.first << e.second << csvendl;
     }
-    LOG(INFO) << "Metrics written to: \"" << dir << "\"";
+    LOG(INFO) << "Metrics written to: \"" << dir << "/\"";
   } catch (std::runtime_error& e) {
     LOG(ERROR) << e.what();
   }
@@ -122,17 +122,17 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
  */
 
 uint32_t gLocalMachineId = 0;
-uint64_t gDisabledTracingEvents = 0;
+uint64_t gDisabledEvents = 0;
 
-void InitializeTracing(const ConfigurationPtr& config) {
+void InitializeRecording(const ConfigurationPtr& config) {
   gLocalMachineId = config->local_machine_id();
-  auto events = config->disabled_tracing_events();
+  auto events = config->disabled_events();
   for (auto e : events) {
     if (e == TransactionEvent::ALL) {
-      gDisabledTracingEvents = ~0;
+      gDisabledEvents = ~0;
       return;
     }
-    gDisabledTracingEvents |= (1 << e);
+    gDisabledEvents |= (1 << e);
   }
 }
 
