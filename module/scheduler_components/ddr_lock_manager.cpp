@@ -37,7 +37,7 @@ class DeadlockResolver : public NetworkedModule {
  public:
   DeadlockResolver(DDRLockManager& lock_manager, const ConfigurationPtr& config, const shared_ptr<Broker>& broker,
                    Channel signal_chan, optional<milliseconds> poll_timeout)
-      : NetworkedModule("DeadlockResolver", broker, kDeadlockResolverChannel, poll_timeout),
+      : NetworkedModule("DeadlockResolver", broker, kDeadlockResolverChannel, nullptr, poll_timeout),
         lm_(lock_manager),
         config_(config),
         signal_chan_(signal_chan) {
