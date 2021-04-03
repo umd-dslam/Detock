@@ -35,13 +35,13 @@ namespace slog {
  */
 class DeadlockResolver : public NetworkedModule {
  public:
-  DeadlockResolver(DDRLockManager& lock_manager, const ConfigurationPtr& config, const shared_ptr<Broker>& broker,
+  DeadlockResolver(DDRLockManager& lock_manager, const shared_ptr<Broker>& broker,
                    Channel signal_chan, optional<milliseconds> poll_timeout)
       : NetworkedModule("DeadlockResolver", broker, kDeadlockResolverChannel, nullptr, poll_timeout),
         lm_(lock_manager),
-        config_(config),
+        config_(broker->config()),
         signal_chan_(signal_chan) {
-    partitioned_graph_.resize(config->num_partitions());
+    partitioned_graph_.resize(config_->num_partitions());
   }
 
   void OnInternalRequestReceived(EnvelopePtr&& env) final {
@@ -487,9 +487,9 @@ vector<TxnId> LockQueueTail::AcquireWriteLock(TxnId txn_id) {
   return deps;
 }
 
-void DDRLockManager::InitializeDeadlockResolver(const ConfigurationPtr& config, const shared_ptr<Broker>& broker,
+void DDRLockManager::InitializeDeadlockResolver(const shared_ptr<Broker>& broker,
                                                 Channel signal_chan, optional<milliseconds> poll_timeout) {
-  dl_resolver_ = MakeRunnerFor<DeadlockResolver>(*this, config, broker, signal_chan, poll_timeout);
+  dl_resolver_ = MakeRunnerFor<DeadlockResolver>(*this, broker, signal_chan, poll_timeout);
 }
 
 void DDRLockManager::StartDeadlockResolver() {

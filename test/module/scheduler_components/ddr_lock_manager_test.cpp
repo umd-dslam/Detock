@@ -237,7 +237,7 @@ class DDRLockManagerWithResolverTest : public ::testing::Test {
       if (ddr_interval > 0) {
         poll_timeout = kTestModuleTimeout;
       }
-      lm.InitializeDeadlockResolver(config, broker, kSchedulerChannel, poll_timeout);
+      lm.InitializeDeadlockResolver(broker, kSchedulerChannel, poll_timeout);
     }
 
     return configs;

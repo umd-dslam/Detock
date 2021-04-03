@@ -82,13 +82,12 @@ class DDRLockManager {
  public:
   /**
    * Initializes the deadlock resolver
-   * @param config       Config object
    * @param broker       A broker to help the resolver to send/receive external messages
    * @param signal_chan  Channel to receive signal from the deadlock resolver when there are new ready txns after
    *                     resolving deadlocks
    * @param poll_timeout Timeout for polling in the resolver
    */
-  void InitializeDeadlockResolver(const ConfigurationPtr& config, const shared_ptr<Broker>& broker, Channel signal_chan,
+  void InitializeDeadlockResolver(const shared_ptr<Broker>& broker, Channel signal_chan,
                                   optional<milliseconds> poll_timeout = kModuleTimeout);
 
   /**
