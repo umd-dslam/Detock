@@ -44,7 +44,7 @@ struct ResultWriters {
 
   ResultWriters()
       : txns(FLAGS_out_dir + "/transactions.csv", kTxnColumns),
-        events(FLAGS_out_dir + "/events.csv", kEventsColumns),
+        events(FLAGS_out_dir + "/txn_events.csv", kEventsColumns),
         event_names(FLAGS_out_dir + "/event_names.csv", kEventNamesColumns),
         summary(FLAGS_out_dir + "/summary.csv", kSummaryColumns) {}
 
@@ -220,9 +220,8 @@ int main(int argc, char* argv[]) {
       CHECK(info.txn != nullptr);
       auto& txn_internal = info.txn->internal();
       writers->txns << info.profile.client_txn_id << txn_internal.id() << info.profile.is_multi_home
-                    << info.profile.is_multi_partition
-                    << duration_cast<microseconds>(info.sent_at.time_since_epoch()).count()
-                    << duration_cast<microseconds>(info.recv_at.time_since_epoch()).count() << csvendl;
+                    << info.profile.is_multi_partition << info.sent_at.time_since_epoch().count()
+                    << info.recv_at.time_since_epoch().count() << csvendl;
 
       for (int i = 0; i < txn_internal.events_size(); i++) {
         auto event = txn_internal.events(i);
