@@ -19,10 +19,10 @@ namespace {
 uint32_t MakeTag(const RunId& run_id) { return run_id.first * 10 + run_id.second; }
 }  // namespace
 
-using std::make_unique;
 using internal::Envelope;
 using internal::Request;
 using internal::Response;
+using std::make_unique;
 
 Worker::Worker(const std::shared_ptr<Broker>& broker, Channel channel, const shared_ptr<Storage<Key, Record>>& storage,
                const MetricsRepositoryManagerPtr& metrics_manager, std::chrono::milliseconds poll_timeout)

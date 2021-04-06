@@ -36,8 +36,9 @@ namespace slog {
 class DeadlockResolver : public NetworkedModule {
  public:
   DeadlockResolver(DDRLockManager& lock_manager, const shared_ptr<Broker>& broker,
-                   Channel signal_chan, optional<milliseconds> poll_timeout)
-      : NetworkedModule("DeadlockResolver", broker, kDeadlockResolverChannel, nullptr, poll_timeout),
+                   const MetricsRepositoryManagerPtr& metrics_manager, Channel signal_chan,
+                   optional<milliseconds> poll_timeout)
+      : NetworkedModule("DeadlockResolver", broker, kDeadlockResolverChannel, metrics_manager, poll_timeout),
         lm_(lock_manager),
         config_(broker->config()),
         signal_chan_(signal_chan) {
@@ -62,6 +63,8 @@ class DeadlockResolver : public NetworkedModule {
   void Initialize() final { ScheduleNextRun(); }
 
   void Run() {
+    auto start_time = std::chrono::steady_clock::now();
+
     BuildLocalGraph();
 
     BroadcastLocalGraph();
@@ -77,6 +80,11 @@ class DeadlockResolver : public NetworkedModule {
     std::reverse(topo_order_.begin(), topo_order_.end());
 
     CheckAndResolveDeadlocks();
+
+    auto runtime = (std::chrono::steady_clock::now() - start_time).count();
+    per_thread_metrics_repo->RecordDeadlockResolver(runtime, unstable_total_graph_sz_, stable_total_graph_sz_,
+                                                    unstable_local_graph_sz_, stable_local_graph_sz_,
+                                                    deadlocks_resolved_);
   }
 
  private:
@@ -85,6 +93,12 @@ class DeadlockResolver : public NetworkedModule {
   Channel signal_chan_;
 
   unordered_map<TxnId, DDRLockManager::TxnInfo> txn_info_;
+
+  size_t unstable_total_graph_sz_;
+  size_t stable_total_graph_sz_;
+  size_t unstable_local_graph_sz_;
+  size_t stable_local_graph_sz_;
+  size_t deadlocks_resolved_;
 
   struct Node {
     explicit Node(TxnId vertex, int num_partitions, bool deadlocked, bool is_stable)
@@ -128,7 +142,7 @@ class DeadlockResolver : public NetworkedModule {
 
     queue<TxnId> unstables;
 
-    // Construct the local graph
+    // Construct the (potentially unstable) local graph
     auto& local_graph = partitioned_graph_[config_->local_partition()];
     local_graph.clear();
     for (const auto& [vertex, info] : txn_info_) {
@@ -161,6 +175,8 @@ class DeadlockResolver : public NetworkedModule {
       }
     }
 
+    unstable_local_graph_sz_ = local_graph.size();
+
     // Remove unstable vertices. Dangling edges may exist after this
     for (auto it = local_graph.begin(); it != local_graph.end();) {
       if (!it->second.is_stable) {
@@ -169,6 +185,8 @@ class DeadlockResolver : public NetworkedModule {
         ++it;
       }
     }
+
+    stable_local_graph_sz_ = local_graph.size();
   }
 
   void BroadcastLocalGraph() {
@@ -194,7 +212,7 @@ class DeadlockResolver : public NetworkedModule {
     }
     Send(move(env), destinations, kDeadlockResolverChannel);
 
-    VLOG_EVERY_N(3, 20) << "Local graph is being broadcasted";
+    VLOG_EVERY_N(3, 100) << "Local graph is being broadcasted";
   }
 
   struct MergedVertexInfo {
@@ -251,6 +269,8 @@ class DeadlockResolver : public NetworkedModule {
       }
     }
 
+    unstable_total_graph_sz_ = total_graph_.size();
+
     // Remove unstable vertices
     for (auto it = total_graph_.begin(); it != total_graph_.end();) {
       if (!it->second.is_stable) {
@@ -259,6 +279,8 @@ class DeadlockResolver : public NetworkedModule {
         ++it;
       }
     }
+
+    stable_total_graph_sz_ = total_graph_.size();
   }
 
   void FindTopoOrderAndBuildTransposeGraph(Node& node) {
@@ -279,8 +301,8 @@ class DeadlockResolver : public NetworkedModule {
 
   void CheckAndResolveDeadlocks() {
     // num_waiting_for field is used to store the number of other txns that a txn is waiting
-    // for. To avoid race condition (specifically, lost writes) because the deadlock resolver is
-    // running in parallel to the lock manager, here, num_waiting_for field is used to record the
+    // for. To avoid race condition (specifically, lost writes) due to deadlock resolver
+    // running in parallel to the lock manager, num_waiting_for field is used to record the
     // amount that num_waiting_for would increase/decrease after resolving deadlocks. At the end,
     // of the deadlock resolving process, this value will be added to the current num_waiting_for
     // in the lock manager
@@ -292,7 +314,7 @@ class DeadlockResolver : public NetworkedModule {
       p.second.is_visited = false;
     }
 
-    int num_sccs = 0;
+    deadlocks_resolved_ = 0;
     // Form the strongly connected components. This time, We traverse on the tranpose graph.
     // For each component with more than 1 member, perform deterministic deadlock resolving
     for (auto vertex : topo_order_) {
@@ -304,7 +326,7 @@ class DeadlockResolver : public NetworkedModule {
         if (scc_.size() > 1) {
           // If this component is stable and has more than 1 element, resolve the deadlock
           ResolveDeadlock();
-          num_sccs++;
+          deadlocks_resolved_++;
         }
       }
     }
@@ -367,8 +389,8 @@ class DeadlockResolver : public NetworkedModule {
       Send(move(env), signal_chan_);
     }
 
-    if (num_sccs) {
-      VLOG(3) << "Deadlock group(s) found and resolved: " << num_sccs;
+    if (deadlocks_resolved_) {
+      VLOG(3) << "Deadlock group(s) found and resolved: " << deadlocks_resolved_;
       if (ready_txns.empty()) {
         VLOG(3) << "No txn becomes ready after resolving deadlock";
       } else {
@@ -488,8 +510,9 @@ vector<TxnId> LockQueueTail::AcquireWriteLock(TxnId txn_id) {
 }
 
 void DDRLockManager::InitializeDeadlockResolver(const shared_ptr<Broker>& broker,
-                                                Channel signal_chan, optional<milliseconds> poll_timeout) {
-  dl_resolver_ = MakeRunnerFor<DeadlockResolver>(*this, broker, signal_chan, poll_timeout);
+                                                const MetricsRepositoryManagerPtr& metrics_manager, Channel signal_chan,
+                                                optional<milliseconds> poll_timeout) {
+  dl_resolver_ = MakeRunnerFor<DeadlockResolver>(*this, broker, metrics_manager, signal_chan, poll_timeout);
 }
 
 void DDRLockManager::StartDeadlockResolver() {

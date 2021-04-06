@@ -18,6 +18,7 @@
 #include "common/configuration.h"
 #include "common/constants.h"
 #include "common/json_utils.h"
+#include "common/metrics.h"
 #include "common/txn_holder.h"
 #include "common/types.h"
 #include "module/base/networked_module.h"
@@ -87,8 +88,8 @@ class DDRLockManager {
    *                     resolving deadlocks
    * @param poll_timeout Timeout for polling in the resolver
    */
-  void InitializeDeadlockResolver(const shared_ptr<Broker>& broker, Channel signal_chan,
-                                  optional<milliseconds> poll_timeout = kModuleTimeout);
+  void InitializeDeadlockResolver(const shared_ptr<Broker>& broker, const MetricsRepositoryManagerPtr& metrics_manager,
+                                  Channel signal_chan, optional<milliseconds> poll_timeout = kModuleTimeout);
 
   /**
    * Starts the deadlock resolver in a new thread

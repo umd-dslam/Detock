@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <list>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -9,6 +10,7 @@
 
 #include "common/configuration.h"
 #include "common/spin_latch.h"
+#include "glog/logging.h"
 #include "proto/transaction.pb.h"
 
 namespace slog {
@@ -16,24 +18,118 @@ namespace slog {
 constexpr uint32_t kSampleMaskSize = 1 << 8;
 using sample_mask_t = std::array<bool, kSampleMaskSize>;
 
-class TransactionEventMetrics;
+class Sampler {
+  sample_mask_t sample_mask_;
+  std::vector<uint8_t> sample_count_;
+
+ public:
+  Sampler(const sample_mask_t& sample_mask, size_t num_keys) : sample_mask_(sample_mask), sample_count_(num_keys, 0) {}
+
+  bool IsChosen(size_t key) {
+    DCHECK_LT(sample_count_[key], sample_mask_.size());
+    return sample_mask_[sample_count_[key]++];
+  }
+};
+
+class TransactionEventMetrics {
+ public:
+  TransactionEventMetrics(const sample_mask_t& sample_mask, uint32_t local_replica, uint32_t local_partition)
+      : sampler_(sample_mask, TransactionEvent_descriptor()->value_count()),
+        local_replica_(local_replica),
+        local_partition_(local_partition) {}
+
+  std::chrono::system_clock::time_point RecordEvent(TransactionEvent event) {
+    auto now = std::chrono::system_clock::now();
+    auto sample_index = static_cast<size_t>(event);
+    if (sampler_.IsChosen(sample_index)) {
+      txn_events_.push_back({.event = event,
+                             .time = now.time_since_epoch().count(),
+                             .partition = local_partition_,
+                             .replica = local_replica_});
+    }
+    return now;
+  }
+
+  struct Data {
+    TransactionEvent event;
+    int64_t time;  // nanosecond since epoch
+    uint32_t partition;
+    uint32_t replica;
+  };
+
+  std::list<Data>& data() { return txn_events_; }
+
+ private:
+  Sampler sampler_;
+  uint32_t local_replica_;
+  uint32_t local_partition_;
+  std::list<Data> txn_events_;
+};
+
+class DeadlockResolverMetrics {
+ public:
+  DeadlockResolverMetrics(const sample_mask_t& sample_mask, uint32_t local_replica, uint32_t local_partition)
+      : sampler_(sample_mask, 1), local_replica_(local_replica), local_partition_(local_partition) {}
+
+  void Record(int64_t runtime, size_t unstable_total_graph_sz, size_t stable_total_graph_sz,
+              size_t unstable_local_graph_sz, size_t stable_local_graph_sz, size_t deadlocks_resolved) {
+    if (sampler_.IsChosen(0)) {
+      data_.push_back({.time = std::chrono::system_clock::now().time_since_epoch().count(),
+                       .partition = local_partition_,
+                       .replica = local_replica_,
+                       .runtime = runtime,
+                       .unstable_total_graph_sz = unstable_total_graph_sz,
+                       .stable_total_graph_sz = stable_total_graph_sz,
+                       .unstable_local_graph_sz = unstable_local_graph_sz,
+                       .stable_local_graph_sz = stable_local_graph_sz,
+                       .deadlocks_resolved = deadlocks_resolved});
+    }
+  }
+
+  struct Data {
+    int64_t time;  // nanosecond since epoch
+    uint32_t partition;
+    uint32_t replica;
+    int64_t runtime;  // nanosecond
+    size_t unstable_total_graph_sz;
+    size_t stable_total_graph_sz;
+    size_t unstable_local_graph_sz;
+    size_t stable_local_graph_sz;
+    size_t deadlocks_resolved;
+  };
+
+  std::list<Data>& data() { return data_; }
+
+ private:
+  Sampler sampler_;
+  uint32_t local_replica_;
+  uint32_t local_partition_;
+  std::list<Data> data_;
+};
 
 /**
  * Repository of metrics per thread
  */
 class MetricsRepository {
  public:
+  struct AllMetrics {
+    TransactionEventMetrics txn_event_metrics;
+    DeadlockResolverMetrics deadlock_resolver_metrics;
+  };
+
   MetricsRepository(const ConfigurationPtr& config, const sample_mask_t& sample_mask);
 
   std::chrono::system_clock::time_point RecordTxnEvent(TransactionEvent event);
-  std::unique_ptr<TransactionEventMetrics> Reset();
+  void RecordDeadlockResolver(int64_t runtime, size_t unstable_total_graph_sz, size_t stable_total_graph_sz,
+                              size_t unstable_local_graph_sz, size_t stable_local_graph_sz, size_t deadlocks_resolved);
+  std::unique_ptr<AllMetrics> Reset();
 
  private:
   const ConfigurationPtr config_;
   sample_mask_t sample_mask_;
   SpinLatch latch_;
 
-  std::unique_ptr<TransactionEventMetrics> txn_event_metrics_;
+  std::unique_ptr<AllMetrics> metrics_;
 };
 
 extern thread_local std::shared_ptr<MetricsRepository> per_thread_metrics_repo;

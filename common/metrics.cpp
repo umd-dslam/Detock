@@ -1,77 +1,44 @@
 #include "metrics.h"
 
 #include <algorithm>
-#include <list>
 #include <random>
 
 #include "common/csv_writer.h"
 #include "common/proto_utils.h"
-#include "glog/logging.h"
 #include "proto/internal.pb.h"
 
 namespace slog {
-
-using time_point_t = std::chrono::system_clock::time_point;
-
-class TransactionEventMetrics {
- public:
-  TransactionEventMetrics(const sample_mask_t& sample_mask, uint32_t local_replica, uint32_t local_partition)
-      : sample_mask_(sample_mask),
-        local_replica_(local_replica),
-        local_partition_(local_partition),
-        sample_count_(TransactionEvent_descriptor()->value_count(), 0) {}
-
-  time_point_t RecordEvent(TransactionEvent event) {
-    auto now = std::chrono::system_clock::now();
-    auto sample_index = static_cast<size_t>(event);
-    DCHECK_LT(sample_count_[sample_index], sample_mask_.size());
-    if (sample_mask_[sample_count_[sample_index]++]) {
-      txn_events_.push_back({.event = event,
-                             .time = now.time_since_epoch().count(),
-                             .partition = local_partition_,
-                             .replica = local_replica_});
-    }
-    return now;
-  }
-
-  struct Data {
-    TransactionEvent event;
-    int64_t time;
-    uint32_t partition;
-    uint32_t replica;
-  };
-
-  std::list<Data>& data() { return txn_events_; }
-
- private:
-  sample_mask_t sample_mask_;
-  uint32_t local_replica_;
-  uint32_t local_partition_;
-  std::vector<uint8_t> sample_count_;
-  std::list<Data> txn_events_;
-};
 
 /**
  *  MetricsRepository
  */
 
 MetricsRepository::MetricsRepository(const ConfigurationPtr& config, const sample_mask_t& sample_mask)
-    : config_(config),
-      sample_mask_(sample_mask),
-      txn_event_metrics_(new TransactionEventMetrics(sample_mask, config->local_replica(), config->local_partition())) {
+    : config_(config), sample_mask_(sample_mask) {
+  Reset();
 }
 
-time_point_t MetricsRepository::RecordTxnEvent(TransactionEvent event) {
+std::chrono::system_clock::time_point MetricsRepository::RecordTxnEvent(TransactionEvent event) {
   std::lock_guard<SpinLatch> guard(latch_);
-  return txn_event_metrics_->RecordEvent(event);
+  return metrics_->txn_event_metrics.RecordEvent(event);
 }
 
-std::unique_ptr<TransactionEventMetrics> MetricsRepository::Reset() {
-  auto new_txn_event_metrics =
-      std::make_unique<TransactionEventMetrics>(sample_mask_, config_->local_replica(), config_->local_partition());
+void MetricsRepository::RecordDeadlockResolver(int64_t runtime, size_t unstable_total_graph_sz,
+                                               size_t stable_total_graph_sz, size_t local_graph_sz,
+                                               size_t stable_local_graph_sz, size_t deadlocks_resolved) {
   std::lock_guard<SpinLatch> guard(latch_);
-  txn_event_metrics_.swap(new_txn_event_metrics);
-  return new_txn_event_metrics;
+  return metrics_->deadlock_resolver_metrics.Record(runtime, unstable_total_graph_sz, stable_total_graph_sz,
+                                                    local_graph_sz, stable_local_graph_sz, deadlocks_resolved);
+}
+
+std::unique_ptr<MetricsRepository::AllMetrics> MetricsRepository::Reset() {
+  std::unique_ptr<MetricsRepository::AllMetrics> new_metrics(new MetricsRepository::AllMetrics(
+      {.txn_event_metrics = TransactionEventMetrics(sample_mask_, config_->local_replica(), config_->local_partition()),
+       .deadlock_resolver_metrics =
+           DeadlockResolverMetrics(sample_mask_, config_->local_replica(), config_->local_partition())}));
+  std::lock_guard<SpinLatch> guard(latch_);
+  metrics_.swap(new_metrics);
+  return new_metrics;
 }
 
 thread_local std::shared_ptr<MetricsRepository> per_thread_metrics_repo;
@@ -98,17 +65,22 @@ void MetricsRepositoryManager::RegisterCurrentThread() {
 }
 
 void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
-  try {
-    CSVWriter txn_events_csv(dir + "/txn_events.csv", {"event_id", "time", "partition", "replica"});
-    CSVWriter event_names_csv(dir + "/event_names.csv", {"id", "event"});
-
-    std::list<TransactionEventMetrics::Data> txn_events_data;
+  // Aggregate metrics
+  std::list<TransactionEventMetrics::Data> txn_events_data;
+  std::list<DeadlockResolverMetrics::Data> deadlock_resolver_data;
+  {
     std::lock_guard<std::mutex> guard(mut_);
     for (auto& kv : metrics_repos_) {
       auto metrics = kv.second->Reset();
-      txn_events_data.splice(txn_events_data.end(), metrics->data());
+      txn_events_data.splice(txn_events_data.end(), metrics->txn_event_metrics.data());
+      deadlock_resolver_data.splice(deadlock_resolver_data.end(), metrics->deadlock_resolver_metrics.data());
     }
+  }
 
+  // Write metrics to disk
+  try {
+    CSVWriter txn_events_csv(dir + "/txn_events.csv", {"event_id", "time", "partition", "replica"});
+    CSVWriter event_names_csv(dir + "/event_names.csv", {"id", "event"});
     std::unordered_map<int, string> event_names;
     for (const auto& data : txn_events_data) {
       txn_events_csv << static_cast<int>(data.event) << data.time << data.partition << data.replica << csvendl;
@@ -117,6 +89,18 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
     for (auto e : event_names) {
       event_names_csv << e.first << e.second << csvendl;
     }
+
+    CSVWriter deadlock_resolver_csv(
+        dir + "/deadlock_resolver.csv",
+        {"time", "partition", "replica", "runtime", "unstable_total_graph_sz", "stable_total_graph_sz",
+         "unstable_local_graph_sz", "stable_local_graph_sz", "deadlocks_resolved"});
+    for (const auto& data : deadlock_resolver_data) {
+      deadlock_resolver_csv << data.time << data.partition << data.replica << data.runtime
+                            << data.unstable_total_graph_sz << data.stable_total_graph_sz
+                            << data.unstable_local_graph_sz << data.stable_local_graph_sz << data.deadlocks_resolved
+                            << csvendl;
+    }
+
     LOG(INFO) << "Metrics written to: \"" << dir << "/\"";
   } catch (std::runtime_error& e) {
     LOG(ERROR) << e.what();
