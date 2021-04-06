@@ -82,9 +82,12 @@ class DeadlockResolver : public NetworkedModule {
     CheckAndResolveDeadlocks();
 
     auto runtime = (std::chrono::steady_clock::now() - start_time).count();
-    per_thread_metrics_repo->RecordDeadlockResolver(runtime, unstable_total_graph_sz_, stable_total_graph_sz_,
-                                                    unstable_local_graph_sz_, stable_local_graph_sz_,
-                                                    deadlocks_resolved_);
+
+    if (per_thread_metrics_repo != nullptr) {
+      per_thread_metrics_repo->RecordDeadlockResolver(runtime, unstable_total_graph_sz_, stable_total_graph_sz_,
+                                                      unstable_local_graph_sz_, stable_local_graph_sz_,
+                                                      deadlocks_resolved_);
+    }
   }
 
  private:
