@@ -8,7 +8,6 @@
 
 #include <atomic>
 #include <list>
-#include <mutex>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
@@ -19,6 +18,7 @@
 #include "common/constants.h"
 #include "common/json_utils.h"
 #include "common/metrics.h"
+#include "common/spin_latch.h"
 #include "common/txn_holder.h"
 #include "common/types.h"
 #include "module/base/networked_module.h"
@@ -164,10 +164,10 @@ class DDRLockManager {
 
   unordered_map<TxnId, TxnInfo> txn_info_;
   unordered_map<KeyReplica, LockQueueTail> lock_table_;
-  mutable std::mutex mut_txn_info_;
+  mutable SpinLatch latch_txn_info_;
 
   vector<TxnId> ready_txns_;
-  std::mutex mut_ready_txns_;
+  SpinLatch latch_ready_txns_;
 
   // For stats
   std::atomic<long> num_deadlocks_resolved_ = 0;

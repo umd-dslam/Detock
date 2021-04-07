@@ -11,7 +11,6 @@ using std::lock_guard;
 using std::make_pair;
 using std::make_unique;
 using std::move;
-using std::mutex;
 using std::optional;
 using std::queue;
 using std::shared_ptr;
@@ -139,7 +138,7 @@ class DeadlockResolver : public NetworkedModule {
   void BuildLocalGraph() {
     // Take a snapshot of the txn info in the lock manager
     {
-      lock_guard<mutex> guard(lm_.mut_txn_info_);
+      lock_guard<SpinLatch> guard(lm_.latch_txn_info_);
       txn_info_ = lm_.txn_info_;
     }
 
@@ -349,7 +348,7 @@ class DeadlockResolver : public NetworkedModule {
     vector<TxnId> ready_txns;
     // Update the txn info table in the lock manager with deadlock-free dependencies if needed
     if (!to_be_updated.empty()) {
-      lock_guard<mutex> guard(lm_.mut_txn_info_);
+      lock_guard<SpinLatch> guard(lm_.latch_txn_info_);
 
       for (auto txn_id : to_be_updated) {
         auto new_txn_it = txn_info_.find(txn_id);
@@ -382,7 +381,7 @@ class DeadlockResolver : public NetworkedModule {
     if (!ready_txns.empty()) {
       // Update the ready txns list in the lock manager
       {
-        lock_guard<mutex> guard(lm_.mut_ready_txns_);
+        lock_guard<SpinLatch> guard(lm_.latch_ready_txns_);
         lm_.ready_txns_.insert(lm_.ready_txns_.end(), ready_txns.begin(), ready_txns.end());
       }
 
@@ -539,7 +538,7 @@ bool DDRLockManager::ResolveDeadlock(bool recv_remote_message, bool resolve_dead
 }
 
 vector<TxnId> DDRLockManager::GetReadyTxns() {
-  lock_guard<mutex> guard(mut_ready_txns_);
+  lock_guard<SpinLatch> guard(latch_ready_txns_);
   auto ret = ready_txns_;
   ready_txns_.clear();
   return ret;
@@ -585,7 +584,7 @@ AcquireLocksResult DDRLockManager::AcquireLocks(const Transaction& txn) {
   auto last = std::unique(blocking_txns.begin(), blocking_txns.end());
 
   {
-    lock_guard<mutex> guard(mut_txn_info_);
+    lock_guard<SpinLatch> guard(latch_txn_info_);
     // A remaster txn only has one key K but it acquires locks on (K, RO) and (K, RN)
     // where RO and RN are the old and new region respectively.
     auto ins = txn_info_.try_emplace(txn_id, txn_id, txn.internal().involved_partitions_size(),
@@ -618,7 +617,7 @@ AcquireLocksResult DDRLockManager::AcquireLocks(const Transaction& txn) {
 }
 
 vector<pair<TxnId, bool>> DDRLockManager::ReleaseLocks(TxnId txn_id) {
-  lock_guard<mutex> guard(mut_txn_info_);
+  lock_guard<SpinLatch> guard(latch_txn_info_);
 
   auto txn_info_it = txn_info_.find(txn_id);
   if (txn_info_it == txn_info_.end()) {
@@ -677,7 +676,7 @@ void DDRLockManager::GetStats(rapidjson::Document& stats, uint32_t level) const 
   stats.AddMember(StringRef(LOCK_MANAGER_TYPE), 1, alloc);
   stats.AddMember(StringRef(NUM_DEADLOCKS_RESOLVED), num_deadlocks_resolved_.load(), alloc);
   {
-    lock_guard<mutex> guard(mut_txn_info_);
+    lock_guard<SpinLatch> guard(latch_txn_info_);
     stats.AddMember(StringRef(NUM_TXNS_WAITING_FOR_LOCK), txn_info_.size(), alloc);
     if (level >= 1) {
       rapidjson::Value waited_by_graph(rapidjson::kArrayType);
