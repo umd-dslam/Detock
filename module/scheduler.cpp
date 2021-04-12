@@ -68,12 +68,10 @@ void Scheduler::OnInternalRequestReceived(EnvelopePtr&& env) {
         auto it = active_txns_.find(ready_txn);
         DCHECK(it != active_txns_.end());
 
-        // Txns coming from the ready txns list are those used to get into deadlocks
-        it->second.SetDeadlocked(true);
-
         VLOG(2) << "Txn " << ready_txn << " became ready after resolving a deadlock";
 
-        Dispatch(ready_txn, false);
+        // The ready txns list contains txns that got into a resolved deadlock
+        Dispatch(ready_txn, true /* deadlocked */, false /* is_fast */);
       }
       break;
     }
@@ -103,10 +101,9 @@ bool Scheduler::OnCustomSocket() {
 #ifdef LOCK_MANAGER_DDR
       auto it = active_txns_.find(unblocked_txn.first);
       DCHECK(it != active_txns_.end());
-      it->second.SetDeadlocked(unblocked_txn.second);
-      Dispatch(unblocked_txn.first, false);
+      Dispatch(unblocked_txn.first, unblocked_txn.second /* deadlocked */, false /* is_fast */);
 #else
-      Dispatch(unblocked_txn, false);
+      Dispatch(unblocked_txn, false /* deadlocked */, false /* is_fast */);
 #endif
     }
 
@@ -218,7 +215,7 @@ void Scheduler::SendToLockManager(Transaction& txn) {
 
   switch (lock_manager_.AcquireLocks(txn)) {
     case AcquireLocksResult::ACQUIRED:
-      Dispatch(txn_id, true);
+      Dispatch(txn_id, false /* deadlocked */, true /* is_fast */);
       break;
     case AcquireLocksResult::ABORT:
       TriggerPreDispatchAbort(txn_id);
@@ -232,11 +229,16 @@ void Scheduler::SendToLockManager(Transaction& txn) {
   }
 }
 
-void Scheduler::Dispatch(TxnId txn_id, bool is_fast) {
+void Scheduler::Dispatch(TxnId txn_id, bool deadlocked, bool is_fast) {
   auto it = active_txns_.find(txn_id);
   auto& txn_holder = it->second;
 
-  CHECK(!txn_holder.dispatched()) << "Txn " << txn_holder.run_id() << " has already been dispatched";
+  CHECK(txn_holder.dispatchable()) << "Can no longer dispatch txn " << txn_holder.txn_id() << " (deadlocked = " << deadlocked << ")";
+  // If we did not detect a deadlock in the first dispatch, there is still a second chance to dispatch after a deadlock is found.
+  // However, there will be no other chance to dispatch after that.
+  if (deadlocked) {
+    txn_holder.SetUndispatchable();
+  }
 
   if (is_fast) {
     RECORD(txn_holder.txn().mutable_internal(), TransactionEvent::DISPATCHED_FAST);
@@ -244,13 +246,12 @@ void Scheduler::Dispatch(TxnId txn_id, bool is_fast) {
     RECORD(txn_holder.txn().mutable_internal(), TransactionEvent::DISPATCHED_SLOW);
   }
 
-  zmq::message_t msg(sizeof(TxnHolder*));
-  *msg.data<TxnHolder*>() = &txn_holder;
+  auto data = std::make_pair(&txn_holder, deadlocked);
+  zmq::message_t msg(sizeof(data));
+  *msg.data<decltype(data)>() = data;
   GetCustomSocket(0).send(msg, zmq::send_flags::none);
 
-  txn_holder.SetDispatched();
-
-  VLOG(2) << "Dispatched txn " << txn_holder.run_id();
+  VLOG(2) << "Dispatched txn " << txn_id << " (deadlocked = " << deadlocked << ")";
 }
 
 // Disable pre-dispatch abort when DDR is used. Removing this method is sufficient to disable the
@@ -286,12 +287,12 @@ void Scheduler::TriggerPreDispatchAbort(TxnId txn_id) {
   // become ready thanks to this release.
   auto unblocked_txns = lock_manager_.ReleaseLocks(txn_id);
   for (auto unblocked_txn : unblocked_txns) {
-    Dispatch(unblocked_txn, false);
+    Dispatch(unblocked_txn, false, false);
   }
 
   // Let a worker handle notifying other partitions and send back to the server.
   txn.set_status(TransactionStatus::ABORTED);
-  Dispatch(txn_id, false);
+  Dispatch(txn_id, false, false);
 }
 #endif /* LOCK_MANAGER_DDR */
 

@@ -13,12 +13,6 @@
 namespace slog {
 
 using EnvelopePtr = std::unique_ptr<internal::Envelope>;
-using RunId = pair<TxnId, bool>;
-
-inline std::ostream& operator<<(std::ostream& os, const RunId& run_id) {
-  os << "(" << run_id.first << ", " << run_id.second << ")";
-  return os;
-}
 
 class TxnHolder {
  public:
@@ -27,10 +21,9 @@ class TxnHolder {
         main_txn_(txn->internal().home()),
         lo_txns_(config->num_replicas()),
         remaster_result_(std::nullopt),
-        dispatched_(false),
+        dispatchable_(true),
         aborting_(false),
         done_(false),
-        deadlocked_(false),
         num_lo_txns_(0),
         expected_num_lo_txns_(txn->internal().involved_replicas_size()) {
     lo_txns_[main_txn_].reset(txn);
@@ -53,7 +46,6 @@ class TxnHolder {
     return txn;
   }
 
-  RunId run_id() const { return {txn_id_, deadlocked_}; }
   TxnId txn_id() const { return txn_id_; }
   Transaction& txn() const { return *lo_txns_[main_txn_]; }
   Transaction& lock_only_txn(size_t i) const { return *lo_txns_[i]; }
@@ -61,8 +53,8 @@ class TxnHolder {
   void SetRemasterResult(const Key& key, uint32_t counter) { remaster_result_.emplace(key, counter); }
   std::optional<pair<Key, uint32_t>> remaster_result() const { return remaster_result_; }
 
-  void SetDispatched() { dispatched_ = true; }
-  bool dispatched() const { return dispatched_; }
+  void SetUndispatchable() { dispatchable_ = false; }
+  bool dispatchable() const { return dispatchable_; }
 
   void SetDone() { done_ = true; }
   bool is_done() const { return done_; }
@@ -74,20 +66,14 @@ class TxnHolder {
   int num_lock_only_txns() const { return num_lo_txns_; }
   int expected_num_lock_only_txns() const { return expected_num_lo_txns_; }
 
-  void SetDeadlocked(bool d) {
-    deadlocked_ = d;
-    dispatched_ = false;
-  }
-
  private:
   TxnId txn_id_;
   size_t main_txn_;
   std::vector<std::unique_ptr<Transaction>> lo_txns_;
   std::optional<pair<Key, uint32_t>> remaster_result_;
-  bool dispatched_;
+  bool dispatchable_;
   bool aborting_;
   bool done_;
-  bool deadlocked_;
   int num_lo_txns_;
   int expected_num_lo_txns_;
 };

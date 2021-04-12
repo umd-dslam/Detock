@@ -68,8 +68,13 @@ class Scheduler : public NetworkedModule {
   // Send all transactions for locks
   void SendToLockManager(Transaction& txn);
 
-  // Send txn to worker
-  void Dispatch(TxnId txn_id, bool is_fast);
+  /**
+   * Sends txn to worker
+   * @param txn_id id of txn to send
+   * @param deadlocked whether the txn was in a resolved deadlock
+   * @param is_fast set to true if this txn does not have to wait for any lock
+   */
+  void Dispatch(TxnId txn_id, bool deadlocked, bool is_fast);
 
   /**
    * Aborts

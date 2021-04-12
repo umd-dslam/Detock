@@ -18,6 +18,8 @@
 
 namespace slog {
 
+using RunId = pair<TxnId, bool>;
+
 struct TransactionState {
   enum class Phase { READ_LOCAL_STORAGE, WAIT_REMOTE_READ, EXECUTE, FINISH };
 

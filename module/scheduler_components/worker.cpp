@@ -16,7 +16,12 @@ using std::make_pair;
 namespace slog {
 
 namespace {
-uint32_t MakeTag(const RunId& run_id) { return run_id.first * 10 + run_id.second; }
+uint64_t MakeTag(const RunId& run_id) { return run_id.first * 10 + run_id.second; }
+
+inline std::ostream& operator<<(std::ostream& os, const RunId& run_id) {
+  os << "(" << run_id.first << ", " << run_id.second << ")";
+  return os;
+}
 }  // namespace
 
 using internal::Envelope;
@@ -59,7 +64,7 @@ void Worker::OnInternalRequestReceived(EnvelopePtr&& env) {
   auto run_id = make_pair(read_result.txn_id(), read_result.deadlocked());
   auto state_it = txn_states_.find(run_id);
   if (state_it == txn_states_.end()) {
-    VLOG(1) << "Transaction " << run_id << " does not exist for remote read result";
+    LOG(ERROR) << "Transaction " << run_id << " does not exist for remote read result";
     return;
   }
 
@@ -112,9 +117,10 @@ bool Worker::OnCustomSocket() {
     return false;
   }
 
-  auto txn_holder = *msg.data<TxnHolder*>();
+  auto data = *msg.data<std::pair<TxnHolder*, bool>>();
+  auto txn_holder = data.first;
   auto& txn = txn_holder->txn();
-  auto run_id = txn_holder->run_id();
+  auto run_id = std::make_pair(txn.internal().id(), data.second);
 
   RECORD(txn.mutable_internal(), TransactionEvent::ENTER_WORKER);
 
@@ -122,7 +128,7 @@ bool Worker::OnCustomSocket() {
   // TODO: Clean up txns that later got into a deadlock
   auto [iter, ok] = txn_states_.try_emplace(run_id, txn_holder);
 
-  DCHECK(ok) << "Transaction " << run_id << " has already been dispatched to this worker";
+  CHECK(ok) << "Transaction " << run_id << " has already been dispatched to this worker";
 
   iter->second.phase = TransactionState::Phase::READ_LOCAL_STORAGE;
 
