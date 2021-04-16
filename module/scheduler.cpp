@@ -231,11 +231,16 @@ void Scheduler::SendToLockManager(Transaction& txn) {
 
 void Scheduler::Dispatch(TxnId txn_id, bool deadlocked, bool is_fast) {
   auto it = active_txns_.find(txn_id);
+  if (it == active_txns_.end()) {
+    LOG(ERROR) << "Txn " << txn_id << " does not exist for dispatching";
+    return;
+  }
   auto& txn_holder = it->second;
 
-  CHECK(txn_holder.dispatchable()) << "Can no longer dispatch txn " << txn_holder.txn_id() << " (deadlocked = " << deadlocked << ")";
-  // If we did not detect a deadlock in the first dispatch, there is still a second chance to dispatch after a deadlock is found.
-  // However, there will be no other chance to dispatch after that.
+  CHECK(txn_holder.dispatchable()) << "Can no longer dispatch txn " << txn_holder.txn_id()
+                                   << " (deadlocked = " << deadlocked << ")";
+  // If we did not detect a deadlock in the first dispatch, there is still a second chance to dispatch after a deadlock
+  // is found. However, there will be no other chance to dispatch after that.
   if (deadlocked) {
     txn_holder.SetUndispatchable();
   }
@@ -243,7 +248,11 @@ void Scheduler::Dispatch(TxnId txn_id, bool deadlocked, bool is_fast) {
   if (is_fast) {
     RECORD(txn_holder.txn().mutable_internal(), TransactionEvent::DISPATCHED_FAST);
   } else {
-    RECORD(txn_holder.txn().mutable_internal(), TransactionEvent::DISPATCHED_SLOW);
+    if (deadlocked) {
+      RECORD(txn_holder.txn().mutable_internal(), TransactionEvent::DISPATCHED_SLOW_DEADLOCKED);
+    } else {
+      RECORD(txn_holder.txn().mutable_internal(), TransactionEvent::DISPATCHED_SLOW);
+    }
   }
 
   auto data = std::make_pair(&txn_holder, deadlocked);

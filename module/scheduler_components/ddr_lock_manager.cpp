@@ -70,22 +70,22 @@ class DeadlockResolver : public NetworkedModule {
 
     BuildTotalGraph();
 
-    topo_order_.clear();
+    post_order_.clear();
     for (auto& n : total_graph_) {
       if (!n.second.is_visited) {
-        FindTopoOrderAndBuildTransposeGraph(n.second);
+        FindPostOrderAndBuildTransposeGraph(n.second);
       }
     }
-    std::reverse(topo_order_.begin(), topo_order_.end());
+    std::reverse(post_order_.begin(), post_order_.end());
 
     CheckAndResolveDeadlocks();
 
     auto runtime = (std::chrono::steady_clock::now() - start_time).count();
 
     if (per_thread_metrics_repo != nullptr) {
-      per_thread_metrics_repo->RecordDeadlockResolver(runtime, unstable_total_graph_sz_, stable_total_graph_sz_,
-                                                      unstable_local_graph_sz_, stable_local_graph_sz_,
-                                                      deadlocks_resolved_);
+      per_thread_metrics_repo->RecordDeadlockResolverRun(runtime, unstable_total_graph_sz_, stable_total_graph_sz_,
+                                                         unstable_local_graph_sz_, stable_local_graph_sz_,
+                                                         deadlocks_resolved_);
     }
   }
 
@@ -123,7 +123,7 @@ class DeadlockResolver : public NetworkedModule {
   using Graph = unordered_map<TxnId, Node>;
   vector<Graph> partitioned_graph_;
   Graph total_graph_;
-  vector<TxnId> topo_order_;
+  vector<TxnId> post_order_;
   vector<TxnId> scc_;
 
   void ScheduleNextRun() {
@@ -285,7 +285,7 @@ class DeadlockResolver : public NetworkedModule {
     stable_total_graph_sz_ = total_graph_.size();
   }
 
-  void FindTopoOrderAndBuildTransposeGraph(Node& node) {
+  void FindPostOrderAndBuildTransposeGraph(Node& node) {
     node.is_visited = true;
     for (auto next : node.edges) {
       auto next_it = total_graph_.find(next);
@@ -294,11 +294,11 @@ class DeadlockResolver : public NetworkedModule {
         auto& next_node = next_it->second;
         next_node.redges.push_back(node.vertex);
         if (!next_node.is_visited) {
-          FindTopoOrderAndBuildTransposeGraph(next_node);
+          FindPostOrderAndBuildTransposeGraph(next_node);
         }
       }
     }
-    topo_order_.push_back(node.vertex);
+    post_order_.push_back(node.vertex);
   }
 
   void CheckAndResolveDeadlocks() {
@@ -319,7 +319,7 @@ class DeadlockResolver : public NetworkedModule {
     deadlocks_resolved_ = 0;
     // Form the strongly connected components. This time, We traverse on the tranpose graph.
     // For each component with more than 1 member, perform deterministic deadlock resolving
-    for (auto vertex : topo_order_) {
+    for (auto vertex : post_order_) {
       auto it = total_graph_.find(vertex);
       CHECK(it != total_graph_.end()) << "Topo order contains unknown vertex: " << vertex;
       if (!it->second.is_visited) {
@@ -346,7 +346,7 @@ class DeadlockResolver : public NetworkedModule {
     }
 
     vector<TxnId> ready_txns;
-    // Update the txn info table in the lock manager with deadlock-free dependencies if needed
+    // Update the txn info table in the lock manager with deadlock-free dependencies
     if (!to_be_updated.empty()) {
       lock_guard<SpinLatch> guard(lm_.latch_txn_info_);
 
@@ -443,40 +443,48 @@ class DeadlockResolver : public NetworkedModule {
       return;
     }
 
+    std::vector<std::pair<uint64_t, uint64_t>> removed, added;
     for (int i = prev_local; i >= 0; --i) {
-      auto it = txn_info_.find(scc_[i]);
+      auto& this_vertex = scc_[i];
+      auto it = txn_info_.find(this_vertex);
       if (it == txn_info_.end()) {
         continue;
       }
       auto& info = it->second;
-      CHECK(info.is_stable()) << "scc contains unstable txn: " << scc_[i];
+      CHECK(info.is_stable()) << "scc contains unstable txn: " << this_vertex;
 
       // Remove old edges
       for (size_t j = 0; j < info.waited_by.size(); j++) {
+        auto other_vertex = info.waited_by[j];
         // Only remove edges connecting the current node to another node in the same SCC
-        if (std::binary_search(scc_.begin(), scc_.end(), info.waited_by[j])) {
-          auto waiting_txn = txn_info_.find(info.waited_by[j]);
-          CHECK(waiting_txn != txn_info_.end());
+        if (std::binary_search(scc_.begin(), scc_.end(), other_vertex)) {
+          auto waiting_txn_info = txn_info_.find(other_vertex);
+          CHECK(waiting_txn_info != txn_info_.end());
 
           // Setting to kSentinelTxnId effectively removes this edge
           info.waited_by[j] = kSentinelTxnId;
 
           // Decrement the incoming edge counter
-          --waiting_txn->second.num_waiting_for;
+          --waiting_txn_info->second.num_waiting_for;
+
+          removed.emplace_back(this_vertex, other_vertex);
         }
       }
 
       if (i != prev_local) {
-        // Add the new edge from scc_[i] to scc_[prev_local]
+        auto other_vertex = scc_[prev_local];
+        // Add the new edge from this_vertex to other_vertex
         auto new_edge_added = false;
         for (size_t j = 0; j < info.waited_by.size(); j++) {
           // Add to the first empty slot
           if (info.waited_by[j] == kSentinelTxnId) {
-            // Add new edge to the edge list of scc_[i]
-            info.waited_by[j] = scc_[prev_local];
-            // Update the counter of scc_[prev_local]
-            ++(txn_info_.find(scc_[prev_local])->second.num_waiting_for);
+            // Add new edge to the edge list of this_vertex
+            info.waited_by[j] = other_vertex;
+            // Update the counter of other_vertex
+            ++(txn_info_.find(other_vertex)->second.num_waiting_for);
             new_edge_added = true;
+
+            added.emplace_back(this_vertex, other_vertex);
             break;
           }
         }
@@ -486,6 +494,10 @@ class DeadlockResolver : public NetworkedModule {
       }
 
       prev_local = i;
+    }
+
+    if (per_thread_metrics_repo != nullptr) {
+      per_thread_metrics_repo->RecordDeadlockResolverDeadlock(scc_.size(), removed, added);
     }
 
     ++lm_.num_deadlocks_resolved_;
@@ -548,8 +560,11 @@ AcquireLocksResult DDRLockManager::AcquireLocks(const Transaction& txn) {
   auto txn_id = txn.internal().id();
   auto home = txn.internal().home();
   auto is_remaster = txn.procedure_case() == Transaction::kRemaster;
+  // The txn may contain keys that are homed in a remote replica. This variable
+  // counts the keys homed in the current replica.
   int num_relevant_locks = 0;
 
+  // Collect a list of txns that are blocking the current txn
   vector<TxnId> blocking_txns;
   for (const auto& [key, value] : txn.keys()) {
     if (!is_remaster && static_cast<int>(value.metadata().master()) != home) {
@@ -585,7 +600,7 @@ AcquireLocksResult DDRLockManager::AcquireLocks(const Transaction& txn) {
 
   {
     lock_guard<SpinLatch> guard(latch_txn_info_);
-    // A remaster txn only has one key K but it acquires locks on (K, RO) and (K, RN)
+    // A remaster txn has only one key K but it acquires locks on (K, RO) and (K, RN)
     // where RO and RN are the old and new region respectively.
     auto ins = txn_info_.try_emplace(txn_id, txn_id, txn.internal().involved_partitions_size(),
                                      is_remaster ? 2 : txn.keys_size());
@@ -593,6 +608,7 @@ AcquireLocksResult DDRLockManager::AcquireLocks(const Transaction& txn) {
     txn_info.unarrived_lock_requests -= num_relevant_locks;
     // Add current txn to the waited_by list of each blocking txn
     for (auto b_txn = blocking_txns.begin(); b_txn != last; b_txn++) {
+      // This should never happen but just to be safe
       if (*b_txn == txn_id) {
         continue;
       }
@@ -603,7 +619,7 @@ AcquireLocksResult DDRLockManager::AcquireLocks(const Transaction& txn) {
         continue;
       }
       // Let A be a blocking txn of a multi-home txn B. It is possible that
-      // two lock-only txns of B both sees A and A is double counted here.
+      // two lock-only txns of B both are blocked by A and A is double counted here.
       // However, B is also added twice in the waited_by list of A. Therefore,
       // on releasing A, num_waiting_for of B is correctly subtracted.
       txn_info.num_waiting_for++;
@@ -624,9 +640,10 @@ vector<pair<TxnId, bool>> DDRLockManager::ReleaseLocks(TxnId txn_id) {
     return {};
   }
   auto& txn_info = txn_info_it->second;
-  if (!txn_info.is_ready()) {
-    LOG(FATAL) << "Releasing unready txn is forbidden";
-  }
+  CHECK(txn_info.is_ready()) << "Releasing unready txn " << txn_id
+                             << " is forbidden. Unarrived lock requests: " << txn_info.unarrived_lock_requests
+                             << ". Number of blocking txns: " << txn_info.num_waiting_for
+                             << ". Deadlocked: " << txn_info.deadlocked;
   vector<pair<TxnId, bool>> result;
   for (auto blocked_txn_id : txn_info.waited_by) {
     if (blocked_txn_id == kSentinelTxnId) {

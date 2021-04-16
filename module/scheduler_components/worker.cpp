@@ -73,6 +73,12 @@ void Worker::OnInternalRequestReceived(EnvelopePtr&& env) {
   auto& state = state_it->second;
   auto& txn = state.txn_holder->txn();
 
+  if (read_result.deadlocked()) {
+    RECORD(txn.mutable_internal(), TransactionEvent::GOT_REMOTE_READS_DEADLOCKED);
+  } else {
+    RECORD(txn.mutable_internal(), TransactionEvent::GOT_REMOTE_READS);
+  }
+
   if (txn.status() != TransactionStatus::ABORTED) {
     if (read_result.will_abort()) {
       // TODO: optimize by returning an aborting transaction to the scheduler immediately.

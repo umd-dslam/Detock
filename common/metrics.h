@@ -38,23 +38,25 @@ class TransactionEventMetrics {
         local_replica_(local_replica),
         local_partition_(local_partition) {}
 
-  std::chrono::system_clock::time_point RecordEvent(TransactionEvent event) {
+  std::chrono::system_clock::time_point RecordEvent(TxnId txn_id, TransactionEvent event) {
     auto now = std::chrono::system_clock::now();
     auto sample_index = static_cast<size_t>(event);
     if (sampler_.IsChosen(sample_index)) {
-      txn_events_.push_back({.event = event,
-                             .time = now.time_since_epoch().count(),
+      txn_events_.push_back({.time = now.time_since_epoch().count(),
+                             .replica = local_replica_,
                              .partition = local_partition_,
-                             .replica = local_replica_});
+                             .txn_id = txn_id,
+                             .event = event});
     }
     return now;
   }
 
   struct Data {
-    TransactionEvent event;
     int64_t time;  // nanosecond since epoch
-    uint32_t partition;
     uint32_t replica;
+    uint32_t partition;
+    TxnId txn_id;
+    TransactionEvent event;
   };
 
   std::list<Data>& data() { return txn_events_; }
@@ -69,24 +71,36 @@ class TransactionEventMetrics {
 class DeadlockResolverMetrics {
  public:
   DeadlockResolverMetrics(const sample_mask_t& sample_mask, uint32_t local_replica, uint32_t local_partition)
-      : sampler_(sample_mask, 1), local_replica_(local_replica), local_partition_(local_partition) {}
+      : sampler_(sample_mask, 2), local_replica_(local_replica), local_partition_(local_partition) {}
 
-  void Record(int64_t runtime, size_t unstable_total_graph_sz, size_t stable_total_graph_sz,
-              size_t unstable_local_graph_sz, size_t stable_local_graph_sz, size_t deadlocks_resolved) {
+  void RecordRun(int64_t runtime, size_t unstable_total_graph_sz, size_t stable_total_graph_sz,
+                 size_t unstable_local_graph_sz, size_t stable_local_graph_sz, size_t deadlocks_resolved) {
     if (sampler_.IsChosen(0)) {
-      data_.push_back({.time = std::chrono::system_clock::now().time_since_epoch().count(),
-                       .partition = local_partition_,
-                       .replica = local_replica_,
-                       .runtime = runtime,
-                       .unstable_total_graph_sz = unstable_total_graph_sz,
-                       .stable_total_graph_sz = stable_total_graph_sz,
-                       .unstable_local_graph_sz = unstable_local_graph_sz,
-                       .stable_local_graph_sz = stable_local_graph_sz,
-                       .deadlocks_resolved = deadlocks_resolved});
+      run_data_.push_back({.time = std::chrono::system_clock::now().time_since_epoch().count(),
+                           .partition = local_partition_,
+                           .replica = local_replica_,
+                           .runtime = runtime,
+                           .unstable_total_graph_sz = unstable_total_graph_sz,
+                           .stable_total_graph_sz = stable_total_graph_sz,
+                           .unstable_local_graph_sz = unstable_local_graph_sz,
+                           .stable_local_graph_sz = stable_local_graph_sz,
+                           .deadlocks_resolved = deadlocks_resolved});
     }
   }
 
-  struct Data {
+  void RecordDeadlock(int num_vertices, const std::vector<std::pair<uint64_t, uint64_t>>& edges_removed,
+                      const std::vector<std::pair<uint64_t, uint64_t>>& edges_added) {
+    if (sampler_.IsChosen(1)) {
+      deadlock_data_.push_back({.time = std::chrono::system_clock::now().time_since_epoch().count(),
+                                .partition = local_partition_,
+                                .replica = local_replica_,
+                                .num_vertices = num_vertices,
+                                .edges_removed = edges_removed,
+                                .edges_added = edges_added});
+    }
+  }
+
+  struct RunData {
     int64_t time;  // nanosecond since epoch
     uint32_t partition;
     uint32_t replica;
@@ -97,14 +111,24 @@ class DeadlockResolverMetrics {
     size_t stable_local_graph_sz;
     size_t deadlocks_resolved;
   };
+  std::list<RunData>& run_data() { return run_data_; }
 
-  std::list<Data>& data() { return data_; }
+  struct DeadlockData {
+    int64_t time;  // nanosecond since epoch
+    uint32_t partition;
+    uint32_t replica;
+    int num_vertices;
+    std::vector<std::pair<uint64_t, uint64_t>> edges_removed;
+    std::vector<std::pair<uint64_t, uint64_t>> edges_added;
+  };
+  std::list<DeadlockData>& deadlock_data() { return deadlock_data_; }
 
  private:
   Sampler sampler_;
   uint32_t local_replica_;
   uint32_t local_partition_;
-  std::list<Data> data_;
+  std::list<RunData> run_data_;
+  std::list<DeadlockData> deadlock_data_;
 };
 
 /**
@@ -119,9 +143,12 @@ class MetricsRepository {
 
   MetricsRepository(const ConfigurationPtr& config, const sample_mask_t& sample_mask);
 
-  std::chrono::system_clock::time_point RecordTxnEvent(TransactionEvent event);
-  void RecordDeadlockResolver(int64_t runtime, size_t unstable_total_graph_sz, size_t stable_total_graph_sz,
-                              size_t unstable_local_graph_sz, size_t stable_local_graph_sz, size_t deadlocks_resolved);
+  std::chrono::system_clock::time_point RecordTxnEvent(TxnId txn_id, TransactionEvent event);
+  void RecordDeadlockResolverRun(int64_t runtime, size_t unstable_total_graph_sz, size_t stable_total_graph_sz,
+                                 size_t unstable_local_graph_sz, size_t stable_local_graph_sz,
+                                 size_t deadlocks_resolved);
+  void RecordDeadlockResolverDeadlock(int num_vertices, const std::vector<std::pair<uint64_t, uint64_t>>& edges_removed,
+                                      const std::vector<std::pair<uint64_t, uint64_t>>& edges_added);
   std::unique_ptr<AllMetrics> Reset();
 
  private:
@@ -164,13 +191,15 @@ inline void RecordTxnEvent(TxnOrBatchPtr txn, TransactionEvent event) {
   if ((gDisabledEvents >> event) & 1) {
     return;
   }
+  TxnId txn_id = 0;
   if (txn != nullptr) {
     txn->mutable_events()->Add(event);
     txn->mutable_event_times()->Add(now);
     txn->mutable_event_machines()->Add(gLocalMachineId);
+    txn_id = txn->id();
   }
   if (per_thread_metrics_repo != nullptr) {
-    per_thread_metrics_repo->RecordTxnEvent(event);
+    per_thread_metrics_repo->RecordTxnEvent(txn_id, event);
   }
 }
 
