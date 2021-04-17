@@ -4,6 +4,7 @@
 #include <list>
 #include <memory>
 #include <mutex>
+#include <random>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -15,15 +16,23 @@
 
 namespace slog {
 
-constexpr uint32_t kSampleMaskSize = 1 << 8;
-using sample_mask_t = std::array<bool, kSampleMaskSize>;
-
 class Sampler {
+  constexpr static uint32_t kSampleMaskSize = 1 << 8;
+  using sample_mask_t = std::array<bool, kSampleMaskSize>;
+
   sample_mask_t sample_mask_;
   std::vector<uint8_t> sample_count_;
 
  public:
-  Sampler(const sample_mask_t& sample_mask, size_t num_keys) : sample_mask_(sample_mask), sample_count_(num_keys, 0) {}
+  Sampler(int sample_rate, size_t num_keys) : sample_count_(num_keys, 0) {
+    sample_mask_.fill(false);
+    for (uint32_t i = 0; i < sample_rate * kSampleMaskSize / 100; i++) {
+      sample_mask_[i] = true;
+    }
+    auto rd = std::random_device{};
+    auto rng = std::default_random_engine{rd()};
+    std::shuffle(sample_mask_.begin(), sample_mask_.end(), rng);
+  }
 
   bool IsChosen(size_t key) {
     DCHECK_LT(sample_count_[key], sample_mask_.size());
@@ -33,12 +42,12 @@ class Sampler {
 
 class TransactionEventMetrics {
  public:
-  TransactionEventMetrics(const sample_mask_t& sample_mask, uint32_t local_replica, uint32_t local_partition)
-      : sampler_(sample_mask, TransactionEvent_descriptor()->value_count()),
+  TransactionEventMetrics(int sample_rate, uint32_t local_replica, uint32_t local_partition)
+      : sampler_(sample_rate, TransactionEvent_descriptor()->value_count()),
         local_replica_(local_replica),
         local_partition_(local_partition) {}
 
-  std::chrono::system_clock::time_point RecordEvent(TxnId txn_id, TransactionEvent event) {
+  std::chrono::system_clock::time_point Record(TxnId txn_id, TransactionEvent event) {
     auto now = std::chrono::system_clock::now();
     auto sample_index = static_cast<size_t>(event);
     if (sampler_.IsChosen(sample_index)) {
@@ -68,39 +77,27 @@ class TransactionEventMetrics {
   std::list<Data> txn_events_;
 };
 
-class DeadlockResolverMetrics {
+class DeadlockResolverRunMetrics {
  public:
-  DeadlockResolverMetrics(const sample_mask_t& sample_mask, uint32_t local_replica, uint32_t local_partition)
-      : sampler_(sample_mask, 2), local_replica_(local_replica), local_partition_(local_partition) {}
+  DeadlockResolverRunMetrics(int sample_rate, uint32_t local_replica, uint32_t local_partition)
+      : sampler_(sample_rate, 2), local_replica_(local_replica), local_partition_(local_partition) {}
 
-  void RecordRun(int64_t runtime, size_t unstable_total_graph_sz, size_t stable_total_graph_sz,
-                 size_t unstable_local_graph_sz, size_t stable_local_graph_sz, size_t deadlocks_resolved) {
+  void Record(int64_t runtime, size_t unstable_total_graph_sz, size_t stable_total_graph_sz,
+              size_t unstable_local_graph_sz, size_t stable_local_graph_sz, size_t deadlocks_resolved) {
     if (sampler_.IsChosen(0)) {
-      run_data_.push_back({.time = std::chrono::system_clock::now().time_since_epoch().count(),
-                           .partition = local_partition_,
-                           .replica = local_replica_,
-                           .runtime = runtime,
-                           .unstable_total_graph_sz = unstable_total_graph_sz,
-                           .stable_total_graph_sz = stable_total_graph_sz,
-                           .unstable_local_graph_sz = unstable_local_graph_sz,
-                           .stable_local_graph_sz = stable_local_graph_sz,
-                           .deadlocks_resolved = deadlocks_resolved});
+      data_.push_back({.time = std::chrono::system_clock::now().time_since_epoch().count(),
+                       .partition = local_partition_,
+                       .replica = local_replica_,
+                       .runtime = runtime,
+                       .unstable_total_graph_sz = unstable_total_graph_sz,
+                       .stable_total_graph_sz = stable_total_graph_sz,
+                       .unstable_local_graph_sz = unstable_local_graph_sz,
+                       .stable_local_graph_sz = stable_local_graph_sz,
+                       .deadlocks_resolved = deadlocks_resolved});
     }
   }
 
-  void RecordDeadlock(int num_vertices, const std::vector<std::pair<uint64_t, uint64_t>>& edges_removed,
-                      const std::vector<std::pair<uint64_t, uint64_t>>& edges_added) {
-    if (sampler_.IsChosen(1)) {
-      deadlock_data_.push_back({.time = std::chrono::system_clock::now().time_since_epoch().count(),
-                                .partition = local_partition_,
-                                .replica = local_replica_,
-                                .num_vertices = num_vertices,
-                                .edges_removed = edges_removed,
-                                .edges_added = edges_added});
-    }
-  }
-
-  struct RunData {
+  struct Data {
     int64_t time;  // nanosecond since epoch
     uint32_t partition;
     uint32_t replica;
@@ -111,9 +108,33 @@ class DeadlockResolverMetrics {
     size_t stable_local_graph_sz;
     size_t deadlocks_resolved;
   };
-  std::list<RunData>& run_data() { return run_data_; }
+  std::list<Data>& data() { return data_; }
 
-  struct DeadlockData {
+ private:
+  Sampler sampler_;
+  uint32_t local_replica_;
+  uint32_t local_partition_;
+  std::list<Data> data_;
+};
+
+class DeadlockResolverDeadlockMetrics {
+ public:
+  DeadlockResolverDeadlockMetrics(int sample_rate, uint32_t local_replica, uint32_t local_partition)
+      : sampler_(sample_rate, 2), local_replica_(local_replica), local_partition_(local_partition) {}
+
+  void Record(int num_vertices, const std::vector<std::pair<uint64_t, uint64_t>>& edges_removed,
+              const std::vector<std::pair<uint64_t, uint64_t>>& edges_added) {
+    if (sampler_.IsChosen(1)) {
+      data_.push_back({.time = std::chrono::system_clock::now().time_since_epoch().count(),
+                       .partition = local_partition_,
+                       .replica = local_replica_,
+                       .num_vertices = num_vertices,
+                       .edges_removed = edges_removed,
+                       .edges_added = edges_added});
+    }
+  }
+
+  struct Data {
     int64_t time;  // nanosecond since epoch
     uint32_t partition;
     uint32_t replica;
@@ -121,14 +142,13 @@ class DeadlockResolverMetrics {
     std::vector<std::pair<uint64_t, uint64_t>> edges_removed;
     std::vector<std::pair<uint64_t, uint64_t>> edges_added;
   };
-  std::list<DeadlockData>& deadlock_data() { return deadlock_data_; }
+  std::list<Data>& data() { return data_; }
 
  private:
   Sampler sampler_;
   uint32_t local_replica_;
   uint32_t local_partition_;
-  std::list<RunData> run_data_;
-  std::list<DeadlockData> deadlock_data_;
+  std::list<Data> data_;
 };
 
 /**
@@ -138,10 +158,11 @@ class MetricsRepository {
  public:
   struct AllMetrics {
     TransactionEventMetrics txn_event_metrics;
-    DeadlockResolverMetrics deadlock_resolver_metrics;
+    DeadlockResolverRunMetrics deadlock_resolver_run_metrics;
+    DeadlockResolverDeadlockMetrics deadlock_resolver_deadlock_metrics;
   };
 
-  MetricsRepository(const ConfigurationPtr& config, const sample_mask_t& sample_mask);
+  MetricsRepository(const ConfigurationPtr& config);
 
   std::chrono::system_clock::time_point RecordTxnEvent(TxnId txn_id, TransactionEvent event);
   void RecordDeadlockResolverRun(int64_t runtime, size_t unstable_total_graph_sz, size_t stable_total_graph_sz,
@@ -153,7 +174,6 @@ class MetricsRepository {
 
  private:
   const ConfigurationPtr config_;
-  sample_mask_t sample_mask_;
   SpinLatch latch_;
 
   std::unique_ptr<AllMetrics> metrics_;
@@ -172,7 +192,6 @@ class MetricsRepositoryManager {
 
  private:
   const ConfigurationPtr config_;
-  sample_mask_t sample_mask_;
   std::unordered_map<std::thread::id, std::shared_ptr<MetricsRepository>> metrics_repos_;
   std::mutex mut_;
 };
