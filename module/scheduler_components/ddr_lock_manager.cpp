@@ -333,13 +333,15 @@ class DeadlockResolver : public NetworkedModule {
         auto [cur, done] = st.top();
         st.pop();
         if (!done) {
-          st.emplace(cur, true);
           auto it = total_graph_.find(cur);
           CHECK(it != total_graph_.end());
-          it->second.is_visited = true;
-          for (auto next : it->second.edges) {
-            if (auto next_it = total_graph_.find(next); next_it != total_graph_.end() && !next_it->second.is_visited) {
-              st.emplace(next, false);
+          if (!it->second.is_visited) {
+            st.emplace(cur, true);
+            it->second.is_visited = true;
+            for (auto next : it->second.edges) {
+              if (auto next_it = total_graph_.find(next); next_it != total_graph_.end() && !next_it->second.is_visited) {
+                st.emplace(next, false);
+              }
             }
           }
         } else {
@@ -390,6 +392,9 @@ class DeadlockResolver : public NetworkedModule {
         if (node_it != total_graph_.end() && node_it->second.deadlocked) {
           txn_info.deadlocked = true;
           to_be_updated.push_back(txn_id);
+          if (per_thread_metrics_repo != nullptr) {
+            per_thread_metrics_repo->RecordTxnEvent(txn_id, TransactionEvent::DEADLOCK_DETECTED);
+          }
         }
       }
     }
@@ -466,7 +471,7 @@ class DeadlockResolver : public NetworkedModule {
   }
 
   void ResolveDeadlock() {
-    DCHECK_GE(scc_.size(), 2);
+    CHECK_GE(scc_.size(), 2);
 
     // Sort the SCC to ensure determinism
     std::sort(scc_.begin(), scc_.end());
