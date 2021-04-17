@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <queue>
+#include <stack>
 
 #include "connection/zmq_utils.h"
 
@@ -70,19 +71,12 @@ class DeadlockResolver : public NetworkedModule {
 
     BuildTotalGraph();
 
-    post_order_.clear();
-    for (auto& n : total_graph_) {
-      if (!n.second.is_visited) {
-        FindPostOrderAndBuildTransposeGraph(n.second);
-      }
-    }
-    std::reverse(post_order_.begin(), post_order_.end());
+    FindSCCOrder();
 
     CheckAndResolveDeadlocks();
 
-    auto runtime = (std::chrono::steady_clock::now() - start_time).count();
-
     if (per_thread_metrics_repo != nullptr) {
+      auto runtime = (std::chrono::steady_clock::now() - start_time).count();
       per_thread_metrics_repo->RecordDeadlockResolverRun(runtime, unstable_total_graph_sz_, stable_total_graph_sz_,
                                                          unstable_local_graph_sz_, stable_local_graph_sz_,
                                                          deadlocks_resolved_);
@@ -123,7 +117,7 @@ class DeadlockResolver : public NetworkedModule {
   using Graph = unordered_map<TxnId, Node>;
   vector<Graph> partitioned_graph_;
   Graph total_graph_;
-  vector<TxnId> post_order_;
+  vector<TxnId> scc_order_;
   vector<TxnId> scc_;
 
   void ScheduleNextRun() {
@@ -235,27 +229,66 @@ class DeadlockResolver : public NetworkedModule {
       }
     }
 
-    queue<TxnId> unstables;
-
-    // Build total graph from graphs across the partitions
+    // Merge graphs across the partitions
     total_graph_.clear();
     for (const auto& [vertex, merged_vertex] : vertices) {
       bool is_stable = merged_vertex.expected_partitions == merged_vertex.actual_partitions;
       auto ins = total_graph_.try_emplace(vertex, vertex, merged_vertex.expected_partitions, merged_vertex.deadlocked,
                                           is_stable);
       auto& edges = ins.first->second.edges;
-      // We allow duplicate edges, which do not affect correctnect
       for (auto& g : partitioned_graph_) {
         if (auto it = g.find(vertex); it != g.end()) {
           edges.insert(edges.end(), it->second.edges.begin(), it->second.edges.end());
         }
       }
-      if (!is_stable) {
-        unstables.push(vertex);
+      // Deduplicate the edge list
+      std::sort(edges.begin(), edges.end());
+      edges.erase(std::unique(edges.begin(), edges.end()), edges.end());
+    }
+
+    // Build the transpose graph and collect known deadlocked vertices
+    queue<TxnId> remove_if_non_deadlocked;
+    for (auto& [vertex, node] : total_graph_) {
+      for (auto other_vertex : node.edges) {
+        if (auto it = total_graph_.find(other_vertex); it != total_graph_.end()) {
+          it->second.redges.push_back(vertex);
+        }
+      }
+      if (node.deadlocked) {
+        remove_if_non_deadlocked.push(vertex);
+      }
+      node.is_visited = node.deadlocked;
+    }
+
+    // Trim non-deadlocked vertices. Regardless of their stability, these vertices have a path to
+    // a deadlocked vertex, meaning at some partition, they were confirmed to be stable and non-deadlocked.
+    // Trimming them now so that we don't incorrectly identify them as unstable (due to not enough partition)
+    // at the later trimming stage
+    while (!remove_if_non_deadlocked.empty()) {
+      auto it = total_graph_.find(remove_if_non_deadlocked.front());
+      CHECK(it != total_graph_.end());
+      remove_if_non_deadlocked.pop();
+      // Note that we traverse on the transpose graph here
+      for (auto next : it->second.redges) {
+        auto next_it = total_graph_.find(next);
+        if (next_it != total_graph_.end() && !next_it->second.is_visited && !next_it->second.deadlocked) {
+          next_it->second.is_visited = true;
+          remove_if_non_deadlocked.push(next);
+        }
+      }
+      if (!it->second.deadlocked) {
+        total_graph_.erase(it);
       }
     }
 
-    // Propagate unstability to reachable vertices
+    // Collect the remaining unstable vertices and propagate their unstability to reachable vertices.
+    // Note that vertices that are known to be deadlocked are not considered unstable
+    queue<TxnId> unstables;
+    for (auto& [vertex, node] : total_graph_) {
+      if (!node.is_stable && !node.deadlocked) {
+        unstables.push(vertex);
+      }
+    }
     while (!unstables.empty()) {
       auto it = total_graph_.find(unstables.front());
       DCHECK(it != total_graph_.end());
@@ -273,11 +306,12 @@ class DeadlockResolver : public NetworkedModule {
 
     unstable_total_graph_sz_ = total_graph_.size();
 
-    // Remove unstable vertices
+    // Remove unstable vertices and reset the is_visited flag
     for (auto it = total_graph_.begin(); it != total_graph_.end();) {
-      if (!it->second.is_stable) {
+      if (!it->second.is_stable && !it->second.deadlocked) {
         it = total_graph_.erase(it);
       } else {
+        it->second.is_visited = false;
         ++it;
       }
     }
@@ -285,20 +319,35 @@ class DeadlockResolver : public NetworkedModule {
     stable_total_graph_sz_ = total_graph_.size();
   }
 
-  void FindPostOrderAndBuildTransposeGraph(Node& node) {
-    node.is_visited = true;
-    for (auto next : node.edges) {
-      auto next_it = total_graph_.find(next);
-      // Dangling edges are a possibility so need to check for existence of `next`
-      if (next_it != total_graph_.end()) {
-        auto& next_node = next_it->second;
-        next_node.redges.push_back(node.vertex);
-        if (!next_node.is_visited) {
-          FindPostOrderAndBuildTransposeGraph(next_node);
+  void FindSCCOrder() {
+    scc_order_.clear();
+    // Do DFS iteratively to avoid stack overflow when the graph is too deep
+    for (auto& [first_vertex, first_node] : total_graph_) {
+      if (first_node.is_visited) {
+        continue;
+      }
+      // Pair of (txn_id, whether we are done with the vertex)
+      std::stack<std::pair<TxnId, bool>> st;
+      st.emplace(first_vertex, false);
+      while (!st.empty()) {
+        auto [cur, done] = st.top();
+        st.pop();
+        if (!done) {
+          st.emplace(cur, true);
+          auto it = total_graph_.find(cur);
+          CHECK(it != total_graph_.end());
+          it->second.is_visited = true;
+          for (auto next : it->second.edges) {
+            if (auto next_it = total_graph_.find(next); next_it != total_graph_.end() && !next_it->second.is_visited) {
+              st.emplace(next, false);
+            }
+          }
+        } else {
+          scc_order_.push_back(cur);
         }
       }
     }
-    post_order_.push_back(node.vertex);
+    std::reverse(scc_order_.begin(), scc_order_.end());
   }
 
   void CheckAndResolveDeadlocks() {
@@ -319,9 +368,9 @@ class DeadlockResolver : public NetworkedModule {
     deadlocks_resolved_ = 0;
     // Form the strongly connected components. This time, We traverse on the tranpose graph.
     // For each component with more than 1 member, perform deterministic deadlock resolving
-    for (auto vertex : post_order_) {
+    for (auto vertex : scc_order_) {
       auto it = total_graph_.find(vertex);
-      CHECK(it != total_graph_.end()) << "Topo order contains unknown vertex: " << vertex;
+      CHECK(it != total_graph_.end()) << "SCC order contains unknown vertex: " << vertex;
       if (!it->second.is_visited) {
         scc_.clear();
         FormStronglyConnectedComponent(it->second);
