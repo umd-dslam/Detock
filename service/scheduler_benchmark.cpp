@@ -1,5 +1,6 @@
 #include "common/configuration.h"
 #include "common/csv_writer.h"
+#include "common/string_utils.h"
 #include "connection/broker.h"
 #include "module/scheduler.h"
 #include "service/service_utils.h"
@@ -26,20 +27,6 @@ struct TxnInfo {
   Transaction* txn;
   TimePoint sent_at;
 };
-
-string Join(const vector<string> parts, char delim = ';') {
-  string result;
-  bool first = true;
-  for (const auto& p : parts) {
-    if (!first) {
-      result += delim;
-    } else {
-      first = false;
-    }
-    result += p;
-  }
-  return result;
-}
 
 int main(int argc, char* argv[]) {
   InitializeService(&argc, &argv);

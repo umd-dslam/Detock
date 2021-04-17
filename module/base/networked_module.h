@@ -33,6 +33,8 @@ class NetworkedModule : public Module {
                   std::optional<std::chrono::milliseconds> poll_timeout);
   ~NetworkedModule();
 
+  MetricsRepositoryManager& metrics_manager() { return *metrics_manager_; }
+
  protected:
   virtual void Initialize(){};
 
@@ -61,7 +63,6 @@ class NetworkedModule : public Module {
   const std::shared_ptr<zmq::context_t> context() const;
 
   Channel channel() const { return channel_; }
-  MetricsRepositoryManager& metrics_manager() { return *metrics_manager_; }
 
  private:
   void SetUp() final;

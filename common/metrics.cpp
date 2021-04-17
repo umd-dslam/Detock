@@ -1,30 +1,13 @@
 #include "metrics.h"
 
 #include <algorithm>
-#include <sstream>
 
 #include "common/csv_writer.h"
 #include "common/proto_utils.h"
+#include "common/string_utils.h"
 #include "proto/internal.pb.h"
 
 namespace slog {
-
-namespace {
-template <typename T, typename R>
-std::string Join(const std::vector<std::pair<T, R>> parts, char delim = ';') {
-  std::ostringstream ss;
-  bool first = true;
-  for (const auto& p : parts) {
-    if (!first) {
-      ss << delim;
-    } else {
-      first = false;
-    }
-    ss << p.first << ":" << p.second;
-  }
-  return ss.str();
-}
-}  // namespace
 
 /**
  *  MetricsRepository
