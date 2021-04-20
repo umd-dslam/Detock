@@ -13,6 +13,12 @@ using std::move;
 
 namespace slog {
 
+namespace {
+
+bool txn_id_less_than(const Transaction& t1, const Transaction& t2) { return t1.internal().id() < t2.internal().id(); }
+
+}  // namespace
+
 using internal::Batch;
 using internal::Request;
 using internal::Response;
@@ -117,8 +123,16 @@ void Sequencer::SendBatch() {
   paxos_propose->set_value(local_partition);
   Send(move(paxos_env), kLocalPaxos);
 
+  auto num_partitions = config_->num_partitions();
+
+  if (config_->sorted_batch()) {
+    for (uint32_t part = 0; part < num_partitions; part++) {
+      auto& txns = *partitioned_batch_[part]->mutable_transactions();
+      std::sort(txns.begin(), txns.end(), txn_id_less_than);
+    }
+  }
+
   if (!SendBatchDelayed()) {
-    auto num_partitions = config_->num_partitions();
     auto num_replicas = config_->num_replicas();
     for (uint32_t part = 0; part < num_partitions; part++) {
       auto env = NewBatchRequest(partitioned_batch_[part].release());

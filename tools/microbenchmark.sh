@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Example usage:
+#   tools/microbenchmark.sh -a tools/admin.py -c ~/configs/slog/slog.conf -i ctring/slog:ddr-master -o ~/data/slog/ -p ddr 
+
 USER="ubuntu"
 PREFIX="test"
 OUT_DIR="."
@@ -25,7 +28,6 @@ if [[ -z $CONFIG ]]; then
   echo "ERROR: Use the -c flag to specify the config file"
   exit 1
 fi
-
 
 if [[ -z $IMAGE ]]; then
   echo "ERROR: Use the -i flag to specify the Docker image"

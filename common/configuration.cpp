@@ -234,6 +234,8 @@ std::pair<uint32_t, size_t> Configuration::nth_latency(size_t n) const { return 
 
 bool Configuration::synchronized_batching() const { return config_.synchronized_batching(); }
 
+bool Configuration::sorted_batch() const { return config_.sorted_batch(); }
+
 const internal::SampleRate& Configuration::sample_rate() const { return config_.sample_rate(); }
 
 std::array<int, 2> Configuration::interleaver_remote_to_local_ratio() const {
