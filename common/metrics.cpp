@@ -20,12 +20,11 @@ std::chrono::system_clock::time_point MetricsRepository::RecordTxnEvent(TxnId tx
   return metrics_->txn_event_metrics.Record(txn_id, event);
 }
 
-void MetricsRepository::RecordDeadlockResolverRun(int64_t runtime, size_t unstable_total_graph_sz,
-                                                  size_t stable_total_graph_sz, size_t local_graph_sz,
-                                                  size_t stable_local_graph_sz, size_t deadlocks_resolved) {
+void MetricsRepository::RecordDeadlockResolverRun(int64_t runtime, size_t unstable_graph_sz, size_t stable_graph_sz,
+                                                  size_t deadlocks_resolved) {
   std::lock_guard<SpinLatch> guard(latch_);
-  return metrics_->deadlock_resolver_run_metrics.Record(runtime, unstable_total_graph_sz, stable_total_graph_sz,
-                                                        local_graph_sz, stable_local_graph_sz, deadlocks_resolved);
+  return metrics_->deadlock_resolver_run_metrics.Record(runtime, unstable_graph_sz, stable_graph_sz,
+                                                        deadlocks_resolved);
 }
 
 void MetricsRepository::RecordDeadlockResolverDeadlock(int num_vertices,
@@ -97,13 +96,10 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
 
     CSVWriter deadlock_resolver_csv(
         dir + "/deadlock_resolver.csv",
-        {"time", "partition", "replica", "runtime", "unstable_total_graph_sz", "stable_total_graph_sz",
-         "unstable_local_graph_sz", "stable_local_graph_sz", "deadlocks_resolved"});
+        {"time", "partition", "replica", "runtime", "unstable_graph_sz", "stable_graph_sz", "deadlocks_resolved"});
     for (const auto& data : deadlock_resolver_run_data) {
-      deadlock_resolver_csv << data.time << data.partition << data.replica << data.runtime
-                            << data.unstable_total_graph_sz << data.stable_total_graph_sz
-                            << data.unstable_local_graph_sz << data.stable_local_graph_sz << data.deadlocks_resolved
-                            << csvendl;
+      deadlock_resolver_csv << data.time << data.partition << data.replica << data.runtime << data.unstable_graph_sz
+                            << data.stable_graph_sz << data.deadlocks_resolved << csvendl;
     }
 
     CSVWriter deadlocks_csv(dir + "/deadlocks.csv", {"time", "partition", "replica", "vertices", "removed", "added"});

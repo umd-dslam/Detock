@@ -21,6 +21,7 @@
 #include "common/spin_latch.h"
 #include "common/txn_holder.h"
 #include "common/types.h"
+#include "data_structure/readerwriterqueue.h"
 #include "module/base/networked_module.h"
 
 using std::list;
@@ -81,6 +82,8 @@ class DeadlockResolver;
  */
 class DDRLockManager {
  public:
+  DDRLockManager();
+
   /**
    * Initializes the deadlock resolver
    * @param broker       A broker to help the resolver to send/receive external messages
@@ -100,7 +103,7 @@ class DDRLockManager {
    * Runs the deadlock resolving algorithm manually. Return false if the resolver is not initialized yet or
    * it is already running in a background thread. For testing only.
    */
-  bool ResolveDeadlock(bool recv_remote_message = false, bool resolve_deadlock = true);
+  bool ResolveDeadlock(bool dont_recv_remote_msg = false);
 
   /**
    * Gets the list of txns that become ready after resolving deadlocks
@@ -140,31 +143,65 @@ class DDRLockManager {
   friend class DeadlockResolver;
 
   struct TxnInfo {
-    TxnInfo(TxnId txn_id, int num_partitions, int unarrived)
-        : id(txn_id),
-          num_partitions(num_partitions),
-          num_waiting_for(0),
-          unarrived_lock_requests(unarrived),
-          deadlocked(false) {
-      // Add an empty slot in case the deadlock resolver need to add a new edge
+    TxnInfo(TxnId txn_id, int unarrived)
+        : id(txn_id), num_waiting_for(0), unarrived_lock_requests(unarrived), deadlocked(false) {
+      // Add an empty slot in case the deadlock resolver need to add a new edge but there is no
+      // existing slot to replace. This happens when there is no edge coming out of the current txn
+      // at the current partition but there are such edges in other partitions. If this list does not
+      // have any element, there will be no slot to fill the new edge in.
       waited_by.push_back(kSentinelTxnId);
     }
 
     const TxnId id;
-    const int num_partitions;
     // This list must only grow
     vector<TxnId> waited_by;
     int num_waiting_for;
     int unarrived_lock_requests;
     bool deadlocked;
 
-    bool is_stable() const { return unarrived_lock_requests == 0; }
     bool is_ready() const { return num_waiting_for == 0 && unarrived_lock_requests == 0; }
   };
 
-  unordered_map<TxnId, TxnInfo> txn_info_;
   unordered_map<KeyReplica, LockQueueTail> lock_table_;
+  unordered_map<TxnId, TxnInfo> txn_info_;
   mutable SpinLatch latch_txn_info_;
+
+  class LogEntry {
+   public:
+    LogEntry() : txn_id_(0), num_partitions_(0), is_complete_(false) {}
+
+    LogEntry(TxnId txn_id, int num_partitions, bool is_complete, const vector<TxnId>& incoming_edges)
+        : txn_id_(txn_id),
+          num_partitions_(num_partitions),
+          is_complete_(is_complete),
+          incoming_edges_(incoming_edges) {}
+
+    LogEntry(LogEntry&& other)
+        : txn_id_(other.txn_id_),
+          num_partitions_(other.num_partitions_),
+          is_complete_(other.is_complete_),
+          incoming_edges_(std::move(other.incoming_edges_)) {}
+
+    LogEntry* operator=(LogEntry&& other) {
+      txn_id_ = other.txn_id_;
+      num_partitions_ = other.num_partitions_;
+      is_complete_ = other.is_complete_;
+      incoming_edges_ = std::move(other.incoming_edges_);
+      return this;
+    }
+
+    TxnId txn_id() const { return txn_id_; }
+    int num_partitions() const { return num_partitions_; }
+    bool is_complete() const { return is_complete_; }
+    const vector<TxnId>& incoming_edges() const { return incoming_edges_; }
+
+   private:
+    TxnId txn_id_;
+    int num_partitions_;
+    bool is_complete_;
+    vector<TxnId> incoming_edges_;
+  };
+  moodycamel::ReaderWriterQueue<LogEntry> log_;
 
   vector<TxnId> ready_txns_;
   SpinLatch latch_ready_txns_;

@@ -1,7 +1,9 @@
 target_sources(slog-core
   PRIVATE
+    atomicops.h
     async_log.h
     batch_log.cpp
     batch_log.h
     concurrent_hash_map.h
+    readerwriterqueue.h
     rwlatch.h)

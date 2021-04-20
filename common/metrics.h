@@ -82,17 +82,14 @@ class DeadlockResolverRunMetrics {
   DeadlockResolverRunMetrics(int sample_rate, uint32_t local_replica, uint32_t local_partition)
       : sampler_(sample_rate, 2), local_replica_(local_replica), local_partition_(local_partition) {}
 
-  void Record(int64_t runtime, size_t unstable_total_graph_sz, size_t stable_total_graph_sz,
-              size_t unstable_local_graph_sz, size_t stable_local_graph_sz, size_t deadlocks_resolved) {
+  void Record(int64_t runtime, size_t unstable_graph_sz, size_t stable_graph_sz, size_t deadlocks_resolved) {
     if (sampler_.IsChosen(0)) {
       data_.push_back({.time = std::chrono::system_clock::now().time_since_epoch().count(),
                        .partition = local_partition_,
                        .replica = local_replica_,
                        .runtime = runtime,
-                       .unstable_total_graph_sz = unstable_total_graph_sz,
-                       .stable_total_graph_sz = stable_total_graph_sz,
-                       .unstable_local_graph_sz = unstable_local_graph_sz,
-                       .stable_local_graph_sz = stable_local_graph_sz,
+                       .unstable_graph_sz = unstable_graph_sz,
+                       .stable_graph_sz = stable_graph_sz,
                        .deadlocks_resolved = deadlocks_resolved});
     }
   }
@@ -102,10 +99,8 @@ class DeadlockResolverRunMetrics {
     uint32_t partition;
     uint32_t replica;
     int64_t runtime;  // nanosecond
-    size_t unstable_total_graph_sz;
-    size_t stable_total_graph_sz;
-    size_t unstable_local_graph_sz;
-    size_t stable_local_graph_sz;
+    size_t unstable_graph_sz;
+    size_t stable_graph_sz;
     size_t deadlocks_resolved;
   };
   std::list<Data>& data() { return data_; }
@@ -165,8 +160,7 @@ class MetricsRepository {
   MetricsRepository(const ConfigurationPtr& config);
 
   std::chrono::system_clock::time_point RecordTxnEvent(TxnId txn_id, TransactionEvent event);
-  void RecordDeadlockResolverRun(int64_t runtime, size_t unstable_total_graph_sz, size_t stable_total_graph_sz,
-                                 size_t unstable_local_graph_sz, size_t stable_local_graph_sz,
+  void RecordDeadlockResolverRun(int64_t runtime, size_t unstable_graph_sz, size_t stable_graph_sz,
                                  size_t deadlocks_resolved);
   void RecordDeadlockResolverDeadlock(int num_vertices, const std::vector<std::pair<uint64_t, uint64_t>>& edges_removed,
                                       const std::vector<std::pair<uint64_t, uint64_t>>& edges_added);

@@ -67,7 +67,7 @@ message Request {
         RemoteReadResult remote_read_result = 11;
         CompletedSubtransaction completed_subtxn = 12;
         StatsRequest stats = 13;
-        Graph graph = 14;
+        GraphLog graph_log = 14;
     }
 }
 
@@ -150,15 +150,15 @@ message StatsRequest {
     uint32 level = 2;
 }
 
-message Node {
-    uint32 vertex = 1;
-    repeated uint32 edges = 2;
-    int32 num_partitions = 3;
-    bool deadlocked = 4;
+message GraphLogEntry {
+    uint64 txn_id = 1;
+    int32 num_partitions = 2;
+    bool is_complete = 3;
+    repeated uint64 incoming_edges = 4;
 }
 
-message Graph {
-    repeated Node nodes = 1;
+message GraphLog {
+    repeated GraphLogEntry entries = 1;
 }
 
 /***********************************************
