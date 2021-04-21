@@ -21,16 +21,7 @@
 #include "common/spin_latch.h"
 #include "common/txn_holder.h"
 #include "common/types.h"
-#include "data_structure/readerwriterqueue.h"
 #include "module/base/networked_module.h"
-
-using std::list;
-using std::optional;
-using std::pair;
-using std::shared_ptr;
-using std::unordered_map;
-using std::unordered_set;
-using std::vector;
 
 namespace slog {
 
@@ -42,18 +33,18 @@ namespace slog {
  */
 class LockQueueTail {
  public:
-  optional<TxnId> AcquireReadLock(TxnId txn_id);
-  vector<TxnId> AcquireWriteLock(TxnId txn_id);
+  std::optional<TxnId> AcquireReadLock(TxnId txn_id);
+  std::vector<TxnId> AcquireWriteLock(TxnId txn_id);
 
   /* For debugging */
-  optional<TxnId> write_lock_requester() const { return write_lock_requester_; }
+  std::optional<TxnId> write_lock_requester() const { return write_lock_requester_; }
 
   /* For debugging */
   vector<TxnId> read_lock_requesters() const { return read_lock_requesters_; }
 
  private:
-  optional<TxnId> write_lock_requester_;
-  vector<TxnId> read_lock_requesters_;
+  std::optional<TxnId> write_lock_requester_;
+  std::vector<TxnId> read_lock_requesters_;
 };
 
 class DeadlockResolver;
@@ -82,8 +73,6 @@ class DeadlockResolver;
  */
 class DDRLockManager {
  public:
-  DDRLockManager();
-
   /**
    * Initializes the deadlock resolver
    * @param broker       A broker to help the resolver to send/receive external messages
@@ -91,8 +80,9 @@ class DDRLockManager {
    *                     resolving deadlocks
    * @param poll_timeout Timeout for polling in the resolver
    */
-  void InitializeDeadlockResolver(const shared_ptr<Broker>& broker, const MetricsRepositoryManagerPtr& metrics_manager,
-                                  Channel signal_chan, optional<milliseconds> poll_timeout = kModuleTimeout);
+  void InitializeDeadlockResolver(const std::shared_ptr<Broker>& broker,
+                                  const MetricsRepositoryManagerPtr& metrics_manager, Channel signal_chan,
+                                  std::optional<milliseconds> poll_timeout = kModuleTimeout);
 
   /**
    * Starts the deadlock resolver in a new thread
@@ -108,7 +98,7 @@ class DDRLockManager {
   /**
    * Gets the list of txns that become ready after resolving deadlocks
    */
-  vector<TxnId> GetReadyTxns();
+  std::vector<TxnId> GetReadyTxns();
 
   /**
    * Tries to acquire all locks for a given transaction. If not
@@ -130,7 +120,7 @@ class DDRLockManager {
    *            the txn being unblocked and deadlocked indicates whether
    *            the txn was in a deadlock.
    */
-  vector<pair<TxnId, bool>> ReleaseLocks(TxnId txn_id);
+  std::vector<std::pair<TxnId, bool>> ReleaseLocks(TxnId txn_id);
 
   /**
    * Gets current statistics of the lock manager
@@ -154,7 +144,7 @@ class DDRLockManager {
 
     const TxnId id;
     // This list must only grow
-    vector<TxnId> waited_by;
+    std::vector<TxnId> waited_by;
     int num_waiting_for;
     int unarrived_lock_requests;
     bool deadlocked;
@@ -162,15 +152,15 @@ class DDRLockManager {
     bool is_ready() const { return num_waiting_for == 0 && unarrived_lock_requests == 0; }
   };
 
-  unordered_map<KeyReplica, LockQueueTail> lock_table_;
-  unordered_map<TxnId, TxnInfo> txn_info_;
-  mutable SpinLatch latch_txn_info_;
+  std::unordered_map<KeyReplica, LockQueueTail> lock_table_;
+  std::unordered_map<TxnId, TxnInfo> txn_info_;
+  mutable SpinLatch txn_info_latch_;
 
   class LogEntry {
    public:
     LogEntry() : txn_id_(0), num_partitions_(0), is_complete_(false) {}
 
-    LogEntry(TxnId txn_id, int num_partitions, bool is_complete, const vector<TxnId>& incoming_edges)
+    LogEntry(TxnId txn_id, int num_partitions, bool is_complete, const std::vector<TxnId>& incoming_edges)
         : txn_id_(txn_id),
           num_partitions_(num_partitions),
           is_complete_(is_complete),
@@ -193,18 +183,20 @@ class DDRLockManager {
     TxnId txn_id() const { return txn_id_; }
     int num_partitions() const { return num_partitions_; }
     bool is_complete() const { return is_complete_; }
-    const vector<TxnId>& incoming_edges() const { return incoming_edges_; }
+    const std::vector<TxnId>& incoming_edges() const { return incoming_edges_; }
 
    private:
     TxnId txn_id_;
     int num_partitions_;
     bool is_complete_;
-    vector<TxnId> incoming_edges_;
+    std::vector<TxnId> incoming_edges_;
   };
-  moodycamel::ReaderWriterQueue<LogEntry> log_;
+  std::vector<LogEntry> log_[2];
+  int log_index_ = 0;
+  SpinLatch log_latch_;
 
-  vector<TxnId> ready_txns_;
-  SpinLatch latch_ready_txns_;
+  std::vector<TxnId> ready_txns_;
+  SpinLatch ready_txns_latch_;
 
   // For stats
   std::atomic<long> num_deadlocks_resolved_ = 0;

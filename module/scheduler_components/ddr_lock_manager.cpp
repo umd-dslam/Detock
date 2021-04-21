@@ -115,15 +115,16 @@ class DeadlockResolver : public NetworkedModule {
 
   void UpdateGraphAndBroadcastChanges() {
     internal::Envelope graph_log_env;
-
-    // Decide on how much of the log we will fetch
-    auto log_fetch_sz = lm_.log_.size_approx();
+    int log_index = 0;
+    // Switch the writer to the other log so that we can read from current log without conflict
+    {
+      std::lock_guard<SpinLatch> guard(lm_.log_latch_);
+      log_index = lm_.log_index_;
+      lm_.log_index_ = 1 - lm_.log_index_;
+    }
     // For each log entry, reconstruct txn_info, update the graph and add to remote message
-    for (size_t i = 0; i < log_fetch_sz; i++) {
-      DDRLockManager::LogEntry entry;
-      auto ok = lm_.log_.try_dequeue(entry);
-      CHECK(ok) << "Log overfetched";
-
+    auto& log = lm_.log_[log_index];
+    for (const auto& entry : log) {
       ReconstructLocalTxnInfo(entry);
 
       UpdateGraph(entry);
@@ -134,6 +135,7 @@ class DeadlockResolver : public NetworkedModule {
       new_entry->set_is_complete(entry.is_complete());
       new_entry->mutable_incoming_edges()->Add(entry.incoming_edges().begin(), entry.incoming_edges().end());
     }
+    log.clear();
 
     vector<MachineId> destinations;
     destinations.reserve(config_->num_partitions());
@@ -268,7 +270,7 @@ class DeadlockResolver : public NetworkedModule {
     vector<TxnId> ready_txns;
     // Update the txn info table in the lock manager with deadlock-free dependencies
     if (!to_be_updated_.empty()) {
-      lock_guard<SpinLatch> guard(lm_.latch_txn_info_);
+      lock_guard<SpinLatch> guard(lm_.txn_info_latch_);
 
       for (auto txn_id : to_be_updated_) {
         auto update_it = txn_info_updates_.find(txn_id);
@@ -286,13 +288,6 @@ class DeadlockResolver : public NetworkedModule {
         // The resolver stores the amount that num_waiting_for increases/decreases so it is
         // added here instead of assigning
         txn.num_waiting_for += update.num_waiting_for;
-        if (txn.num_waiting_for < 0) {
-          LOG(ERROR) << "WTF?";
-          for (auto t : to_be_updated_) {
-            std::cout << t << " ";
-          }
-          std::cout << std::endl;
-        }
         // Check if any txn becomes ready after deadlock resolving. This must be performed
         // in this critical region. Otherwise, we might run into a race condition where both
         // the resolver and lock manager see num_waiting_for as larger than 0, while it is not
@@ -306,7 +301,7 @@ class DeadlockResolver : public NetworkedModule {
     if (!ready_txns.empty()) {
       // Update the ready txns list in the lock manager
       {
-        lock_guard<SpinLatch> guard(lm_.latch_ready_txns_);
+        lock_guard<SpinLatch> guard(lm_.ready_txns_latch_);
         lm_.ready_txns_.insert(lm_.ready_txns_.end(), ready_txns.begin(), ready_txns.end());
       }
 
@@ -471,8 +466,6 @@ vector<TxnId> LockQueueTail::AcquireWriteLock(TxnId txn_id) {
   return deps;
 }
 
-DDRLockManager::DDRLockManager() : log_(4096) {}
-
 void DDRLockManager::InitializeDeadlockResolver(const shared_ptr<Broker>& broker,
                                                 const MetricsRepositoryManagerPtr& metrics_manager, Channel signal_chan,
                                                 optional<milliseconds> poll_timeout) {
@@ -498,7 +491,7 @@ bool DDRLockManager::ResolveDeadlock(bool dont_recv_remote_msg) {
 }
 
 vector<TxnId> DDRLockManager::GetReadyTxns() {
-  lock_guard<SpinLatch> guard(latch_ready_txns_);
+  lock_guard<SpinLatch> guard(ready_txns_latch_);
   auto ret = ready_txns_;
   ready_txns_.clear();
   return ret;
@@ -548,7 +541,7 @@ AcquireLocksResult DDRLockManager::AcquireLocks(const Transaction& txn) {
   AcquireLocksResult result;
   bool is_complete = false;
   {
-    lock_guard<SpinLatch> guard(latch_txn_info_);
+    lock_guard<SpinLatch> guard(txn_info_latch_);
     // A remaster txn has only one key K but it acquires locks on (K, RO) and (K, RN)
     // where RO and RN are the old and new region respectively.
     auto ins = txn_info_.try_emplace(txn_id, txn_id, is_remaster ? 2 : txn.keys_size());
@@ -576,13 +569,15 @@ AcquireLocksResult DDRLockManager::AcquireLocks(const Transaction& txn) {
     }
     result = txn_info.is_ready() ? AcquireLocksResult::ACQUIRED : AcquireLocksResult::WAITING;
   }
-  bool ok = log_.emplace(txn_id, txn.internal().involved_partitions_size(), is_complete, blocking_txns);
-  CHECK(ok) << "Out of memory";
+  {
+    lock_guard<SpinLatch> guard(log_latch_);
+    log_[log_index_].emplace_back(txn_id, txn.internal().involved_partitions_size(), is_complete, blocking_txns);
+  }
   return result;
 }
 
 vector<pair<TxnId, bool>> DDRLockManager::ReleaseLocks(TxnId txn_id) {
-  lock_guard<SpinLatch> guard(latch_txn_info_);
+  lock_guard<SpinLatch> guard(txn_info_latch_);
 
   auto txn_info_it = txn_info_.find(txn_id);
   if (txn_info_it == txn_info_.end()) {
@@ -642,7 +637,7 @@ void DDRLockManager::GetStats(rapidjson::Document& stats, uint32_t level) const 
   stats.AddMember(StringRef(LOCK_MANAGER_TYPE), 1, alloc);
   stats.AddMember(StringRef(NUM_DEADLOCKS_RESOLVED), num_deadlocks_resolved_.load(), alloc);
   {
-    lock_guard<SpinLatch> guard(latch_txn_info_);
+    lock_guard<SpinLatch> guard(txn_info_latch_);
     stats.AddMember(StringRef(NUM_TXNS_WAITING_FOR_LOCK), txn_info_.size(), alloc);
     if (level >= 1) {
       rapidjson::Value waited_by_graph(rapidjson::kArrayType);
