@@ -63,6 +63,20 @@ class TransactionEventMetrics {
 
   std::list<Data>& data() { return txn_events_; }
 
+  static void WriteToDisk(const std::string& dir, const std::list<Data>& data) {
+    CSVWriter txn_events_csv(dir + "/txn_events.csv", {"txn_id", "event_id", "time", "partition", "replica"});
+    CSVWriter event_names_csv(dir + "/event_names.csv", {"id", "event"});
+    std::unordered_map<int, string> event_names;
+    for (const auto& d : data) {
+      txn_events_csv << d.txn_id << static_cast<int>(d.event) << d.time << d.partition << d.replica
+                     << csvendl;
+      event_names[d.event] = ENUM_NAME(d.event, TransactionEvent);
+    }
+    for (auto e : event_names) {
+      event_names_csv << e.first << e.second << csvendl;
+    }
+  }
+
  private:
   Sampler sampler_;
   uint32_t local_replica_;
@@ -98,6 +112,16 @@ class DeadlockResolverRunMetrics {
   };
   std::list<Data>& data() { return data_; }
 
+  static void WriteToDisk(const std::string& dir, const std::list<Data>& data) {
+    CSVWriter deadlock_resolver_csv(
+        dir + "/deadlock_resolver.csv",
+        {"time", "partition", "replica", "runtime", "unstable_graph_sz", "stable_graph_sz", "deadlocks_resolved"});
+    for (const auto& d : data) {
+      deadlock_resolver_csv << d.time << d.partition << d.replica << d.runtime << d.unstable_graph_sz
+                            << d.stable_graph_sz << d.deadlocks_resolved << csvendl;
+    }
+  }
+
  private:
   Sampler sampler_;
   uint32_t local_replica_;
@@ -131,6 +155,14 @@ class DeadlockResolverDeadlockMetrics {
     std::vector<std::pair<uint64_t, uint64_t>> edges_added;
   };
   std::list<Data>& data() { return data_; }
+
+  static void WriteToDisk(const std::string& dir, const std::list<Data>& data) {
+    CSVWriter deadlocks_csv(dir + "/deadlocks.csv", {"time", "partition", "replica", "vertices", "removed", "added"});
+    for (const auto& d : data) {
+      deadlocks_csv << d.time << d.partition << d.replica << d.num_vertices << Join(d.edges_removed)
+                    << Join(d.edges_added) << csvendl;
+    }
+  }
 
  private:
   Sampler sampler_;
@@ -218,32 +250,9 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
 
   // Write metrics to disk
   try {
-    CSVWriter txn_events_csv(dir + "/txn_events.csv", {"txn_id", "event_id", "time", "partition", "replica"});
-    CSVWriter event_names_csv(dir + "/event_names.csv", {"id", "event"});
-    std::unordered_map<int, string> event_names;
-    for (const auto& data : txn_events_data) {
-      txn_events_csv << data.txn_id << static_cast<int>(data.event) << data.time << data.partition << data.replica
-                     << csvendl;
-      event_names[data.event] = ENUM_NAME(data.event, TransactionEvent);
-    }
-    for (auto e : event_names) {
-      event_names_csv << e.first << e.second << csvendl;
-    }
-
-    CSVWriter deadlock_resolver_csv(
-        dir + "/deadlock_resolver.csv",
-        {"time", "partition", "replica", "runtime", "unstable_graph_sz", "stable_graph_sz", "deadlocks_resolved"});
-    for (const auto& data : deadlock_resolver_run_data) {
-      deadlock_resolver_csv << data.time << data.partition << data.replica << data.runtime << data.unstable_graph_sz
-                            << data.stable_graph_sz << data.deadlocks_resolved << csvendl;
-    }
-
-    CSVWriter deadlocks_csv(dir + "/deadlocks.csv", {"time", "partition", "replica", "vertices", "removed", "added"});
-    for (const auto& data : deadlock_resolver_deadlock_data) {
-      deadlocks_csv << data.time << data.partition << data.replica << data.num_vertices << Join(data.edges_removed)
-                    << Join(data.edges_added) << csvendl;
-    }
-
+    TransactionEventMetrics::WriteToDisk(dir, txn_events_data);
+    DeadlockResolverRunMetrics::WriteToDisk(dir, deadlock_resolver_run_data);
+    DeadlockResolverDeadlockMetrics::WriteToDisk(dir, deadlock_resolver_deadlock_data);
     LOG(INFO) << "Metrics written to: \"" << dir << "/\"";
   } catch (std::runtime_error& e) {
     LOG(ERROR) << e.what();
