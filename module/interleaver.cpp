@@ -228,10 +228,15 @@ void Interleaver::AdvanceLogs() {
   }
 
   // Advance single-home logs
-  for (auto& pair : single_home_logs_) {
-    auto& log = pair.second;
+  for (auto& [r, log] : single_home_logs_) {
     while (log.HasNextBatch()) {
-      EmitBatch(log.NextBatch().second);
+      auto next_batch = log.NextBatch().second;
+      if (per_thread_metrics_repo != nullptr && config_->sample_rate().interleaver_logs()) {
+        for (auto& txn : next_batch->transactions()) {
+          per_thread_metrics_repo->RecordInterleaverLogEntry(r, txn.internal().id());
+        }
+      }
+      EmitBatch(move(next_batch));
     }
   }
 }
@@ -242,7 +247,6 @@ void Interleaver::EmitBatch(BatchPtr&& batch) {
   auto transactions = Unbatch(batch.get());
   for (auto txn : transactions) {
     RECORD(txn->mutable_internal(), TransactionEvent::EXIT_INTERLEAVER);
-
     auto env = NewEnvelope();
     auto forward_txn = env->mutable_request()->mutable_forward_txn();
     forward_txn->set_allocated_txn(txn);

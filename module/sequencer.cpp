@@ -101,7 +101,6 @@ void Sequencer::BatchTxn(Transaction* txn) {
   // Batch size is larger than the maximum size, send the batch immediately
   auto max_batch_size = config_->sequencer_max_batch_size();
   if (max_batch_size > 0 && batch_size_ >= max_batch_size) {
-    ClearTimedCallbacks();
     SendBatch();
     NewBatch();
   }

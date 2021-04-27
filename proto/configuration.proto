@@ -72,6 +72,7 @@ message SampleRate {
     uint32 txn_event = 1;
     uint32 deadlock_resolver_run = 2;
     uint32 deadlock_resolver_deadlock = 3;
+    bool interleaver_logs = 4;
 }
 
 enum Commands {

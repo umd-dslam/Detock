@@ -30,6 +30,7 @@ class MetricsRepository {
                                  size_t deadlocks_resolved);
   void RecordDeadlockResolverDeadlock(int num_vertices, const std::vector<std::pair<uint64_t, uint64_t>>& edges_removed,
                                       const std::vector<std::pair<uint64_t, uint64_t>>& edges_added);
+  void RecordInterleaverLogEntry(uint32_t replica, TxnId txn_id);
   std::unique_ptr<AllMetrics> Reset();
 
  private:
@@ -57,7 +58,6 @@ class MetricsRepositoryManager {
 };
 
 using MetricsRepositoryManagerPtr = std::shared_ptr<MetricsRepositoryManager>;
-
 
 /**
  * Initialization and helper functions

@@ -7,6 +7,10 @@
 #include "common/string_utils.h"
 #include "proto/internal.pb.h"
 
+using std::list;
+using std::pair;
+using std::vector;
+
 namespace slog {
 
 class Sampler {
@@ -14,7 +18,7 @@ class Sampler {
   using sample_mask_t = std::array<bool, kSampleMaskSize>;
 
   sample_mask_t sample_mask_;
-  std::vector<uint8_t> sample_count_;
+  vector<uint8_t> sample_count_;
 
  public:
   Sampler(int sample_rate, size_t num_keys) : sample_count_(num_keys, 0) {
@@ -61,15 +65,14 @@ class TransactionEventMetrics {
     TransactionEvent event;
   };
 
-  std::list<Data>& data() { return txn_events_; }
+  list<Data>& data() { return txn_events_; }
 
-  static void WriteToDisk(const std::string& dir, const std::list<Data>& data) {
+  static void WriteToDisk(const std::string& dir, const list<Data>& data) {
     CSVWriter txn_events_csv(dir + "/txn_events.csv", {"txn_id", "event_id", "time", "partition", "replica"});
     CSVWriter event_names_csv(dir + "/event_names.csv", {"id", "event"});
     std::unordered_map<int, string> event_names;
     for (const auto& d : data) {
-      txn_events_csv << d.txn_id << static_cast<int>(d.event) << d.time << d.partition << d.replica
-                     << csvendl;
+      txn_events_csv << d.txn_id << static_cast<int>(d.event) << d.time << d.partition << d.replica << csvendl;
       event_names[d.event] = ENUM_NAME(d.event, TransactionEvent);
     }
     for (auto e : event_names) {
@@ -81,7 +84,7 @@ class TransactionEventMetrics {
   Sampler sampler_;
   uint32_t local_replica_;
   uint32_t local_partition_;
-  std::list<Data> txn_events_;
+  list<Data> txn_events_;
 };
 
 class DeadlockResolverRunMetrics {
@@ -110,9 +113,9 @@ class DeadlockResolverRunMetrics {
     size_t stable_graph_sz;
     size_t deadlocks_resolved;
   };
-  std::list<Data>& data() { return data_; }
+  list<Data>& data() { return data_; }
 
-  static void WriteToDisk(const std::string& dir, const std::list<Data>& data) {
+  static void WriteToDisk(const std::string& dir, const list<Data>& data) {
     CSVWriter deadlock_resolver_csv(
         dir + "/deadlock_resolver.csv",
         {"time", "partition", "replica", "runtime", "unstable_graph_sz", "stable_graph_sz", "deadlocks_resolved"});
@@ -126,7 +129,7 @@ class DeadlockResolverRunMetrics {
   Sampler sampler_;
   uint32_t local_replica_;
   uint32_t local_partition_;
-  std::list<Data> data_;
+  list<Data> data_;
 };
 
 class DeadlockResolverDeadlockMetrics {
@@ -134,8 +137,8 @@ class DeadlockResolverDeadlockMetrics {
   DeadlockResolverDeadlockMetrics(int sample_rate, uint32_t local_replica, uint32_t local_partition)
       : sampler_(sample_rate, 2), local_replica_(local_replica), local_partition_(local_partition) {}
 
-  void Record(int num_vertices, const std::vector<std::pair<uint64_t, uint64_t>>& edges_removed,
-              const std::vector<std::pair<uint64_t, uint64_t>>& edges_added) {
+  void Record(int num_vertices, const vector<pair<uint64_t, uint64_t>>& edges_removed,
+              const vector<pair<uint64_t, uint64_t>>& edges_added) {
     if (sampler_.IsChosen(1)) {
       data_.push_back({.time = std::chrono::system_clock::now().time_since_epoch().count(),
                        .partition = local_partition_,
@@ -151,12 +154,12 @@ class DeadlockResolverDeadlockMetrics {
     uint32_t partition;
     uint32_t replica;
     int num_vertices;
-    std::vector<std::pair<uint64_t, uint64_t>> edges_removed;
-    std::vector<std::pair<uint64_t, uint64_t>> edges_added;
+    vector<pair<uint64_t, uint64_t>> edges_removed;
+    vector<pair<uint64_t, uint64_t>> edges_added;
   };
-  std::list<Data>& data() { return data_; }
+  list<Data>& data() { return data_; }
 
-  static void WriteToDisk(const std::string& dir, const std::list<Data>& data) {
+  static void WriteToDisk(const std::string& dir, const list<Data>& data) {
     CSVWriter deadlocks_csv(dir + "/deadlocks.csv", {"time", "partition", "replica", "vertices", "removed", "added"});
     for (const auto& d : data) {
       deadlocks_csv << d.time << d.partition << d.replica << d.num_vertices << Join(d.edges_removed)
@@ -168,13 +171,55 @@ class DeadlockResolverDeadlockMetrics {
   Sampler sampler_;
   uint32_t local_replica_;
   uint32_t local_partition_;
-  std::list<Data> data_;
+  list<Data> data_;
+};
+
+class InterleaverLogs {
+ public:
+  InterleaverLogs(uint32_t num_replicas) : local_logs_(num_replicas) {}
+
+  void Record(uint32_t replica, TxnId txn_id) {
+    local_logs_[replica].push_back(txn_id);
+    global_log_.emplace_back(txn_id, replica);
+  }
+
+  const vector<vector<TxnId>>& local_logs() const { return local_logs_; }
+  const vector<pair<TxnId, uint32_t>>& global_log() const { return global_log_; }
+
+  static void WriteToDisk(const std::string& dir, const vector<vector<TxnId>>& local_logs,
+                          const vector<pair<TxnId, uint32_t>>& global_log) {
+    for (size_t i = 0; i < local_logs.size(); i++) {
+      auto file_name = dir + "/local_log_" + std::to_string(i);
+      auto file = std::ofstream(file_name, std::ios::out);
+      if (!file) {
+        throw std::runtime_error(std::string("Cannot open file: ") + file_name);
+      }
+      for (auto entry : local_logs[i]) {
+        file << entry << "\n";
+      }
+    }
+    {
+      auto file_name = dir + "/global_log";
+      auto file = std::ofstream(file_name, std::ios::out);
+      if (!file) {
+        throw std::runtime_error(std::string("Cannot open file: ") + file_name);
+      }
+      for (auto entry : global_log) {
+        file << entry.first << " " << entry.second << "\n";
+      }
+    }
+  }
+
+ private:
+  vector<vector<TxnId>> local_logs_;
+  vector<pair<TxnId, uint32_t>> global_log_;
 };
 
 struct AllMetrics {
   TransactionEventMetrics txn_event_metrics;
   DeadlockResolverRunMetrics deadlock_resolver_run_metrics;
   DeadlockResolverDeadlockMetrics deadlock_resolver_deadlock_metrics;
+  InterleaverLogs interleaver_logs;
 };
 
 /**
@@ -196,10 +241,18 @@ void MetricsRepository::RecordDeadlockResolverRun(int64_t runtime, size_t unstab
 }
 
 void MetricsRepository::RecordDeadlockResolverDeadlock(int num_vertices,
-                                                       const std::vector<std::pair<uint64_t, uint64_t>>& edges_removed,
-                                                       const std::vector<std::pair<uint64_t, uint64_t>>& edges_added) {
+                                                       const vector<pair<uint64_t, uint64_t>>& edges_removed,
+                                                       const vector<pair<uint64_t, uint64_t>>& edges_added) {
   std::lock_guard<SpinLatch> guard(latch_);
   return metrics_->deadlock_resolver_deadlock_metrics.Record(num_vertices, edges_removed, edges_added);
+}
+
+void MetricsRepository::RecordInterleaverLogEntry(uint32_t replica, TxnId txn_id) {
+  if (!config_->sample_rate().interleaver_logs()) {
+    return;
+  }
+  std::lock_guard<SpinLatch> guard(latch_);
+  return metrics_->interleaver_logs.Record(replica, txn_id);
 }
 
 std::unique_ptr<AllMetrics> MetricsRepository::Reset() {
@@ -208,9 +261,9 @@ std::unique_ptr<AllMetrics> MetricsRepository::Reset() {
                                                     config_->local_partition()),
        .deadlock_resolver_run_metrics = DeadlockResolverRunMetrics(
            config_->sample_rate().deadlock_resolver_run(), config_->local_replica(), config_->local_partition()),
-       .deadlock_resolver_deadlock_metrics =
-           DeadlockResolverDeadlockMetrics(config_->sample_rate().deadlock_resolver_deadlock(),
-                                           config_->local_replica(), config_->local_partition())}));
+       .deadlock_resolver_deadlock_metrics = DeadlockResolverDeadlockMetrics(
+           config_->sample_rate().deadlock_resolver_deadlock(), config_->local_replica(), config_->local_partition()),
+       .interleaver_logs = InterleaverLogs(config_->num_replicas())}));
   std::lock_guard<SpinLatch> guard(latch_);
   metrics_.swap(new_metrics);
   return new_metrics;
@@ -233,9 +286,11 @@ void MetricsRepositoryManager::RegisterCurrentThread() {
 
 void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
   // Aggregate metrics
-  std::list<TransactionEventMetrics::Data> txn_events_data;
-  std::list<DeadlockResolverRunMetrics::Data> deadlock_resolver_run_data;
-  std::list<DeadlockResolverDeadlockMetrics::Data> deadlock_resolver_deadlock_data;
+  list<TransactionEventMetrics::Data> txn_events_data;
+  list<DeadlockResolverRunMetrics::Data> deadlock_resolver_run_data;
+  list<DeadlockResolverDeadlockMetrics::Data> deadlock_resolver_deadlock_data;
+  vector<vector<TxnId>> local_logs;
+  vector<pair<TxnId, uint32_t>> global_log;
   {
     std::lock_guard<std::mutex> guard(mut_);
     for (auto& kv : metrics_repos_) {
@@ -245,6 +300,11 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
                                         metrics->deadlock_resolver_run_metrics.data());
       deadlock_resolver_deadlock_data.splice(deadlock_resolver_deadlock_data.end(),
                                              metrics->deadlock_resolver_deadlock_metrics.data());
+      // There is only one thread with local logs and global log data so there is no need to splice
+      if (!metrics->interleaver_logs.global_log().empty()) {
+        local_logs = metrics->interleaver_logs.local_logs();
+        global_log = metrics->interleaver_logs.global_log();
+      }
     }
   }
 
@@ -253,6 +313,7 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
     TransactionEventMetrics::WriteToDisk(dir, txn_events_data);
     DeadlockResolverRunMetrics::WriteToDisk(dir, deadlock_resolver_run_data);
     DeadlockResolverDeadlockMetrics::WriteToDisk(dir, deadlock_resolver_deadlock_data);
+    InterleaverLogs::WriteToDisk(dir, local_logs, global_log);
     LOG(INFO) << "Metrics written to: \"" << dir << "/\"";
   } catch (std::runtime_error& e) {
     LOG(ERROR) << e.what();
