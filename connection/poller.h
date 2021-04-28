@@ -3,6 +3,7 @@
 #include <functional>
 #include <list>
 #include <optional>
+#include <queue>
 #include <vector>
 #include <zmq.hpp>
 
@@ -24,17 +25,19 @@ class Poller {
 
   void ClearTimedCallbacks();
 
- private:
-  using Clock = std::chrono::steady_clock;
-  using TimePoint = Clock::time_point;
   struct TimedCallback {
-    TimePoint when;
+    std::chrono::steady_clock::time_point when;
     std::function<void()> callback;
+
+    bool operator>(const TimedCallback& other) const {
+      return when > other.when;
+    }
   };
 
+ private:
   std::optional<std::chrono::microseconds> poll_timeout_;
   std::vector<zmq::pollitem_t> poll_items_;
-  std::list<TimedCallback> timed_callbacks_;
+  std::priority_queue<TimedCallback, std::vector<TimedCallback>, std::greater<TimedCallback>> timed_callbacks_;
 };
 
 }  // namespace slog

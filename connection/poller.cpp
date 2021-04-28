@@ -21,13 +21,13 @@ bool Poller::NextEvent(bool dont_wait) {
   if (!dont_wait) {
     // Compute the time that we need to wait until the next event
     auto shortest_timeout = poll_timeout_;
-    auto now = Clock::now();
-    for (auto& ev : timed_callbacks_) {
-      if (ev.when <= now) {
+    auto now = std::chrono::steady_clock::now();
+    if (!timed_callbacks_.empty()) {
+      const auto& next_ev_time = timed_callbacks_.top().when;
+      if (next_ev_time <= now) {
         shortest_timeout = 0us;
-        break;
-      } else if (!shortest_timeout.has_value() || ev.when - now < shortest_timeout.value()) {
-        shortest_timeout = duration_cast<microseconds>(ev.when - now);
+      } else if (!shortest_timeout.has_value() || next_ev_time - now < shortest_timeout.value()) {
+        shortest_timeout = duration_cast<microseconds>(next_ev_time - now);
       }
     }
 
@@ -47,14 +47,10 @@ bool Poller::NextEvent(bool dont_wait) {
 
   // Process and clean up triggered callbacks
   if (!timed_callbacks_.empty()) {
-    auto now = Clock::now();
-    for (auto it = timed_callbacks_.begin(); it != timed_callbacks_.end();) {
-      if (it->when <= now) {
-        it->callback();
-        it = timed_callbacks_.erase(it);
-      } else {
-        ++it;
-      }
+    auto now = std::chrono::steady_clock::now();
+    while (!timed_callbacks_.empty() && timed_callbacks_.top().when <= now) {
+      timed_callbacks_.top().callback();
+      timed_callbacks_.pop();
     }
   }
 
@@ -64,9 +60,9 @@ bool Poller::NextEvent(bool dont_wait) {
 bool Poller::is_socket_ready(size_t i) const { return poll_items_[i].revents & ZMQ_POLLIN; }
 
 void Poller::AddTimedCallback(microseconds timeout, std::function<void()>&& cb) {
-  timed_callbacks_.push_back({.when = Clock::now() + timeout, .callback = move(cb)});
+  timed_callbacks_.push({.when = std::chrono::steady_clock::now() + timeout, .callback = move(cb)});
 }
 
-void Poller::ClearTimedCallbacks() { timed_callbacks_.clear(); }
+void Poller::ClearTimedCallbacks() { timed_callbacks_ = {}; }
 
 }  // namespace slog

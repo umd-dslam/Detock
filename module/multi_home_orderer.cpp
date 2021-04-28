@@ -135,6 +135,7 @@ void MultiHomeOrderer::AddToBatch(Transaction* txn) {
   // Batch size is larger than the maximum size, send the batch immediately
   auto max_batch_size = config_->sequencer_max_batch_size();
   if (max_batch_size > 0 && batch_size_ >= max_batch_size) {
+    // Assumption: there is at most one timed callback at all time
     ClearTimedCallbacks();
     SendBatch();
     NewBatch();
