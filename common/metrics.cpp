@@ -10,6 +10,7 @@
 using std::list;
 using std::pair;
 using std::vector;
+using std::chrono::system_clock;
 
 namespace slog {
 
@@ -44,8 +45,8 @@ class TransactionEventMetrics {
         local_replica_(local_replica),
         local_partition_(local_partition) {}
 
-  std::chrono::system_clock::time_point Record(TxnId txn_id, TransactionEvent event) {
-    auto now = std::chrono::system_clock::now();
+  system_clock::time_point Record(TxnId txn_id, TransactionEvent event) {
+    auto now = system_clock::now();
     auto sample_index = static_cast<size_t>(event);
     if (sampler_.IsChosen(sample_index)) {
       txn_events_.push_back({.time = now.time_since_epoch().count(),
@@ -94,7 +95,7 @@ class DeadlockResolverRunMetrics {
 
   void Record(int64_t runtime, size_t unstable_graph_sz, size_t stable_graph_sz, size_t deadlocks_resolved) {
     if (sampler_.IsChosen(0)) {
-      data_.push_back({.time = std::chrono::system_clock::now().time_since_epoch().count(),
+      data_.push_back({.time = system_clock::now().time_since_epoch().count(),
                        .partition = local_partition_,
                        .replica = local_replica_,
                        .runtime = runtime,
@@ -140,7 +141,7 @@ class DeadlockResolverDeadlockMetrics {
   void Record(int num_vertices, const vector<pair<uint64_t, uint64_t>>& edges_removed,
               const vector<pair<uint64_t, uint64_t>>& edges_added) {
     if (sampler_.IsChosen(1)) {
-      data_.push_back({.time = std::chrono::system_clock::now().time_since_epoch().count(),
+      data_.push_back({.time = system_clock::now().time_since_epoch().count(),
                        .partition = local_partition_,
                        .replica = local_replica_,
                        .num_vertices = num_vertices,
@@ -176,43 +177,34 @@ class DeadlockResolverDeadlockMetrics {
 
 class InterleaverLogs {
  public:
-  InterleaverLogs(uint32_t num_replicas) : local_logs_(num_replicas) {}
-
-  void Record(uint32_t replica, TxnId txn_id) {
-    local_logs_[replica].push_back(txn_id);
-    global_log_.emplace_back(txn_id, replica);
+  void Record(uint32_t replica, BatchId batch_id, TxnId txn_id, int64_t enter_sequencer_time,
+              int64_t enter_local_batch_time) {
+    global_log_.push_back({.replica = replica,
+                           .txn_id = txn_id,
+                           .batch_id = batch_id,
+                           .enter_sequencer_time = enter_sequencer_time,
+                           .enter_local_batch_time = enter_local_batch_time});
   }
+  struct Data {
+    uint32_t replica;
+    TxnId txn_id;
+    BatchId batch_id;
+    int64_t enter_sequencer_time;
+    int64_t enter_local_batch_time;
+  };
+  const vector<Data>& global_log() const { return global_log_; }
 
-  const vector<vector<TxnId>>& local_logs() const { return local_logs_; }
-  const vector<pair<TxnId, uint32_t>>& global_log() const { return global_log_; }
-
-  static void WriteToDisk(const std::string& dir, const vector<vector<TxnId>>& local_logs,
-                          const vector<pair<TxnId, uint32_t>>& global_log) {
-    for (size_t i = 0; i < local_logs.size(); i++) {
-      auto file_name = dir + "/local_log_" + std::to_string(i);
-      auto file = std::ofstream(file_name, std::ios::out);
-      if (!file) {
-        throw std::runtime_error(std::string("Cannot open file: ") + file_name);
-      }
-      for (auto entry : local_logs[i]) {
-        file << entry << "\n";
-      }
-    }
-    {
-      auto file_name = dir + "/global_log";
-      auto file = std::ofstream(file_name, std::ios::out);
-      if (!file) {
-        throw std::runtime_error(std::string("Cannot open file: ") + file_name);
-      }
-      for (auto entry : global_log) {
-        file << entry.first << " " << entry.second << "\n";
-      }
+  static void WriteToDisk(const std::string& dir, const vector<Data>& global_log) {
+    CSVWriter global_log_csv(dir + "/global_log.csv",
+                             {"replica", "batch_id", "txn_id", "enter_sequencer", "enter_local_batch"});
+    for (const auto& e : global_log) {
+      global_log_csv << e.replica << e.batch_id << e.txn_id << e.enter_local_batch_time << e.enter_local_batch_time
+                     << csvendl;
     }
   }
 
  private:
-  vector<vector<TxnId>> local_logs_;
-  vector<pair<TxnId, uint32_t>> global_log_;
+  vector<Data> global_log_;
 };
 
 struct AllMetrics {
@@ -228,7 +220,7 @@ struct AllMetrics {
 
 MetricsRepository::MetricsRepository(const ConfigurationPtr& config) : config_(config) { Reset(); }
 
-std::chrono::system_clock::time_point MetricsRepository::RecordTxnEvent(TxnId txn_id, TransactionEvent event) {
+system_clock::time_point MetricsRepository::RecordTxnEvent(TxnId txn_id, TransactionEvent event) {
   std::lock_guard<SpinLatch> guard(latch_);
   return metrics_->txn_event_metrics.Record(txn_id, event);
 }
@@ -247,12 +239,13 @@ void MetricsRepository::RecordDeadlockResolverDeadlock(int num_vertices,
   return metrics_->deadlock_resolver_deadlock_metrics.Record(num_vertices, edges_removed, edges_added);
 }
 
-void MetricsRepository::RecordInterleaverLogEntry(uint32_t replica, TxnId txn_id) {
+void MetricsRepository::RecordInterleaverLogEntry(uint32_t replica, BatchId batch_id, TxnId txn_id,
+                                                  int64_t enter_sequencer_time, int64_t enter_local_batch_time) {
   if (!config_->sample_rate().interleaver_logs()) {
     return;
   }
   std::lock_guard<SpinLatch> guard(latch_);
-  return metrics_->interleaver_logs.Record(replica, txn_id);
+  return metrics_->interleaver_logs.Record(replica, batch_id, txn_id, enter_sequencer_time, enter_local_batch_time);
 }
 
 std::unique_ptr<AllMetrics> MetricsRepository::Reset() {
@@ -263,7 +256,7 @@ std::unique_ptr<AllMetrics> MetricsRepository::Reset() {
            config_->sample_rate().deadlock_resolver_run(), config_->local_replica(), config_->local_partition()),
        .deadlock_resolver_deadlock_metrics = DeadlockResolverDeadlockMetrics(
            config_->sample_rate().deadlock_resolver_deadlock(), config_->local_replica(), config_->local_partition()),
-       .interleaver_logs = InterleaverLogs(config_->num_replicas())}));
+       .interleaver_logs = InterleaverLogs()}));
   std::lock_guard<SpinLatch> guard(latch_);
   metrics_.swap(new_metrics);
   return new_metrics;
@@ -289,8 +282,7 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
   list<TransactionEventMetrics::Data> txn_events_data;
   list<DeadlockResolverRunMetrics::Data> deadlock_resolver_run_data;
   list<DeadlockResolverDeadlockMetrics::Data> deadlock_resolver_deadlock_data;
-  vector<vector<TxnId>> local_logs;
-  vector<pair<TxnId, uint32_t>> global_log;
+  vector<InterleaverLogs::Data> global_log;
   {
     std::lock_guard<std::mutex> guard(mut_);
     for (auto& kv : metrics_repos_) {
@@ -302,7 +294,6 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
                                              metrics->deadlock_resolver_deadlock_metrics.data());
       // There is only one thread with local logs and global log data so there is no need to splice
       if (!metrics->interleaver_logs.global_log().empty()) {
-        local_logs = metrics->interleaver_logs.local_logs();
         global_log = metrics->interleaver_logs.global_log();
       }
     }
@@ -313,7 +304,7 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
     TransactionEventMetrics::WriteToDisk(dir, txn_events_data);
     DeadlockResolverRunMetrics::WriteToDisk(dir, deadlock_resolver_run_data);
     DeadlockResolverDeadlockMetrics::WriteToDisk(dir, deadlock_resolver_deadlock_data);
-    InterleaverLogs::WriteToDisk(dir, local_logs, global_log);
+    InterleaverLogs::WriteToDisk(dir, global_log);
     LOG(INFO) << "Metrics written to: \"" << dir << "/\"";
   } catch (std::runtime_error& e) {
     LOG(ERROR) << e.what();

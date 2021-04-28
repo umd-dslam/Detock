@@ -30,7 +30,8 @@ class MetricsRepository {
                                  size_t deadlocks_resolved);
   void RecordDeadlockResolverDeadlock(int num_vertices, const std::vector<std::pair<uint64_t, uint64_t>>& edges_removed,
                                       const std::vector<std::pair<uint64_t, uint64_t>>& edges_added);
-  void RecordInterleaverLogEntry(uint32_t replica, TxnId txn_id);
+  void RecordInterleaverLogEntry(uint32_t replica, BatchId batch_id, TxnId txn_id, int64_t enter_sequencer_time,
+                                 int64_t enter_local_batch_time);
   std::unique_ptr<AllMetrics> Reset();
 
  private:

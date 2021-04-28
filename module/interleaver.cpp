@@ -231,11 +231,24 @@ void Interleaver::AdvanceLogs() {
   for (auto& [r, log] : single_home_logs_) {
     while (log.HasNextBatch()) {
       auto next_batch = log.NextBatch().second;
+
+      // Record the log for debugging
       if (per_thread_metrics_repo != nullptr && config_->sample_rate().interleaver_logs()) {
         for (auto& txn : next_batch->transactions()) {
-          per_thread_metrics_repo->RecordInterleaverLogEntry(r, txn.internal().id());
+          const auto& internal = txn.internal();
+          int64_t enter_sequencer_time = 0, enter_local_batch_time = 0;
+          for (int i = 0; i < internal.events_size(); i++) {
+            if (internal.events(i) == TransactionEvent::ENTER_SEQUENCER) {
+              enter_sequencer_time = internal.event_times(i);
+            } else if (internal.events(i) == TransactionEvent::ENTER_LOCAL_BATCH) {
+              enter_local_batch_time = internal.event_times(i);
+            }
+          }
+          per_thread_metrics_repo->RecordInterleaverLogEntry(r, next_batch->id(), internal.id(), enter_sequencer_time,
+                                                             enter_local_batch_time);
         }
       }
+
       EmitBatch(move(next_batch));
     }
   }

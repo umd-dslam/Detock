@@ -52,6 +52,7 @@ void Sequencer::OnInternalRequestReceived(EnvelopePtr&& env) {
   switch (request->type_case()) {
     case Request::kForwardTxn: {
       auto txn = request->mutable_forward_txn()->release_txn();
+      RECORD(txn->mutable_internal(), TransactionEvent::ENTER_SEQUENCER);
       if (txn->internal().sequencer_delay_ms() > 0) {
         auto delay = std::chrono::milliseconds(txn->internal().sequencer_delay_ms());
         NewTimedCallback(delay, [this, txn]() { BatchTxn(txn); });
@@ -70,7 +71,7 @@ void Sequencer::OnInternalRequestReceived(EnvelopePtr&& env) {
 }
 
 void Sequencer::BatchTxn(Transaction* txn) {
-  RECORD(txn->mutable_internal(), TransactionEvent::ENTER_SEQUENCER);
+  RECORD(txn->mutable_internal(), TransactionEvent::ENTER_LOCAL_BATCH);
 
   if (txn->internal().type() == TransactionType::MULTI_HOME_OR_LOCK_ONLY) {
     txn = GenerateLockOnlyTxn(txn, config_->local_replica(), true /* in_place */);
