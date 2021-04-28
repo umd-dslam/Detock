@@ -198,7 +198,7 @@ class InterleaverLogs {
     CSVWriter global_log_csv(dir + "/global_log.csv",
                              {"replica", "batch_id", "txn_id", "enter_sequencer", "enter_local_batch"});
     for (const auto& e : global_log) {
-      global_log_csv << e.replica << e.batch_id << e.txn_id << e.enter_local_batch_time << e.enter_local_batch_time
+      global_log_csv << e.replica << e.batch_id << e.txn_id << e.enter_sequencer_time << e.enter_local_batch_time
                      << csvendl;
     }
   }
