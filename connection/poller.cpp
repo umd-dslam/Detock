@@ -49,8 +49,9 @@ bool Poller::NextEvent(bool dont_wait) {
   if (!timed_callbacks_.empty()) {
     auto now = std::chrono::steady_clock::now();
     while (!timed_callbacks_.empty() && timed_callbacks_.top().when <= now) {
-      timed_callbacks_.top().callback();
+      auto cb{std::move(timed_callbacks_.top().callback)};
       timed_callbacks_.pop();
+      cb();
     }
   }
 
