@@ -49,7 +49,11 @@ class DeadlockResolver : public NetworkedModule {
     }
   }
 
-  void Initialize() final { ScheduleNextRun(); }
+  void Initialize() final {
+    if (config_->ddr_interval() > 0ms) {
+      ScheduleNextRun();
+    }
+  }
 
   void Run() {
     auto start_time = std::chrono::steady_clock::now();
@@ -105,12 +109,10 @@ class DeadlockResolver : public NetworkedModule {
   vector<TxnId> to_be_updated_;
 
   void ScheduleNextRun() {
-    if (config_->ddr_interval() > 0ms) {
-      NewTimedCallback(config_->ddr_interval(), [this] {
-        Run();
-        ScheduleNextRun();
-      });
-    }
+    NewTimedCallback(config_->ddr_interval(), [this] {
+      Run();
+      ScheduleNextRun();
+    });
   }
 
   void UpdateGraphAndBroadcastChanges() {

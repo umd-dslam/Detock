@@ -29,9 +29,7 @@ class Poller {
     std::chrono::steady_clock::time_point when;
     std::function<void()> callback;
 
-    bool operator>(const TimedCallback& other) const {
-      return when > other.when;
-    }
+    bool operator>(const TimedCallback& other) const { return when > other.when; }
   };
 
  private:

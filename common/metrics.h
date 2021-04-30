@@ -32,6 +32,7 @@ class MetricsRepository {
                                       const std::vector<std::pair<uint64_t, uint64_t>>& edges_added);
   void RecordInterleaverLogEntry(uint32_t replica, BatchId batch_id, TxnId txn_id, int64_t enter_sequencer_time,
                                  int64_t enter_local_batch_time);
+  void RecordLatencyProbe(uint32_t replica, int64_t send_time, int64_t recv_time);
   std::unique_ptr<AllMetrics> Reset();
 
  private:

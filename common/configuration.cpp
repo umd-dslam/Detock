@@ -248,4 +248,6 @@ std::array<int, 2> Configuration::interleaver_remote_to_local_ratio() const {
   return {std::stoi(ratio[0]), std::stoi(ratio[1])};
 }
 
+milliseconds Configuration::latency_probe_interval() const { return milliseconds(config_.latency_probe_interval()); }
+
 }  // namespace slog

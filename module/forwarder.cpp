@@ -40,6 +40,33 @@ Forwarder::Forwarder(const shared_ptr<Broker>& broker,
   partitioned_lookup_request_.resize(config_->num_partitions());
 }
 
+void Forwarder::Initialize() {
+  if (config_->latency_probe_interval() > 0ms) {
+    ScheduleNextLatencyProbe();
+  }
+}
+
+void Forwarder::ScheduleNextLatencyProbe() {
+  NewTimedCallback(config_->latency_probe_interval(), [this] {
+    for (uint32_t r = 0; r < config_->num_replicas(); r++) {
+      if (r == config_->local_replica()) {
+        continue;
+      }
+      Envelope env;
+      auto ping = env.mutable_request()->mutable_ping();
+      ping->set_time(std::chrono::system_clock::now().time_since_epoch().count());
+      ping->set_target(r);
+      ping->set_from_channel(kForwarderChannel);
+      vector<MachineId> dest;
+      for (uint32_t p = 0; p < config_->num_partitions(); p++) {
+        dest.push_back(config_->MakeMachineId(r, p));
+      }
+      Send(move(env), dest, kSequencerChannel);
+    }
+    ScheduleNextLatencyProbe();
+  });
+}
+
 void Forwarder::OnInternalRequestReceived(EnvelopePtr&& env) {
   switch (env->request().type_case()) {
     case Request::kForwardTxn:
@@ -172,11 +199,23 @@ void Forwarder::ProcessLookUpMasterRequest(EnvelopePtr&& env) {
 }
 
 void Forwarder::OnInternalResponseReceived(EnvelopePtr&& env) {
-  // The forwarder only cares about lookup master responses
-  if (env->response().type_case() != Response::kLookupMaster) {
-    LOG(ERROR) << "Unexpected response type received: \"" << CASE_NAME(env->response().type_case(), Response) << "\"";
+  switch (env->response().type_case()) {
+    case Response::kLookupMaster:
+      UpdateMasterInfo(move(env));
+      break;
+    case Response::kPong:
+      if (per_thread_metrics_repo != nullptr) {
+        const auto& pong = env->response().pong();
+        auto now = std::chrono::system_clock::now().time_since_epoch().count();
+        per_thread_metrics_repo->RecordLatencyProbe(pong.target(), pong.time(), now);
+      }
+      break;
+    default:
+      LOG(ERROR) << "Unexpected response type received: \"" << CASE_NAME(env->response().type_case(), Response) << "\"";
   }
+}
 
+void Forwarder::UpdateMasterInfo(EnvelopePtr&& env) {
   const auto& lookup_master = env->response().lookup_master();
   for (auto txn_id : lookup_master.txn_ids()) {
     auto pending_txn_it = pending_transactions_.find(txn_id);

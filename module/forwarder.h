@@ -37,15 +37,19 @@ class Forwarder : public NetworkedModule {
             const MetricsRepositoryManagerPtr& metrics_manager, milliseconds poll_timeout_ms = kModuleTimeout);
 
  protected:
+  void Initialize() final;
   void OnInternalRequestReceived(EnvelopePtr&& env) final;
   void OnInternalResponseReceived(EnvelopePtr&& env) final;
 
  private:
+  void ScheduleNextLatencyProbe();
   void ProcessForwardTxn(EnvelopePtr&& env);
   void ProcessLookUpMasterRequest(EnvelopePtr&& env);
   void ProcessStatsRequest(const internal::StatsRequest& stats_request);
 
   void SendLookupMasterRequestBatch();
+
+  void UpdateMasterInfo(EnvelopePtr&& env);
 
   /**
    * Pre-condition: transaction type is not UNKNOWN

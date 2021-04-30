@@ -73,6 +73,7 @@ message SampleRate {
     uint32 deadlock_resolver_run = 2;
     uint32 deadlock_resolver_deadlock = 3;
     bool interleaver_logs = 4;
+    uint32 latency_probe = 5;
 }
 
 enum Commands {
@@ -147,4 +148,7 @@ message Configuration {
     // in the format "<remote>:<local>". For example "5:1" means the interleaver tries to fetch 5 messages for
     // remote logs before fetching 1 message for local log.
     bytes interleaver_remote_to_local_ratio = 26;
+    // The forwarder sends probes to measure latency between current region and other regions on a set interval.
+    // This interval is in ms.
+    uint64 latency_probe_interval = 27;
 }
