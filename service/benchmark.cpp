@@ -18,7 +18,8 @@ DEFINE_int32(workers, 1, "Number of worker threads");
 DEFINE_uint32(r, 0, "The region where the current machine is located");
 DEFINE_string(data_dir, "", "Directory containing intial data");
 DEFINE_string(out_dir, "", "Directory containing output data");
-DEFINE_uint32(rate, 100, "Maximum number of transactions sent per second");
+DEFINE_uint32(rate, 0, "Maximum number of transactions sent per second.");
+DEFINE_uint32(clients, 0, "Number of concurrent client. This option does nothing if 'rate' is set");
 DEFINE_uint32(txns, 100, "Total number of txns being sent. ");
 DEFINE_string(wl, "basic", "Name of the workload to use (options: basic, remastering)");
 DEFINE_string(params, "", "Parameters of the workload");
@@ -66,9 +67,13 @@ int main(int argc, char* argv[]) {
     LOG(WARNING) << "Generating transactions without sending to servers";
   }
 
+  if (FLAGS_clients == 0 && FLAGS_rate == 0) {
+    LOG(FATAL) << "Either 'clients' or 'rate' must be set";
+  }
+
   LOG(INFO) << "Arguments:\n"
-            << "Workload: " << FLAGS_wl << "\nParams: " << FLAGS_params << "\nNum txns: " << FLAGS_txns
-            << "\nSending rate: " << FLAGS_rate;
+            << "Workload: " << FLAGS_wl << "\nParams: " << FLAGS_params << "\nNum txns: " << FLAGS_txns;
+            << "\nSending rate: " << FLAGS_rate << "\nNum clients: " << FLAGS_clients;
 
   const uint32_t seed = (FLAGS_seed < 0) ? std::random_device()() : FLAGS_seed;
 
@@ -88,7 +93,6 @@ int main(int argc, char* argv[]) {
   context.set(zmq::ctxopt::blocky, false);
 
   // Initialize the workers
-  auto tps_per_worker = FLAGS_rate / FLAGS_workers + ((FLAGS_rate % FLAGS_workers) > 0);
   auto remaining_txns = FLAGS_txns;
   auto num_txns_per_worker = FLAGS_txns / FLAGS_workers;
   vector<std::unique_ptr<ModuleRunner>> workers;
@@ -107,8 +111,15 @@ int main(int argc, char* argv[]) {
     } else {
       num_txns_per_worker = remaining_txns;
     }
-    workers.push_back(MakeRunnerFor<ConstantRateTxnGenerator>(config, context, std::move(workload), FLAGS_r,
-                                                              num_txns_per_worker, tps_per_worker, FLAGS_dry_run));
+    if (FLAGS_rate > 0) {
+      auto tps_per_worker = FLAGS_rate / FLAGS_workers + (i < (FLAGS_rate % FLAGS_workers));
+      workers.push_back(MakeRunnerFor<ConstantRateTxnGenerator>(config, context, std::move(workload), FLAGS_r,
+                                                                num_txns_per_worker, tps_per_worker, FLAGS_dry_run));
+    } else {
+      int num_clients = FLAGS_clients / FLAGS_workers + (i < (FLAGS_clients % FLAGS_workers));
+      workers.push_back(MakeRunnerFor<SynchronizedTxnGenerator>(config, context, std::move(workload), FLAGS_r, 
+                                                                num_txns_per_worker, num_clients, FLAGS_dry_run));
+    }
   }
 
   // Block SIGINT from here so that the new threads inherit the block mask

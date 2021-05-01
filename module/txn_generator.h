@@ -13,11 +13,11 @@ namespace slog {
 class TxnGenerator {
  public:
   struct TxnInfo {
-    Transaction* txn;
+    Transaction* txn = nullptr;
     TransactionProfile profile;
     std::chrono::system_clock::time_point sent_at;
     std::chrono::system_clock::time_point recv_at;
-    bool finished;
+    bool finished = false;
   };
 
   virtual const std::vector<TxnInfo>& txns() const = 0;
@@ -33,6 +33,7 @@ class SynchronizedTxnGenerator : public Module, public TxnGenerator {
   SynchronizedTxnGenerator(const ConfigurationPtr& config, zmq::context_t& context,
                            std::unique_ptr<Workload>&& workload, uint32_t region, uint32_t num_txns,
                            int num_clients, int duration_s, bool dry_run);
+  ~SynchronizedTxnGenerator();
   void SetUp() final;
   bool Loop() final;
 
@@ -47,6 +48,8 @@ class SynchronizedTxnGenerator : public Module, public TxnGenerator {
   const std::vector<TxnInfo>& txns() const final { return txns_; }
 
  private:
+  void SendNextTxn();
+
   ConfigurationPtr config_;
   zmq::socket_t socket_;
   std::unique_ptr<Workload> workload_;
@@ -54,12 +57,14 @@ class SynchronizedTxnGenerator : public Module, public TxnGenerator {
   uint32_t region_;
   uint32_t num_txns_;
   int num_clients_;
+  milliseconds duration_;
   bool dry_run_;
   std::chrono::steady_clock::time_point start_time_;
 
   std::atomic<size_t> cur_txn_;
   std::atomic<size_t> num_recv_txns_;
   std::atomic<milliseconds> elapsed_time_;
+  std::vector<std::pair<Transaction*, TransactionProfile>> generated_txns_;
   std::vector<TxnInfo> txns_;
 };
 
@@ -67,8 +72,10 @@ class SynchronizedTxnGenerator : public Module, public TxnGenerator {
 class ConstantRateTxnGenerator : public Module, public TxnGenerator {
  public:
   ConstantRateTxnGenerator(const ConfigurationPtr& config, zmq::context_t& context,
-                           std::unique_ptr<Workload>&& workload, uint32_t region, uint32_t num_txns, uint32_t tps,
+                           std::unique_ptr<Workload>&& workload, uint32_t region, uint32_t num_txns, int tps,
                            bool dry_run);
+  ~ConstantRateTxnGenerator();
+
   void SetUp() final;
   bool Loop() final;
 
@@ -84,7 +91,7 @@ class ConstantRateTxnGenerator : public Module, public TxnGenerator {
   const std::vector<TxnInfo>& txns() const final { return txns_; }
 
  private:
-  void SendTxn();
+  void SendNextTxn();
 
   ConfigurationPtr config_;
   zmq::socket_t socket_;
