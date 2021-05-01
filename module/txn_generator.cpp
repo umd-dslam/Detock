@@ -14,8 +14,33 @@ using std::chrono::system_clock;
 
 namespace slog {
 
-TxnGenerator::TxnGenerator(const ConfigurationPtr& config, zmq::context_t& context, unique_ptr<Workload>&& workload,
-                           uint32_t region, uint32_t num_txns, uint32_t tps, bool dry_run)
+SynchronizedTxnGenerator::SynchronizedTxnGenerator(const ConfigurationPtr& config, zmq::context_t& context,
+                                                   std::unique_ptr<Workload>&& workload, uint32_t region,
+                                                   uint32_t num_txns, int num_clients, int duration_s,
+                                                   bool dry_run)
+    : Module("Synchronized-Txn-Generator"),
+      config_(config),
+      socket_(context, ZMQ_DEALER),
+      workload_(std::move(workload)),
+      poller_(kModuleTimeout),
+      region_(region),
+      num_txns_(num_txns),
+      num_clients_(num_clients),
+      dry_run_(dry_run) {
+  CHECK(workload_ != nullptr) << "Must provide a valid workload";
+}
+
+void SynchronizedTxnGenerator::SetUp() {
+
+}
+
+bool SynchronizedTxnGenerator::Loop() {
+
+}
+
+ConstantRateTxnGenerator::ConstantRateTxnGenerator(const ConfigurationPtr& config, zmq::context_t& context,
+                                                   unique_ptr<Workload>&& workload, uint32_t region, uint32_t num_txns,
+                                                   uint32_t tps, bool dry_run)
     : Module("Txn-Generator"),
       config_(config),
       socket_(context, ZMQ_DEALER),
@@ -37,7 +62,7 @@ TxnGenerator::TxnGenerator(const ConfigurationPtr& config, zmq::context_t& conte
   }
 }
 
-void TxnGenerator::SetUp() {
+void ConstantRateTxnGenerator::SetUp() {
   LOG(INFO) << "Generating " << num_txns_ << " transactions";
   for (size_t i = 0; i < num_txns_; i++) {
     auto new_txn = workload_->NextTransaction();
@@ -74,7 +99,7 @@ void TxnGenerator::SetUp() {
   start_time_ = steady_clock::now();
 }
 
-void TxnGenerator::SendTxn() {
+void ConstantRateTxnGenerator::SendTxn() {
   if (cur_txn_ >= txns_.size()) {
     return;
   }
@@ -95,7 +120,7 @@ void TxnGenerator::SendTxn() {
   poller_.AddTimedCallback(interval_, [this]() { SendTxn(); });
 }
 
-bool TxnGenerator::Loop() {
+bool ConstantRateTxnGenerator::Loop() {
   if (poller_.NextEvent()) {
     if (api::Response res; RecvDeserializedProtoWithEmptyDelim(socket_, res)) {
       auto& info = txns_[res.stream_id()];

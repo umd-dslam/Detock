@@ -107,8 +107,8 @@ int main(int argc, char* argv[]) {
     } else {
       num_txns_per_worker = remaining_txns;
     }
-    workers.push_back(MakeRunnerFor<TxnGenerator>(config, context, std::move(workload), FLAGS_r, num_txns_per_worker,
-                                                  tps_per_worker, FLAGS_dry_run));
+    workers.push_back(MakeRunnerFor<ConstantRateTxnGenerator>(config, context, std::move(workload), FLAGS_r,
+                                                              num_txns_per_worker, tps_per_worker, FLAGS_dry_run));
   }
 
   // Block SIGINT from here so that the new threads inherit the block mask
