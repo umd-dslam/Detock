@@ -279,7 +279,7 @@ void Forwarder::Forward(EnvelopePtr&& env) {
     RECORD(txn_internal, TransactionEvent::EXIT_FORWARDER_TO_MULTI_HOME_ORDERER);
 
     if (config_->bypass_mh_orderer()) {
-      auto part = ChooseRandomPartition(*txn, rg_);
+      auto part = config_->leader_partition_for_multi_home_ordering();
 
       if (config_->synchronized_batching()) {
         // If synchronized batching is on, compute the batching delay based on latency between the current
