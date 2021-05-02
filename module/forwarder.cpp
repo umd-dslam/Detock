@@ -285,7 +285,7 @@ void Forwarder::Forward(EnvelopePtr&& env) {
 
     if (config_->bypass_mh_orderer()) {
       // Send the txn directly to sequencers of involved replicas to generate lock-only txns
-      
+
       auto part = config_->leader_partition_for_multi_home_ordering();
 
       if (config_->synchronized_batching()) {

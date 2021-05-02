@@ -209,11 +209,11 @@ class InterleaverLogs {
 
 class CrossRegionLatencyProbe {
  public:
-  CrossRegionLatencyProbe(int sample_rate): sampler_(sample_rate, 1) {}
+  CrossRegionLatencyProbe(int sample_rate) : sampler_(sample_rate, 1) {}
 
   void Record(uint32_t replica, int64_t send_time, int64_t recv_time) {
     if (sampler_.IsChosen(0)) {
-      data_.push_back({.replica = replica, .send_time = send_time, .recv_time = recv_time });
+      data_.push_back({.replica = replica, .send_time = send_time, .recv_time = recv_time});
     }
   }
 
@@ -282,7 +282,6 @@ void MetricsRepository::RecordLatencyProbe(uint32_t replica, int64_t send_time, 
   std::lock_guard<SpinLatch> guard(latch_);
   return metrics_->latency_probe.Record(replica, send_time, recv_time);
 }
-
 
 std::unique_ptr<AllMetrics> MetricsRepository::Reset() {
   std::unique_ptr<AllMetrics> new_metrics(new AllMetrics(
