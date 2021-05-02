@@ -53,8 +53,8 @@ void Sequencer::OnInternalRequestReceived(EnvelopePtr&& env) {
     case Request::kForwardTxn: {
       auto txn = request->mutable_forward_txn()->release_txn();
       RECORD(txn->mutable_internal(), TransactionEvent::ENTER_SEQUENCER);
-      if (txn->internal().sequencer_delay_ms() > 0) {
-        auto delay = std::chrono::milliseconds(txn->internal().sequencer_delay_ms());
+      if (txn->internal().sequencer_delay_us() > 0) {
+        auto delay = std::chrono::microseconds(txn->internal().sequencer_delay_us());
         NewTimedCallback(delay, [this, txn]() { BatchTxn(txn); });
       } else {
         BatchTxn(txn);

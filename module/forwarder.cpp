@@ -38,6 +38,8 @@ Forwarder::Forwarder(const shared_ptr<Broker>& broker,
       rg_(std::random_device()()),
       collecting_stats_(false) {
   partitioned_lookup_request_.resize(config_->num_partitions());
+  latencies_us_.resize(config_->num_replicas());
+  max_latency_us_ = 0;
 }
 
 void Forwarder::Initialize() {
@@ -48,20 +50,14 @@ void Forwarder::Initialize() {
 
 void Forwarder::ScheduleNextLatencyProbe() {
   NewTimedCallback(config_->latency_probe_interval(), [this] {
+    auto p = config_->leader_partition_for_multi_home_ordering();
     for (uint32_t r = 0; r < config_->num_replicas(); r++) {
-      if (r == config_->local_replica()) {
-        continue;
-      }
       Envelope env;
       auto ping = env.mutable_request()->mutable_ping();
-      ping->set_time(std::chrono::system_clock::now().time_since_epoch().count());
+      ping->set_time(std::chrono::steady_clock::now().time_since_epoch().count());
       ping->set_target(r);
       ping->set_from_channel(kForwarderChannel);
-      vector<MachineId> dest;
-      for (uint32_t p = 0; p < config_->num_partitions(); p++) {
-        dest.push_back(config_->MakeMachineId(r, p));
-      }
-      Send(move(env), dest, kSequencerChannel);
+      Send(move(env), config_->MakeMachineId(r, p), kSequencerChannel);
     }
     ScheduleNextLatencyProbe();
   });
@@ -204,11 +200,7 @@ void Forwarder::OnInternalResponseReceived(EnvelopePtr&& env) {
       UpdateMasterInfo(move(env));
       break;
     case Response::kPong:
-      if (per_thread_metrics_repo != nullptr) {
-        const auto& pong = env->response().pong();
-        auto now = std::chrono::system_clock::now().time_since_epoch().count();
-        per_thread_metrics_repo->RecordLatencyProbe(pong.target(), pong.time(), now);
-      }
+      UpdateLatency(move(env));
       break;
     default:
       LOG(ERROR) << "Unexpected response type received: \"" << CASE_NAME(env->response().type_case(), Response) << "\"";
@@ -241,6 +233,19 @@ void Forwarder::UpdateMasterInfo(EnvelopePtr&& env) {
       Forward(move(pending_env));
       pending_transactions_.erase(txn_id);
     }
+  }
+}
+
+void Forwarder::UpdateLatency(EnvelopePtr&& env) {
+  auto now = std::chrono::steady_clock::now().time_since_epoch().count();
+  const auto& pong = env->response().pong();
+  latencies_us_[pong.target()] = (now - pong.time()) / 1000 / 2;
+  max_latency_us_ = 0;
+  for (auto l : latencies_us_) {
+    max_latency_us_ = std::max(max_latency_us_, l);
+  }
+  if (per_thread_metrics_repo != nullptr) {
+    per_thread_metrics_repo->RecordLatencyProbe(pong.target(), pong.time(), now);
   }
 }
 
@@ -279,24 +284,20 @@ void Forwarder::Forward(EnvelopePtr&& env) {
     RECORD(txn_internal, TransactionEvent::EXIT_FORWARDER_TO_MULTI_HOME_ORDERER);
 
     if (config_->bypass_mh_orderer()) {
+      // Send the txn directly to sequencers of involved replicas to generate lock-only txns
+      
       auto part = config_->leader_partition_for_multi_home_ordering();
 
       if (config_->synchronized_batching()) {
         // If synchronized batching is on, compute the batching delay based on latency between the current
         // replica to the involved replicas
-        uint32_t max_latency = 0;
-        for (auto rep : txn_internal->involved_replicas()) {
-          max_latency = std::max(max_latency, config_->latency(rep));
-        }
-        // Send the txn directly to sequencers of involved replicas to generate lock-only txns
         auto txn = env->mutable_request()->mutable_forward_txn()->mutable_txn();
         for (auto rep : txn_internal->involved_replicas()) {
-          auto delay = max_latency - config_->latency(rep);
-          txn->mutable_internal()->set_sequencer_delay_ms(delay);
+          auto delay = max_latency_us_ - latencies_us_[rep];
+          txn->mutable_internal()->set_sequencer_delay_us(delay);
           Send(*env, config_->MakeMachineId(rep, part), kSequencerChannel);
         }
       } else {
-        // Send the txn directly to sequencers of involved replicas to generate lock-only txns
         vector<MachineId> destinations;
         destinations.reserve(txn_internal->involved_replicas_size());
         for (auto rep : txn_internal->involved_replicas()) {
@@ -314,7 +315,9 @@ void Forwarder::Forward(EnvelopePtr&& env) {
 /**
  * {
  *    forw_batch_size_pctls:        [int],
- *    forw_batch_duration_ms_pctls: [float]
+ *    forw_batch_duration_ms_pctls: [float],
+ *    forw_latencies_us:            [uint64],
+ *    forw_max_latency_us:          uint64
  * }
  */
 void Forwarder::ProcessStatsRequest(const internal::StatsRequest& stats_request) {
@@ -331,6 +334,9 @@ void Forwarder::ProcessStatsRequest(const internal::StatsRequest& stats_request)
   } else if (level > 0) {
     collecting_stats_ = true;
   }
+
+  stats.AddMember(StringRef(FORW_LATENCIES_US), ToJsonArray(latencies_us_, alloc), alloc);
+  stats.AddMember(StringRef(FORW_MAX_LATENCY_US), max_latency_us_, alloc);
 
   stats.AddMember(StringRef(FORW_BATCH_SIZE_PCTLS), Percentiles(stat_batch_sizes_, alloc), alloc);
   stat_batch_sizes_.clear();

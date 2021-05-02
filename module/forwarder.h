@@ -50,6 +50,7 @@ class Forwarder : public NetworkedModule {
   void SendLookupMasterRequestBatch();
 
   void UpdateMasterInfo(EnvelopePtr&& env);
+  void UpdateLatency(EnvelopePtr&& env);
 
   /**
    * Pre-condition: transaction type is not UNKNOWN
@@ -61,6 +62,8 @@ class Forwarder : public NetworkedModule {
   std::unordered_map<TxnId, EnvelopePtr> pending_transactions_;
   std::vector<internal::Envelope> partitioned_lookup_request_;
   int batch_size_;
+  std::vector<uint64_t> latencies_us_;
+  uint64_t max_latency_us_;
 
   std::mt19937 rg_;
 
