@@ -31,13 +31,13 @@ class TxnGenerator {
 class SynchronizedTxnGenerator : public Module, public TxnGenerator {
  public:
   SynchronizedTxnGenerator(const ConfigurationPtr& config, zmq::context_t& context,
-                           std::unique_ptr<Workload>&& workload, uint32_t region, uint32_t num_txns,
-                           int num_clients, int duration_s, bool dry_run);
+                           std::unique_ptr<Workload>&& workload, uint32_t region, uint32_t num_txns, int num_clients,
+                           int duration_s, bool dry_run);
   ~SynchronizedTxnGenerator();
   void SetUp() final;
   bool Loop() final;
 
-  size_t num_sent_txns() const final { return cur_txn_; }
+  size_t num_sent_txns() const final { return num_sent_txns_; }
   size_t num_recv_txns() const final { return num_recv_txns_; }
   milliseconds elapsed_time() const final {
     if (elapsed_time_.load() == 0ms) {
@@ -61,11 +61,11 @@ class SynchronizedTxnGenerator : public Module, public TxnGenerator {
   bool dry_run_;
   std::chrono::steady_clock::time_point start_time_;
 
-  std::atomic<size_t> cur_txn_;
-  std::atomic<size_t> num_recv_txns_;
-  std::atomic<milliseconds> elapsed_time_;
   std::vector<std::pair<Transaction*, TransactionProfile>> generated_txns_;
   std::vector<TxnInfo> txns_;
+  std::atomic<size_t> num_sent_txns_;
+  std::atomic<size_t> num_recv_txns_;
+  std::atomic<milliseconds> elapsed_time_;
 };
 
 // This generator sends txn at a constant rate
@@ -73,13 +73,13 @@ class ConstantRateTxnGenerator : public Module, public TxnGenerator {
  public:
   ConstantRateTxnGenerator(const ConfigurationPtr& config, zmq::context_t& context,
                            std::unique_ptr<Workload>&& workload, uint32_t region, uint32_t num_txns, int tps,
-                           bool dry_run);
+                           int duration_s, bool dry_run);
   ~ConstantRateTxnGenerator();
 
   void SetUp() final;
   bool Loop() final;
 
-  size_t num_sent_txns() const final { return cur_txn_; }
+  size_t num_sent_txns() const final { return num_sent_txns_; }
   size_t num_recv_txns() const final { return num_recv_txns_; }
   milliseconds elapsed_time() const final {
     if (elapsed_time_.load() == 0ms) {
@@ -97,14 +97,16 @@ class ConstantRateTxnGenerator : public Module, public TxnGenerator {
   zmq::socket_t socket_;
   std::unique_ptr<Workload> workload_;
   Poller poller_;
-  std::chrono::microseconds interval_;
+  microseconds interval_;
   uint32_t region_;
   uint32_t num_txns_;
+  milliseconds duration_;
   bool dry_run_;
   std::chrono::steady_clock::time_point start_time_;
 
+  std::vector<std::pair<Transaction*, TransactionProfile>> generated_txns_;
   std::vector<TxnInfo> txns_;
-  std::atomic<size_t> cur_txn_;
+  std::atomic<size_t> num_sent_txns_;
   std::atomic<size_t> num_recv_txns_;
   std::atomic<milliseconds> elapsed_time_;
 };

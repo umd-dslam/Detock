@@ -18,9 +18,10 @@ DEFINE_int32(workers, 1, "Number of worker threads");
 DEFINE_uint32(r, 0, "The region where the current machine is located");
 DEFINE_string(data_dir, "", "Directory containing intial data");
 DEFINE_string(out_dir, "", "Directory containing output data");
-DEFINE_uint32(rate, 0, "Maximum number of transactions sent per second.");
-DEFINE_uint32(clients, 0, "Number of concurrent client. This option does nothing if 'rate' is set");
-DEFINE_uint32(txns, 100, "Total number of txns being sent. ");
+DEFINE_int32(rate, 0, "Maximum number of transactions sent per second.");
+DEFINE_int32(clients, 0, "Number of concurrent client. This option does nothing if 'rate' is set");
+DEFINE_int32(duration, 0, "Maximum duration in seconds to run the benchmark");
+DEFINE_uint32(txns, 100, "Total number of txns to be generated");
 DEFINE_string(wl, "basic", "Name of the workload to use (options: basic, remastering)");
 DEFINE_string(params, "", "Parameters of the workload");
 DEFINE_bool(dry_run, false, "Generate the transactions without actually sending to the server");
@@ -67,13 +68,15 @@ int main(int argc, char* argv[]) {
     LOG(WARNING) << "Generating transactions without sending to servers";
   }
 
-  if (FLAGS_clients == 0 && FLAGS_rate == 0) {
-    LOG(FATAL) << "Either 'clients' or 'rate' must be set";
+  CHECK(FLAGS_clients > 0 || FLAGS_rate > 0) << "Either 'clients' or 'rate' must be set";
+  if (FLAGS_clients > 0 && FLAGS_rate > 0) {
+    LOG(WARNING) << "The 'rate' flag is set, the 'client' flag will be ignored";
   }
 
   LOG(INFO) << "Arguments:\n"
-            << "Workload: " << FLAGS_wl << "\nParams: " << FLAGS_params << "\nNum txns: " << FLAGS_txns;
-            << "\nSending rate: " << FLAGS_rate << "\nNum clients: " << FLAGS_clients;
+            << "Workload: " << FLAGS_wl << "\nParams: " << FLAGS_params << "\nNum txns: " << FLAGS_txns
+            << "\nSending rate: " << FLAGS_rate << "\nNum clients: " << FLAGS_clients
+            << "\nDuration: " << FLAGS_duration;
 
   const uint32_t seed = (FLAGS_seed < 0) ? std::random_device()() : FLAGS_seed;
 
@@ -114,11 +117,13 @@ int main(int argc, char* argv[]) {
     if (FLAGS_rate > 0) {
       auto tps_per_worker = FLAGS_rate / FLAGS_workers + (i < (FLAGS_rate % FLAGS_workers));
       workers.push_back(MakeRunnerFor<ConstantRateTxnGenerator>(config, context, std::move(workload), FLAGS_r,
-                                                                num_txns_per_worker, tps_per_worker, FLAGS_dry_run));
+                                                                num_txns_per_worker, tps_per_worker, FLAGS_duration,
+                                                                FLAGS_dry_run));
     } else {
       int num_clients = FLAGS_clients / FLAGS_workers + (i < (FLAGS_clients % FLAGS_workers));
-      workers.push_back(MakeRunnerFor<SynchronizedTxnGenerator>(config, context, std::move(workload), FLAGS_r, 
-                                                                num_txns_per_worker, num_clients, FLAGS_dry_run));
+      workers.push_back(MakeRunnerFor<SynchronizedTxnGenerator>(config, context, std::move(workload), FLAGS_r,
+                                                                num_txns_per_worker, num_clients, FLAGS_duration,
+                                                                FLAGS_dry_run));
     }
   }
 
@@ -186,15 +191,17 @@ int main(int argc, char* argv[]) {
   }
 
   // Aggregate results
-  int avg_tps = 0, aborted = 0, committed = 0, single_home = 0, multi_home = 0, remaster = 0;
+  int avg_tps = 0, aborted = 0, committed = 0, not_started = 0, single_home = 0, multi_home = 0, remaster = 0;
   for (auto& w : workers) {
     auto gen = dynamic_cast<const TxnGenerator*>(w->module().get());
     auto& txns = gen->txns();
-    avg_tps += 1000 * txns.size() / gen->elapsed_time().count();
     aborted += count_if(txns.begin(), txns.end(),
                         [](TxnGenerator::TxnInfo info) { return info.txn->status() == TransactionStatus::ABORTED; });
     committed += count_if(txns.begin(), txns.end(), [](TxnGenerator::TxnInfo info) {
       return info.txn->status() == TransactionStatus::COMMITTED;
+    });
+    not_started += count_if(txns.begin(), txns.end(), [](TxnGenerator::TxnInfo info) {
+      return info.txn->status() == TransactionStatus::NOT_STARTED;
     });
     single_home += count_if(txns.begin(), txns.end(), [](TxnGenerator::TxnInfo info) {
       return info.txn->internal().type() == TransactionType::SINGLE_HOME;
@@ -205,10 +212,12 @@ int main(int argc, char* argv[]) {
     remaster += count_if(txns.begin(), txns.end(), [](TxnGenerator::TxnInfo info) {
       return info.txn->procedure_case() == Transaction::ProcedureCase::kRemaster;
     });
+    avg_tps += 1000 * committed / gen->elapsed_time().count();
   }
   LOG(INFO) << "Summary:\n"
             << "Avg. TPS: " << avg_tps << "\nAborted: " << aborted << "\nCommitted: " << committed
-            << "\nSingle-home: " << single_home << "\nMulti-home: " << multi_home << "\nRemaster: " << remaster;
+            << "\nNot started: " << not_started << "\nSingle-home: " << single_home << "\nMulti-home: " << multi_home
+            << "\nRemaster: " << remaster;
 
   // Dump benchmark data to files
   if (writers) {
