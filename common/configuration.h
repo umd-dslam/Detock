@@ -65,8 +65,7 @@ class Configuration {
   bool return_dummy_txn() const;
   int recv_retries() const;
   internal::Commands commands() const;
-  uint32_t latency(size_t i) const;
-  std::pair<uint32_t, size_t> nth_latency(size_t n) const;
+  const vector<uint32_t> replication_order() const;
   bool synchronized_batching() const;
   bool sorted_batch() const;
   const internal::SampleRate& sample_rate() const;
@@ -80,8 +79,7 @@ class Configuration {
   int local_partition_;
 
   vector<string> all_addresses_;
-  vector<uint32_t> latency_;
-  vector<std::pair<uint32_t, size_t>> ordered_latency_;
+  vector<uint32_t> replication_order_;
 };
 
 }  // namespace slog
