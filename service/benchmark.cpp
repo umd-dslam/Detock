@@ -191,15 +191,18 @@ int main(int argc, char* argv[]) {
   }
 
   // Aggregate results
-  int avg_tps = 0, aborted = 0, committed = 0, not_started = 0, single_home = 0, multi_home = 0, remaster = 0;
+  float avg_tps = 0;
+  int aborted = 0, committed = 0, not_started = 0, single_home = 0, multi_home = 0, remaster = 0;
   for (auto& w : workers) {
     auto gen = dynamic_cast<const TxnGenerator*>(w->module().get());
     auto& txns = gen->txns();
-    aborted += count_if(txns.begin(), txns.end(),
-                        [](TxnGenerator::TxnInfo info) { return info.txn->status() == TransactionStatus::ABORTED; });
-    committed += count_if(txns.begin(), txns.end(), [](TxnGenerator::TxnInfo info) {
+    auto worker_committed = count_if(txns.begin(), txns.end(), [](TxnGenerator::TxnInfo info) {
       return info.txn->status() == TransactionStatus::COMMITTED;
     });
+    avg_tps += 1000.0 * worker_committed / gen->elapsed_time().count();
+    committed += worker_committed;
+    aborted += count_if(txns.begin(), txns.end(),
+                        [](TxnGenerator::TxnInfo info) { return info.txn->status() == TransactionStatus::ABORTED; });
     not_started += count_if(txns.begin(), txns.end(), [](TxnGenerator::TxnInfo info) {
       return info.txn->status() == TransactionStatus::NOT_STARTED;
     });
@@ -212,8 +215,9 @@ int main(int argc, char* argv[]) {
     remaster += count_if(txns.begin(), txns.end(), [](TxnGenerator::TxnInfo info) {
       return info.txn->procedure_case() == Transaction::ProcedureCase::kRemaster;
     });
-    avg_tps += 1000 * committed / gen->elapsed_time().count();
   }
+  avg_tps = std::floor(avg_tps);
+
   LOG(INFO) << "Summary:\n"
             << "Avg. TPS: " << avg_tps << "\nAborted: " << aborted << "\nCommitted: " << committed
             << "\nNot started: " << not_started << "\nSingle-home: " << single_home << "\nMulti-home: " << multi_home
