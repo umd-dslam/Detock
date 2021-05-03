@@ -93,7 +93,8 @@ class DeadlockResolverRunMetrics {
   DeadlockResolverRunMetrics(int sample_rate, uint32_t local_replica, uint32_t local_partition)
       : sampler_(sample_rate, 2), local_replica_(local_replica), local_partition_(local_partition) {}
 
-  void Record(int64_t runtime, size_t unstable_graph_sz, size_t stable_graph_sz, size_t deadlocks_resolved) {
+  void Record(int64_t runtime, size_t unstable_graph_sz, size_t stable_graph_sz, size_t deadlocks_resolved,
+              int64_t graph_update_time) {
     if (sampler_.IsChosen(0)) {
       data_.push_back({.time = system_clock::now().time_since_epoch().count(),
                        .partition = local_partition_,
@@ -101,7 +102,8 @@ class DeadlockResolverRunMetrics {
                        .runtime = runtime,
                        .unstable_graph_sz = unstable_graph_sz,
                        .stable_graph_sz = stable_graph_sz,
-                       .deadlocks_resolved = deadlocks_resolved});
+                       .deadlocks_resolved = deadlocks_resolved,
+                       .graph_update_time = graph_update_time});
     }
   }
 
@@ -113,16 +115,17 @@ class DeadlockResolverRunMetrics {
     size_t unstable_graph_sz;
     size_t stable_graph_sz;
     size_t deadlocks_resolved;
+    int64_t graph_update_time;
   };
   list<Data>& data() { return data_; }
 
   static void WriteToDisk(const std::string& dir, const list<Data>& data) {
-    CSVWriter deadlock_resolver_csv(
-        dir + "/deadlock_resolver.csv",
-        {"time", "partition", "replica", "runtime", "unstable_graph_sz", "stable_graph_sz", "deadlocks_resolved"});
+    CSVWriter deadlock_resolver_csv(dir + "/deadlock_resolver.csv",
+                                    {"time", "partition", "replica", "runtime", "unstable_graph_sz", "stable_graph_sz",
+                                     "deadlocks_resolved", "graph_update_time"});
     for (const auto& d : data) {
       deadlock_resolver_csv << d.time << d.partition << d.replica << d.runtime << d.unstable_graph_sz
-                            << d.stable_graph_sz << d.deadlocks_resolved << csvendl;
+                            << d.stable_graph_sz << d.deadlocks_resolved << d.graph_update_time << csvendl;
     }
   }
 
@@ -134,19 +137,23 @@ class DeadlockResolverRunMetrics {
 };
 
 class DeadlockResolverDeadlockMetrics {
- public:
-  DeadlockResolverDeadlockMetrics(int sample_rate, uint32_t local_replica, uint32_t local_partition)
-      : sampler_(sample_rate, 2), local_replica_(local_replica), local_partition_(local_partition) {}
+  using edge_t = std::pair<uint64_t, uint64_t>;
 
-  void Record(int num_vertices, const vector<pair<uint64_t, uint64_t>>& edges_removed,
-              const vector<pair<uint64_t, uint64_t>>& edges_added) {
+ public:
+  DeadlockResolverDeadlockMetrics(int sample_rate, bool with_details, uint32_t local_replica, uint32_t local_partition)
+      : sampler_(sample_rate, 2),
+        with_details_(with_details),
+        local_replica_(local_replica),
+        local_partition_(local_partition) {}
+
+  void Record(int num_vertices, const vector<edge_t>& edges_removed, const vector<edge_t>& edges_added) {
     if (sampler_.IsChosen(1)) {
       data_.push_back({.time = system_clock::now().time_since_epoch().count(),
                        .partition = local_partition_,
                        .replica = local_replica_,
                        .num_vertices = num_vertices,
-                       .edges_removed = edges_removed,
-                       .edges_added = edges_added});
+                       .edges_removed = (with_details_ ? edges_removed : vector<edge_t>{}),
+                       .edges_added = (with_details_ ? edges_added : vector<edge_t>{})});
     }
   }
 
@@ -155,21 +162,29 @@ class DeadlockResolverDeadlockMetrics {
     uint32_t partition;
     uint32_t replica;
     int num_vertices;
-    vector<pair<uint64_t, uint64_t>> edges_removed;
-    vector<pair<uint64_t, uint64_t>> edges_added;
+    vector<edge_t> edges_removed;
+    vector<edge_t> edges_added;
   };
   list<Data>& data() { return data_; }
 
-  static void WriteToDisk(const std::string& dir, const list<Data>& data) {
-    CSVWriter deadlocks_csv(dir + "/deadlocks.csv", {"time", "partition", "replica", "vertices", "removed", "added"});
-    for (const auto& d : data) {
-      deadlocks_csv << d.time << d.partition << d.replica << d.num_vertices << Join(d.edges_removed)
-                    << Join(d.edges_added) << csvendl;
+  static void WriteToDisk(const std::string& dir, const list<Data>& data, bool with_details) {
+    if (with_details) {
+      CSVWriter deadlocks_csv(dir + "/deadlocks.csv", {"time", "partition", "replica", "vertices", "removed", "added"});
+      for (const auto& d : data) {
+        deadlocks_csv << d.time << d.partition << d.replica << d.num_vertices << Join(d.edges_removed)
+                      << Join(d.edges_added) << csvendl;
+      }
+    } else {
+      CSVWriter deadlocks_csv(dir + "/deadlocks.csv", {"time", "partition", "replica", "vertices"});
+      for (const auto& d : data) {
+        deadlocks_csv << d.time << d.partition << d.replica << d.num_vertices << csvendl;
+      }
     }
   }
 
  private:
   Sampler sampler_;
+  bool with_details_;
   uint32_t local_replica_;
   uint32_t local_partition_;
   list<Data> data_;
@@ -255,11 +270,12 @@ system_clock::time_point MetricsRepository::RecordTxnEvent(TxnId txn_id, Transac
   return metrics_->txn_event_metrics.Record(txn_id, event);
 }
 
-void MetricsRepository::RecordDeadlockResolverRun(int64_t runtime, size_t unstable_graph_sz, size_t stable_graph_sz,
-                                                  size_t deadlocks_resolved) {
+void MetricsRepository::RecordDeadlockResolverRun(int64_t running_time, size_t unstable_graph_sz,
+                                                  size_t stable_graph_sz, size_t deadlocks_resolved,
+                                                  int64_t graph_update_time) {
   std::lock_guard<SpinLatch> guard(latch_);
-  return metrics_->deadlock_resolver_run_metrics.Record(runtime, unstable_graph_sz, stable_graph_sz,
-                                                        deadlocks_resolved);
+  return metrics_->deadlock_resolver_run_metrics.Record(running_time, unstable_graph_sz, stable_graph_sz,
+                                                        deadlocks_resolved, graph_update_time);
 }
 
 void MetricsRepository::RecordDeadlockResolverDeadlock(int num_vertices,
@@ -271,7 +287,7 @@ void MetricsRepository::RecordDeadlockResolverDeadlock(int num_vertices,
 
 void MetricsRepository::RecordInterleaverLogEntry(uint32_t replica, BatchId batch_id, TxnId txn_id,
                                                   int64_t enter_sequencer_time, int64_t enter_local_batch_time) {
-  if (!config_->sample_rate().interleaver_logs()) {
+  if (!config_->metric_options().interleaver_logs()) {
     return;
   }
   std::lock_guard<SpinLatch> guard(latch_);
@@ -285,16 +301,21 @@ void MetricsRepository::RecordLatencyProbe(uint32_t replica, int64_t send_time, 
 
 std::unique_ptr<AllMetrics> MetricsRepository::Reset() {
   std::unique_ptr<AllMetrics> new_metrics(new AllMetrics(
-      {.txn_event_metrics = TransactionEventMetrics(config_->sample_rate().txn_event(), config_->local_replica(),
-                                                    config_->local_partition()),
-       .deadlock_resolver_run_metrics = DeadlockResolverRunMetrics(
-           config_->sample_rate().deadlock_resolver_run(), config_->local_replica(), config_->local_partition()),
-       .deadlock_resolver_deadlock_metrics = DeadlockResolverDeadlockMetrics(
-           config_->sample_rate().deadlock_resolver_deadlock(), config_->local_replica(), config_->local_partition()),
+      {.txn_event_metrics = TransactionEventMetrics(config_->metric_options().txn_events_sample(),
+                                                    config_->local_replica(), config_->local_partition()),
+       .deadlock_resolver_run_metrics =
+           DeadlockResolverRunMetrics(config_->metric_options().deadlock_resolver_runs_sample(),
+                                      config_->local_replica(), config_->local_partition()),
+       .deadlock_resolver_deadlock_metrics =
+           DeadlockResolverDeadlockMetrics(config_->metric_options().deadlock_resolver_deadlocks_sample(),
+                                           config_->metric_options().deadlock_resolver_deadlock_details(),
+                                           config_->local_replica(), config_->local_partition()),
        .interleaver_logs = InterleaverLogs(),
-       .latency_probe = CrossRegionLatencyProbe(config_->sample_rate().latency_probe())}));
+       .latency_probe = CrossRegionLatencyProbe(config_->metric_options().latency_probes_sample())}));
+
   std::lock_guard<SpinLatch> guard(latch_);
   metrics_.swap(new_metrics);
+
   return new_metrics;
 }
 
@@ -341,7 +362,8 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
   try {
     TransactionEventMetrics::WriteToDisk(dir, txn_events_data);
     DeadlockResolverRunMetrics::WriteToDisk(dir, deadlock_resolver_run_data);
-    DeadlockResolverDeadlockMetrics::WriteToDisk(dir, deadlock_resolver_deadlock_data);
+    DeadlockResolverDeadlockMetrics::WriteToDisk(dir, deadlock_resolver_deadlock_data,
+                                                 config_->metric_options().deadlock_resolver_deadlock_details());
     InterleaverLogs::WriteToDisk(dir, global_log);
     CrossRegionLatencyProbe::WriteToDisk(dir, latency_probe);
     LOG(INFO) << "Metrics written to: \"" << dir << "/\"";

@@ -68,7 +68,7 @@ class Configuration {
   const vector<uint32_t> replication_order() const;
   bool synchronized_batching() const;
   bool sorted_batch() const;
-  const internal::SampleRate& sample_rate() const;
+  const internal::MetricOptions& metric_options() const;
   std::array<int, 2> interleaver_remote_to_local_ratio() const;
   milliseconds latency_probe_interval() const;
 

@@ -235,7 +235,7 @@ void Interleaver::AdvanceLogs() {
       auto next_batch = log.NextBatch().second;
 
       // Record the log for debugging
-      if (per_thread_metrics_repo != nullptr && config_->sample_rate().interleaver_logs()) {
+      if (per_thread_metrics_repo != nullptr && config_->metric_options().interleaver_logs()) {
         for (auto& txn : next_batch->transactions()) {
           const auto& internal = txn.internal();
           int64_t enter_sequencer_time = 0, enter_local_batch_time = 0;

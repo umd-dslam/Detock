@@ -221,7 +221,7 @@ bool Configuration::synchronized_batching() const { return config_.synchronized_
 
 bool Configuration::sorted_batch() const { return config_.sorted_batch(); }
 
-const internal::SampleRate& Configuration::sample_rate() const { return config_.sample_rate(); }
+const internal::MetricOptions& Configuration::metric_options() const { return config_.metric_options(); }
 
 std::array<int, 2> Configuration::interleaver_remote_to_local_ratio() const {
   auto& ratio_str = config_.interleaver_remote_to_local_ratio();

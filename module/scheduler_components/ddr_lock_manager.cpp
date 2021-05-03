@@ -67,7 +67,7 @@ class DeadlockResolver : public NetworkedModule {
     if (per_thread_metrics_repo != nullptr) {
       auto runtime = (std::chrono::steady_clock::now() - start_time).count();
       per_thread_metrics_repo->RecordDeadlockResolverRun(runtime, unstable_graph_sz_, stable_graph_sz_,
-                                                         deadlocks_resolved_);
+                                                         deadlocks_resolved_, graph_update_time_);
     }
   }
 
@@ -86,9 +86,11 @@ class DeadlockResolver : public NetworkedModule {
   // the lock manager while it is doing so.
   unordered_map<TxnId, TxnInfoUpdate> txn_info_updates_;
 
+  // Metrics
   size_t unstable_graph_sz_;
   size_t stable_graph_sz_;
   size_t deadlocks_resolved_;
+  uint64_t graph_update_time_;
 
   struct Node {
     explicit Node(TxnId id, int num_partitions)
@@ -270,6 +272,8 @@ class DeadlockResolver : public NetworkedModule {
     }
 
     vector<TxnId> ready_txns;
+
+    auto start_time = std::chrono::steady_clock::now();
     // Update the txn info table in the lock manager with deadlock-free dependencies
     if (!to_be_updated_.empty()) {
       lock_guard<SpinLatch> guard(lm_.txn_info_latch_);
@@ -299,6 +303,7 @@ class DeadlockResolver : public NetworkedModule {
         }
       }
     }
+    graph_update_time_ = (std::chrono::steady_clock::now() - start_time).count();
 
     if (!ready_txns.empty()) {
       // Update the ready txns list in the lock manager
@@ -385,6 +390,7 @@ class DeadlockResolver : public NetworkedModule {
     }
 
     std::vector<std::pair<uint64_t, uint64_t>> removed, added;
+    bool record_edges = config_->metric_options().deadlock_resolver_deadlock_details();
     for (int i = prev_local; i >= 0; --i) {
       auto this_txn = scc_[i];
       auto it = txn_info_updates_.find(this_txn);
@@ -412,7 +418,9 @@ class DeadlockResolver : public NetworkedModule {
           // Decrement the incoming edge counter
           --other_update->second.num_waiting_for;
 
-          removed.emplace_back(this_txn, other_txn);
+          if (record_edges) {
+            removed.emplace_back(this_txn, other_txn);
+          }
         }
       }
 
@@ -429,7 +437,9 @@ class DeadlockResolver : public NetworkedModule {
             ++(txn_info_updates_.find(other_txn)->second.num_waiting_for);
             new_edge_added = true;
 
-            added.emplace_back(this_txn, other_txn);
+            if (record_edges) {
+              added.emplace_back(this_txn, other_txn);
+            }
             break;
           }
         }

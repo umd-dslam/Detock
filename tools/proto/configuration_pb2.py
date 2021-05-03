@@ -22,7 +22,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=None,
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\x19proto/configuration.proto\x12\rslog.internal\x1a\x13proto/modules.proto\x1a\x17proto/transaction.proto\"6\n\x07Replica\x12\x11\n\taddresses\x18\x01 \x03(\x0c\x12\x18\n\x10\x63lient_addresses\x18\x02 \x03(\x0c\"H\n\x1aReplicationDelayExperiment\x12\x11\n\tdelay_pct\x18\x01 \x01(\r\x12\x17\n\x0f\x64\x65lay_amount_ms\x18\x02 \x01(\r\"3\n\x10HashPartitioning\x12\x1f\n\x17partition_key_num_bytes\x18\x01 \x01(\r\"D\n\x12SimplePartitioning\x12\x13\n\x0bnum_records\x18\x01 \x01(\x04\x12\x19\n\x11record_size_bytes\x18\x02 \x01(\r\"9\n\nCpuPinning\x12\x1e\n\x06module\x18\x01 \x01(\x0e\x32\x0e.slog.ModuleId\x12\x0b\n\x03\x63pu\x18\x02 \x01(\r\"\x93\x01\n\nSampleRate\x12\x11\n\ttxn_event\x18\x01 \x01(\r\x12\x1d\n\x15\x64\x65\x61\x64lock_resolver_run\x18\x02 \x01(\r\x12\"\n\x1a\x64\x65\x61\x64lock_resolver_deadlock\x18\x03 \x01(\r\x12\x18\n\x10interleaver_logs\x18\x04 \x01(\x08\x12\x15\n\rlatency_probe\x18\x05 \x01(\r\"\xd6\x07\n\rConfiguration\x12\x10\n\x08protocol\x18\x01 \x01(\x0c\x12(\n\x08replicas\x18\x02 \x03(\x0b\x32\x16.slog.internal.Replica\x12\x14\n\x0c\x62roker_ports\x18\x03 \x03(\r\x12\x13\n\x0bserver_port\x18\x04 \x01(\r\x12\x16\n\x0enum_partitions\x18\x05 \x01(\r\x12<\n\x11hash_partitioning\x18\x06 \x01(\x0b\x32\x1f.slog.internal.HashPartitioningH\x00\x12@\n\x13simple_partitioning\x18\x07 \x01(\x0b\x32!.slog.internal.SimplePartitioningH\x00\x12\x13\n\x0bnum_workers\x18\x08 \x01(\r\x12 \n\x18\x66orwarder_batch_duration\x18\t \x01(\x04\x12 \n\x18\x66orwarder_max_batch_size\x18\n \x01(\x05\x12 \n\x18sequencer_batch_duration\x18\x0b \x01(\x04\x12 \n\x18sequencer_max_batch_size\x18\x0c \x01(\x05\x12\x1a\n\x12replication_factor\x18\r \x01(\r\x12\x19\n\x11replication_order\x18\x0e \x03(\x0c\x12\x44\n\x11replication_delay\x18\x0f \x01(\x0b\x32).slog.internal.ReplicationDelayExperiment\x12/\n\x0f\x64isabled_events\x18\x10 \x03(\x0e\x32\x16.slog.TransactionEvent\x12\x19\n\x11\x62ypass_mh_orderer\x18\x11 \x01(\x08\x12\x14\n\x0c\x64\x64r_interval\x18\x12 \x01(\x04\x12/\n\x0c\x63pu_pinnings\x18\x13 \x03(\x0b\x32\x19.slog.internal.CpuPinning\x12\x18\n\x10return_dummy_txn\x18\x14 \x01(\x08\x12\x14\n\x0crecv_retries\x18\x15 \x01(\x05\x12)\n\x08\x63ommands\x18\x16 \x01(\x0e\x32\x17.slog.internal.Commands\x12\x1d\n\x15synchronized_batching\x18\x17 \x01(\x08\x12\x14\n\x0csorted_batch\x18\x18 \x01(\x08\x12.\n\x0bsample_rate\x18\x19 \x01(\x0b\x32\x19.slog.internal.SampleRate\x12)\n!interleaver_remote_to_local_ratio\x18\x1a \x01(\x0c\x12\x1e\n\x16latency_probe_interval\x18\x1b \x01(\x04\x42\x0e\n\x0cpartitioning*.\n\x08\x43ommands\x12\x08\n\x04NOOP\x10\x00\x12\t\n\x05\x44UMMY\x10\x01\x12\r\n\tKEY_VALUE\x10\x02\x62\x06proto3'
+  serialized_pb=b'\n\x19proto/configuration.proto\x12\rslog.internal\x1a\x13proto/modules.proto\x1a\x17proto/transaction.proto\"6\n\x07Replica\x12\x11\n\taddresses\x18\x01 \x03(\x0c\x12\x18\n\x10\x63lient_addresses\x18\x02 \x03(\x0c\"H\n\x1aReplicationDelayExperiment\x12\x11\n\tdelay_pct\x18\x01 \x01(\r\x12\x17\n\x0f\x64\x65lay_amount_ms\x18\x02 \x01(\r\"3\n\x10HashPartitioning\x12\x1f\n\x17partition_key_num_bytes\x18\x01 \x01(\r\"D\n\x12SimplePartitioning\x12\x13\n\x0bnum_records\x18\x01 \x01(\x04\x12\x19\n\x11record_size_bytes\x18\x02 \x01(\r\"9\n\nCpuPinning\x12\x1e\n\x06module\x18\x01 \x01(\x0e\x32\x0e.slog.ModuleId\x12\x0b\n\x03\x63pu\x18\x02 \x01(\r\"\xe2\x01\n\rMetricOptions\x12\x19\n\x11txn_events_sample\x18\x01 \x01(\r\x12%\n\x1d\x64\x65\x61\x64lock_resolver_runs_sample\x18\x02 \x01(\r\x12*\n\"deadlock_resolver_deadlocks_sample\x18\x03 \x01(\r\x12*\n\"deadlock_resolver_deadlock_details\x18\x04 \x01(\x08\x12\x1d\n\x15latency_probes_sample\x18\x05 \x01(\r\x12\x18\n\x10interleaver_logs\x18\x06 \x01(\x08\"\xdc\x07\n\rConfiguration\x12\x10\n\x08protocol\x18\x01 \x01(\x0c\x12(\n\x08replicas\x18\x02 \x03(\x0b\x32\x16.slog.internal.Replica\x12\x14\n\x0c\x62roker_ports\x18\x03 \x03(\r\x12\x13\n\x0bserver_port\x18\x04 \x01(\r\x12\x16\n\x0enum_partitions\x18\x05 \x01(\r\x12<\n\x11hash_partitioning\x18\x06 \x01(\x0b\x32\x1f.slog.internal.HashPartitioningH\x00\x12@\n\x13simple_partitioning\x18\x07 \x01(\x0b\x32!.slog.internal.SimplePartitioningH\x00\x12\x13\n\x0bnum_workers\x18\x08 \x01(\r\x12 \n\x18\x66orwarder_batch_duration\x18\t \x01(\x04\x12 \n\x18\x66orwarder_max_batch_size\x18\n \x01(\x05\x12 \n\x18sequencer_batch_duration\x18\x0b \x01(\x04\x12 \n\x18sequencer_max_batch_size\x18\x0c \x01(\x05\x12\x1a\n\x12replication_factor\x18\r \x01(\r\x12\x19\n\x11replication_order\x18\x0e \x03(\x0c\x12\x44\n\x11replication_delay\x18\x0f \x01(\x0b\x32).slog.internal.ReplicationDelayExperiment\x12/\n\x0f\x64isabled_events\x18\x10 \x03(\x0e\x32\x16.slog.TransactionEvent\x12\x19\n\x11\x62ypass_mh_orderer\x18\x11 \x01(\x08\x12\x14\n\x0c\x64\x64r_interval\x18\x12 \x01(\x04\x12/\n\x0c\x63pu_pinnings\x18\x13 \x03(\x0b\x32\x19.slog.internal.CpuPinning\x12\x18\n\x10return_dummy_txn\x18\x14 \x01(\x08\x12\x14\n\x0crecv_retries\x18\x15 \x01(\x05\x12)\n\x08\x63ommands\x18\x16 \x01(\x0e\x32\x17.slog.internal.Commands\x12\x1d\n\x15synchronized_batching\x18\x17 \x01(\x08\x12\x14\n\x0csorted_batch\x18\x18 \x01(\x08\x12\x34\n\x0emetric_options\x18\x19 \x01(\x0b\x32\x1c.slog.internal.MetricOptions\x12)\n!interleaver_remote_to_local_ratio\x18\x1a \x01(\x0c\x12\x1e\n\x16latency_probe_interval\x18\x1b \x01(\x04\x42\x0e\n\x0cpartitioning*.\n\x08\x43ommands\x12\x08\n\x04NOOP\x10\x00\x12\t\n\x05\x44UMMY\x10\x01\x12\r\n\tKEY_VALUE\x10\x02\x62\x06proto3'
   ,
   dependencies=[proto_dot_modules__pb2.DESCRIPTOR,proto_dot_transaction__pb2.DESCRIPTOR,])
 
@@ -51,8 +51,8 @@ _COMMANDS = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=1537,
-  serialized_end=1583,
+  serialized_start=1622,
+  serialized_end=1668,
 )
 _sym_db.RegisterEnumDescriptor(_COMMANDS)
 
@@ -251,46 +251,53 @@ _CPUPINNING = _descriptor.Descriptor(
 )
 
 
-_SAMPLERATE = _descriptor.Descriptor(
-  name='SampleRate',
-  full_name='slog.internal.SampleRate',
+_METRICOPTIONS = _descriptor.Descriptor(
+  name='MetricOptions',
+  full_name='slog.internal.MetricOptions',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   create_key=_descriptor._internal_create_key,
   fields=[
     _descriptor.FieldDescriptor(
-      name='txn_event', full_name='slog.internal.SampleRate.txn_event', index=0,
+      name='txn_events_sample', full_name='slog.internal.MetricOptions.txn_events_sample', index=0,
       number=1, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
     _descriptor.FieldDescriptor(
-      name='deadlock_resolver_run', full_name='slog.internal.SampleRate.deadlock_resolver_run', index=1,
+      name='deadlock_resolver_runs_sample', full_name='slog.internal.MetricOptions.deadlock_resolver_runs_sample', index=1,
       number=2, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
     _descriptor.FieldDescriptor(
-      name='deadlock_resolver_deadlock', full_name='slog.internal.SampleRate.deadlock_resolver_deadlock', index=2,
+      name='deadlock_resolver_deadlocks_sample', full_name='slog.internal.MetricOptions.deadlock_resolver_deadlocks_sample', index=2,
       number=3, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
     _descriptor.FieldDescriptor(
-      name='interleaver_logs', full_name='slog.internal.SampleRate.interleaver_logs', index=3,
+      name='deadlock_resolver_deadlock_details', full_name='slog.internal.MetricOptions.deadlock_resolver_deadlock_details', index=3,
       number=4, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
     _descriptor.FieldDescriptor(
-      name='latency_probe', full_name='slog.internal.SampleRate.latency_probe', index=4,
+      name='latency_probes_sample', full_name='slog.internal.MetricOptions.latency_probes_sample', index=4,
       number=5, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='interleaver_logs', full_name='slog.internal.MetricOptions.interleaver_logs', index=5,
+      number=6, type=8, cpp_type=7, label=1,
+      has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
@@ -307,7 +314,7 @@ _SAMPLERATE = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=403,
-  serialized_end=550,
+  serialized_end=629,
 )
 
 
@@ -488,7 +495,7 @@ _CONFIGURATION = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
     _descriptor.FieldDescriptor(
-      name='sample_rate', full_name='slog.internal.Configuration.sample_rate', index=24,
+      name='metric_options', full_name='slog.internal.Configuration.metric_options', index=24,
       number=25, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -525,8 +532,8 @@ _CONFIGURATION = _descriptor.Descriptor(
       create_key=_descriptor._internal_create_key,
     fields=[]),
   ],
-  serialized_start=553,
-  serialized_end=1535,
+  serialized_start=632,
+  serialized_end=1620,
 )
 
 _CPUPINNING.fields_by_name['module'].enum_type = proto_dot_modules__pb2._MODULEID
@@ -537,7 +544,7 @@ _CONFIGURATION.fields_by_name['replication_delay'].message_type = _REPLICATIONDE
 _CONFIGURATION.fields_by_name['disabled_events'].enum_type = proto_dot_transaction__pb2._TRANSACTIONEVENT
 _CONFIGURATION.fields_by_name['cpu_pinnings'].message_type = _CPUPINNING
 _CONFIGURATION.fields_by_name['commands'].enum_type = _COMMANDS
-_CONFIGURATION.fields_by_name['sample_rate'].message_type = _SAMPLERATE
+_CONFIGURATION.fields_by_name['metric_options'].message_type = _METRICOPTIONS
 _CONFIGURATION.oneofs_by_name['partitioning'].fields.append(
   _CONFIGURATION.fields_by_name['hash_partitioning'])
 _CONFIGURATION.fields_by_name['hash_partitioning'].containing_oneof = _CONFIGURATION.oneofs_by_name['partitioning']
@@ -549,7 +556,7 @@ DESCRIPTOR.message_types_by_name['ReplicationDelayExperiment'] = _REPLICATIONDEL
 DESCRIPTOR.message_types_by_name['HashPartitioning'] = _HASHPARTITIONING
 DESCRIPTOR.message_types_by_name['SimplePartitioning'] = _SIMPLEPARTITIONING
 DESCRIPTOR.message_types_by_name['CpuPinning'] = _CPUPINNING
-DESCRIPTOR.message_types_by_name['SampleRate'] = _SAMPLERATE
+DESCRIPTOR.message_types_by_name['MetricOptions'] = _METRICOPTIONS
 DESCRIPTOR.message_types_by_name['Configuration'] = _CONFIGURATION
 DESCRIPTOR.enum_types_by_name['Commands'] = _COMMANDS
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
@@ -589,12 +596,12 @@ CpuPinning = _reflection.GeneratedProtocolMessageType('CpuPinning', (_message.Me
   })
 _sym_db.RegisterMessage(CpuPinning)
 
-SampleRate = _reflection.GeneratedProtocolMessageType('SampleRate', (_message.Message,), {
-  'DESCRIPTOR' : _SAMPLERATE,
+MetricOptions = _reflection.GeneratedProtocolMessageType('MetricOptions', (_message.Message,), {
+  'DESCRIPTOR' : _METRICOPTIONS,
   '__module__' : 'proto.configuration_pb2'
-  # @@protoc_insertion_point(class_scope:slog.internal.SampleRate)
+  # @@protoc_insertion_point(class_scope:slog.internal.MetricOptions)
   })
-_sym_db.RegisterMessage(SampleRate)
+_sym_db.RegisterMessage(MetricOptions)
 
 Configuration = _reflection.GeneratedProtocolMessageType('Configuration', (_message.Message,), {
   'DESCRIPTOR' : _CONFIGURATION,

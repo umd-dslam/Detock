@@ -61,12 +61,13 @@ message CpuPinning {
     uint32 cpu = 2;
 }
 
-message SampleRate {
-    uint32 txn_event = 1;
-    uint32 deadlock_resolver_run = 2;
-    uint32 deadlock_resolver_deadlock = 3;
-    bool interleaver_logs = 4;
-    uint32 latency_probe = 5;
+message MetricOptions {
+    uint32 txn_events_sample = 1;
+    uint32 deadlock_resolver_runs_sample = 2;
+    uint32 deadlock_resolver_deadlocks_sample = 3;
+    bool deadlock_resolver_deadlock_details = 4;
+    uint32 latency_probes_sample = 5;
+    bool interleaver_logs = 6;
 }
 
 enum Commands {
@@ -136,8 +137,8 @@ message Configuration {
     bool synchronized_batching = 23;
     // The sequencer will sort each batch based on txn ids before sending one out
     bool sorted_batch = 24;
-    // Percentage of metrics to sample
-    SampleRate sample_rate = 25;
+    // Options for metrics
+    MetricOptions metric_options = 25;
     // The ratio between fetching rate for remote logs message vs fetching rate for local log messages. Expressed
     // in the format "<remote>:<local>". For example "5:1" means the interleaver tries to fetch 5 messages for
     // remote logs before fetching 1 message for local log.

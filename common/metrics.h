@@ -27,7 +27,7 @@ class MetricsRepository {
 
   std::chrono::system_clock::time_point RecordTxnEvent(TxnId txn_id, TransactionEvent event);
   void RecordDeadlockResolverRun(int64_t runtime, size_t unstable_graph_sz, size_t stable_graph_sz,
-                                 size_t deadlocks_resolved);
+                                 size_t deadlocks_resolved, int64_t graph_update_time);
   void RecordDeadlockResolverDeadlock(int num_vertices, const std::vector<std::pair<uint64_t, uint64_t>>& edges_removed,
                                       const std::vector<std::pair<uint64_t, uint64_t>>& edges_added);
   void RecordInterleaverLogEntry(uint32_t replica, BatchId batch_id, TxnId txn_id, int64_t enter_sequencer_time,
