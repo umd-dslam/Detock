@@ -33,17 +33,16 @@ Worker::Worker(const std::shared_ptr<Broker>& broker, Channel channel,
                const std::shared_ptr<Storage<Key, Record>>& storage, const MetricsRepositoryManagerPtr& metrics_manager,
                std::chrono::milliseconds poll_timeout)
     : NetworkedModule("Worker-" + std::to_string(channel), broker, channel, metrics_manager, poll_timeout),
-      config_(broker->config()),
       storage_(storage) {
-  switch (config_->commands()) {
+  switch (config()->commands()) {
     case internal::Commands::DUMMY:
-      commands_ = make_unique<DummyCommands<Key, Record>>(config_, storage);
+      commands_ = make_unique<DummyCommands<Key, Record>>(config(), storage);
       break;
     case internal::Commands::NOOP:
       commands_ = make_unique<NoopCommands<Key, Record>>();
       break;
     default:
-      commands_ = make_unique<KeyValueCommands<Key, Record>>(config_, storage);
+      commands_ = make_unique<KeyValueCommands<Key, Record>>(config(), storage);
       break;
   }
 }
@@ -105,7 +104,7 @@ void Worker::OnInternalRequestReceived(EnvelopePtr&& env) {
       auto redirect_env = NewEnvelope();
       redirect_env->mutable_request()->mutable_broker_redirect()->set_tag(MakeTag(run_id));
       redirect_env->mutable_request()->mutable_broker_redirect()->set_stop(true);
-      Send(move(redirect_env), Broker::MakeChannel(config_->broker_ports_size() - 1));
+      Send(move(redirect_env), Broker::MakeChannel(config()->broker_ports_size() - 1));
 
       VLOG(3) << "Execute txn " << run_id << " after receving all remote read results";
     } else {
@@ -221,13 +220,14 @@ void Worker::ReadLocalStorage(const RunId& run_id) {
 
   // Set the number of remote reads that this partition needs to wait for
   state.remote_reads_waiting_on = 0;
+
 #ifdef LOCK_MANAGER_DDR
   // If DDR is used, all partitions have to wait
   const auto& waiting_partitions = txn.internal().involved_partitions();
 #else
   const auto& waiting_partitions = txn.internal().active_partitions();
 #endif
-  if (std::find(waiting_partitions.begin(), waiting_partitions.end(), config_->local_partition()) !=
+  if (std::find(waiting_partitions.begin(), waiting_partitions.end(), config()->local_partition()) !=
       waiting_partitions.end()) {
     // Waiting partition needs remote reads from all partitions
     state.remote_reads_waiting_on = txn.internal().involved_partitions_size() - 1;
@@ -240,7 +240,7 @@ void Worker::ReadLocalStorage(const RunId& run_id) {
     auto redirect_env = NewEnvelope();
     redirect_env->mutable_request()->mutable_broker_redirect()->set_tag(MakeTag(run_id));
     redirect_env->mutable_request()->mutable_broker_redirect()->set_channel(channel());
-    Send(move(redirect_env), Broker::MakeChannel(config_->broker_ports_size() - 1));
+    Send(move(redirect_env), Broker::MakeChannel(config()->broker_ports_size() - 1));
 
     VLOG(3) << "Defer executing txn " << run_id << " until having enough remote reads";
     state.phase = TransactionState::Phase::WAIT_REMOTE_READ;
@@ -294,15 +294,15 @@ void Worker::Finish(const RunId& run_id) {
   // the scheduler may destroy the transaction holder before we can
   // send the transaction to the server.
   auto coordinator = txn->internal().coordinating_server();
-  if (config_->UnpackMachineId(coordinator).first == config_->local_replica()) {
-    if (config_->return_dummy_txn()) {
+  if (config()->UnpackMachineId(coordinator).first == config()->local_replica()) {
+    if (config()->return_dummy_txn()) {
       txn->mutable_keys()->clear();
       txn->mutable_code()->clear();
       txn->mutable_remaster()->Clear();
     }
     Envelope env;
     auto completed_sub_txn = env.mutable_request()->mutable_completed_subtxn();
-    completed_sub_txn->set_partition(config_->local_partition());
+    completed_sub_txn->set_partition(config()->local_partition());
     completed_sub_txn->set_allocated_txn(txn);
     Send(env, txn->internal().coordinating_server(), kServerChannel);
   } else {
@@ -336,8 +336,8 @@ void Worker::BroadcastReads(const RunId& run_id) {
     return;
   }
 
-  auto local_partition = config_->local_partition();
-  auto local_replica = config_->local_replica();
+  auto local_partition = config()->local_partition();
+  auto local_replica = config()->local_replica();
   auto aborted = txn.status() == TransactionStatus::ABORTED;
 
   // Send abort result and local reads to all remote active partitions
@@ -360,12 +360,12 @@ void Worker::BroadcastReads(const RunId& run_id) {
   vector<MachineId> destinations;
   for (auto p : waiting_partitions) {
     if (p != local_partition) {
-      destinations.push_back(config_->MakeMachineId(local_replica, p));
+      destinations.push_back(config()->MakeMachineId(local_replica, p));
     }
   }
   // Try to use a different broker thread other than the default one so that
   // a worker would have an exclusive pathway for information passing
-  Send(env, destinations, MakeTag(run_id), config_->broker_ports_size() - 1);
+  Send(env, destinations, MakeTag(run_id), config()->broker_ports_size() - 1);
 }
 
 TransactionState& Worker::TxnState(const RunId& run_id) {

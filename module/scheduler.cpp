@@ -18,9 +18,8 @@ using internal::Response;
 
 Scheduler::Scheduler(const shared_ptr<Broker>& broker, const shared_ptr<Storage<Key, Record>>& storage,
                      const MetricsRepositoryManagerPtr& metrics_manager, std::chrono::milliseconds poll_timeout)
-    : NetworkedModule("Scheduler", broker, {kSchedulerChannel, false /* recv_raw */}, metrics_manager, poll_timeout),
-      config_(broker->config()) {
-  for (size_t i = 0; i < config_->num_workers(); i++) {
+    : NetworkedModule("Scheduler", broker, {kSchedulerChannel, false /* recv_raw */}, metrics_manager, poll_timeout) {
+  for (size_t i = 0; i < config()->num_workers(); i++) {
     workers_.push_back(MakeRunnerFor<Worker>(broker, Worker::MakeChannel(i), storage, metrics_manager, poll_timeout));
   }
 
@@ -38,7 +37,7 @@ void Scheduler::Initialize() {
   lock_manager_.StartDeadlockResolver();
 #endif
 
-  auto cpus = config_->cpu_pinnings(ModuleId::WORKER);
+  auto cpus = config()->cpu_pinnings(ModuleId::WORKER);
   size_t i = 0;
   for (auto& worker : workers_) {
     std::optional<uint32_t> cpu = {};
@@ -133,7 +132,7 @@ bool Scheduler::OnCustomSocket() {
 void Scheduler::ProcessTransaction(EnvelopePtr&& env) {
   auto txn = env->mutable_request()->mutable_forward_txn()->release_txn();
   auto txn_id = txn->internal().id();
-  auto ins = active_txns_.try_emplace(txn_id, config_, txn);
+  auto ins = active_txns_.try_emplace(txn_id, config(), txn);
 
   if (ins.second) {
     RECORD(txn->mutable_internal(), TransactionEvent::ENTER_SCHEDULER);
