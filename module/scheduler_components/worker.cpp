@@ -365,7 +365,7 @@ void Worker::BroadcastReads(const RunId& run_id) {
   }
   // Try to use a different broker thread other than the default one so that
   // a worker would have an exclusive pathway for information passing
-  Send(env, destinations, MakeTag(run_id), config()->broker_ports_size() - 1);
+  Send(env, destinations, MakeTag(run_id), config()->broker_ports(config()->broker_ports_size() - 1));
 }
 
 TransactionState& Worker::TxnState(const RunId& run_id) {
