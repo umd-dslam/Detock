@@ -282,10 +282,8 @@ void Forwarder::Forward(EnvelopePtr&& env) {
 
     if (config()->bypass_mh_orderer()) {
       VLOG(3) << "Txn " << txn_id << " is a multi-home txn. Sending to the sequencer.";
-      auto part = ChooseRandomPartition(*txn, rg_);
 
       // Send the txn directly to sequencers of involved replicas to generate lock-only txns
-
       auto part = config()->leader_partition_for_multi_home_ordering();
 
       if (config()->synchronized_batching()) {
