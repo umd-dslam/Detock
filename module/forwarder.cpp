@@ -28,16 +28,17 @@ uint32_t ChooseRandomPartition(const Transaction& txn, std::mt19937& rg) {
 
 }  // namespace
 
-Forwarder::Forwarder(const shared_ptr<Broker>& broker,
+Forwarder::Forwarder(const std::shared_ptr<zmq::context_t>& context, const ConfigurationPtr& config,
                      const shared_ptr<LookupMasterIndex<Key, Metadata>>& lookup_master_index,
                      const MetricsRepositoryManagerPtr& metrics_manager, milliseconds poll_timeout)
-    : NetworkedModule("Forwarder", broker, kForwarderChannel, metrics_manager, poll_timeout),
+    : NetworkedModule("Forwarder", context, config, config->forwarder_port(), kForwarderChannel, metrics_manager,
+                      poll_timeout),
       lookup_master_index_(lookup_master_index),
       batch_size_(0),
       rg_(std::random_device()()),
       collecting_stats_(false) {
-  partitioned_lookup_request_.resize(config()->num_partitions());
-  latencies_us_.resize(config()->num_replicas());
+  partitioned_lookup_request_.resize(config->num_partitions());
+  latencies_us_.resize(config->num_replicas());
   max_latency_us_ = 0;
 }
 
