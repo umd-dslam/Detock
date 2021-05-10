@@ -34,13 +34,13 @@ Forwarder::Forwarder(const std::shared_ptr<zmq::context_t>& context, const Confi
     : NetworkedModule("Forwarder", context, config, config->forwarder_port(), kForwarderChannel, metrics_manager,
                       poll_timeout),
       lookup_master_index_(lookup_master_index),
+      partitioned_lookup_request_(config->num_partitions()),
       batch_size_(0),
+      latency_buffers_(config->num_replicas()),
+      avg_latencies_us_(config->num_replicas()),
+      max_avg_latency_us_(0),
       rg_(std::random_device()()),
-      collecting_stats_(false) {
-  partitioned_lookup_request_.resize(config->num_partitions());
-  latencies_us_.resize(config->num_replicas());
-  max_latency_us_ = 0;
-}
+      collecting_stats_(false) {}
 
 void Forwarder::Initialize() {
   if (config()->latency_probe_interval() > 0ms) {
@@ -52,8 +52,8 @@ void Forwarder::ScheduleNextLatencyProbe() {
   NewTimedCallback(config()->latency_probe_interval(), [this] {
     auto p = config()->leader_partition_for_multi_home_ordering();
     for (uint32_t r = 0; r < config()->num_replicas(); r++) {
-      Envelope env;
-      auto ping = env.mutable_request()->mutable_ping();
+      auto env = NewEnvelope();
+      auto ping = env->mutable_request()->mutable_ping();
       ping->set_time(std::chrono::steady_clock::now().time_since_epoch().count());
       ping->set_target(r);
       ping->set_from_channel(kForwarderChannel);
@@ -237,12 +237,30 @@ void Forwarder::UpdateMasterInfo(EnvelopePtr&& env) {
 }
 
 void Forwarder::UpdateLatency(EnvelopePtr&& env) {
+  const int kMaxBufferSize = 5;
   auto now = std::chrono::steady_clock::now().time_since_epoch().count();
   const auto& pong = env->response().pong();
-  latencies_us_[pong.target()] = (now - pong.time()) / 1000 / 2;
-  max_latency_us_ = 0;
-  for (auto l : latencies_us_) {
-    max_latency_us_ = std::max(max_latency_us_, l);
+  auto& buffer = latency_buffers_[pong.target()];
+  auto& avg_latency = avg_latencies_us_[pong.target()];
+
+  uint64_t new_latency = (now - pong.time()) / 1000 / 2;
+
+  // Temporarily turn to sum
+  avg_latency *= buffer.size();
+
+  buffer.push(new_latency);
+  avg_latency += new_latency;
+  if (buffer.size() > kMaxBufferSize) {
+    avg_latency -= buffer.front();
+    buffer.pop();
+  }
+
+  // Turn back to average
+  avg_latency /= buffer.size();
+
+  max_avg_latency_us_ = 0;
+  for (auto l : avg_latencies_us_) {
+    max_avg_latency_us_ = std::max(max_avg_latency_us_, l);
   }
   if (per_thread_metrics_repo != nullptr) {
     per_thread_metrics_repo->RecordLatencyProbe(pong.target(), pong.time(), now);
@@ -292,7 +310,7 @@ void Forwarder::Forward(EnvelopePtr&& env) {
         // replica to the involved replicas
         auto txn = env->mutable_request()->mutable_forward_txn()->mutable_txn();
         for (auto rep : txn_internal->involved_replicas()) {
-          auto delay = max_latency_us_ - latencies_us_[rep];
+          auto delay = static_cast<uint64_t>(max_avg_latency_us_ - avg_latencies_us_[rep]);
           txn->mutable_internal()->set_sequencer_delay_us(delay);
           Send(*env, config()->MakeMachineId(rep, part), kSequencerChannel);
         }
@@ -335,8 +353,8 @@ void Forwarder::ProcessStatsRequest(const internal::StatsRequest& stats_request)
     collecting_stats_ = true;
   }
 
-  stats.AddMember(StringRef(FORW_LATENCIES_US), ToJsonArray(latencies_us_, alloc), alloc);
-  stats.AddMember(StringRef(FORW_MAX_LATENCY_US), max_latency_us_, alloc);
+  stats.AddMember(StringRef(FORW_LATENCIES_US), ToJsonArray(avg_latencies_us_, alloc), alloc);
+  stats.AddMember(StringRef(FORW_MAX_LATENCY_US), max_avg_latency_us_, alloc);
 
   stats.AddMember(StringRef(FORW_BATCH_SIZE_PCTLS), Percentiles(stat_batch_sizes_, alloc), alloc);
   stat_batch_sizes_.clear();
