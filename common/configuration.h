@@ -73,6 +73,7 @@ class Configuration {
   std::array<int, 2> interleaver_remote_to_local_ratio() const;
   milliseconds latency_probe_interval() const;
   bool calibrate_clock() const;
+  int64_t timestamp_buffer_us() const;
 
  private:
   internal::Configuration config_;

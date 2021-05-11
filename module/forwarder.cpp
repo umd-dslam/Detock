@@ -337,7 +337,10 @@ void Forwarder::Forward(EnvelopePtr&& env) {
           max_avg_latency_us = std::max(max_avg_latency_us, static_cast<int64_t>(avg_latencies_us_[rep]));
           destinations.push_back(config()->MakeMachineId(rep, part));
         }
-        auto timestamp = system_clock::now() + microseconds(max_avg_latency_us + max_clock_offset_us_);
+
+        auto timestamp = system_clock::now() +
+                         microseconds(max_avg_latency_us + max_clock_offset_us_ + config()->timestamp_buffer_us());
+
         auto txn = env->mutable_request()->mutable_forward_txn()->mutable_txn();
         txn->mutable_internal()->set_timestamp(timestamp.time_since_epoch().count());
         Send(*env, destinations, kSequencerChannel);

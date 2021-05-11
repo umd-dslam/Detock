@@ -243,4 +243,6 @@ milliseconds Configuration::latency_probe_interval() const { return milliseconds
 
 bool Configuration::calibrate_clock() const { return config_.calibrate_clock(); }
 
+int64_t Configuration::timestamp_buffer_us() const { return config_.timestamp_buffer_us(); }
+
 }  // namespace slog

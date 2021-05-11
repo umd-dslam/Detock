@@ -150,4 +150,10 @@ message Configuration {
     uint64 latency_probe_interval = 28;
     // Calibrate clock based on timestamp and RTT to compensate for clock skew
     bool calibrate_clock = 29;
+    // A txn is assigned a future timestamp, which will be equal to current time + latency to the furthest
+    // region. When a txn arrives at a region, we want it to wait for a bit so that it can see other txns with
+    // lower timestamp and get ordered after them. However, clocks are not perfectly synchronized and latency 
+    // estimation may be off. The txn may arrive at a region A when time at A has already passed the txn's
+    // timestamp. This value is thus used to extend the time a txn might be buffered at a region.
+    int64 timestamp_buffer_us = 30;
 }
