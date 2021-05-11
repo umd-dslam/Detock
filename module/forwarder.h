@@ -62,9 +62,8 @@ class Forwarder : public NetworkedModule {
   std::unordered_map<TxnId, EnvelopePtr> pending_transactions_;
   std::vector<internal::Envelope> partitioned_lookup_request_;
   int batch_size_;
-  std::vector<std::queue<uint64_t>> latency_buffers_;
+  std::vector<std::queue<int64_t>> latency_buffers_;
   std::vector<float> avg_latencies_us_;
-  float max_avg_latency_us_;
 
   std::mt19937 rg_;
 

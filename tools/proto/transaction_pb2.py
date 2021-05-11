@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=None,
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\x17proto/transaction.proto\x12\x04slog\"1\n\x0eMasterMetadata\x12\x0e\n\x06master\x18\x01 \x01(\r\x12\x0f\n\x07\x63ounter\x18\x02 \x01(\r\"\x81\x01\n\nValueEntry\x12\r\n\x05value\x18\x01 \x01(\t\x12\x11\n\tnew_value\x18\x02 \x01(\t\x12\x1b\n\x04type\x18\x03 \x01(\x0e\x32\r.slog.KeyType\x12(\n\x08metadata\x18\x04 \x01(\x0b\x32\x14.slog.MasterMetadataH\x00\x42\n\n\x08optional\"\xb5\x02\n\x13TransactionInternal\x12\n\n\x02id\x18\x01 \x01(\x04\x12#\n\x04type\x18\x02 \x01(\x0e\x32\x15.slog.TransactionType\x12\x0c\n\x04home\x18\x03 \x01(\x05\x12\x1b\n\x13\x63oordinating_server\x18\x04 \x01(\r\x12\x1a\n\x12sequencer_delay_us\x18\x05 \x01(\x04\x12\x1b\n\x13involved_partitions\x18\x06 \x03(\r\x12\x19\n\x11\x61\x63tive_partitions\x18\x07 \x03(\r\x12\x19\n\x11involved_replicas\x18\x08 \x03(\r\x12&\n\x06\x65vents\x18\t \x03(\x0e\x32\x16.slog.TransactionEvent\x12\x13\n\x0b\x65vent_times\x18\n \x03(\x03\x12\x16\n\x0e\x65vent_machines\x18\x0b \x03(\r\"H\n\x11RemasterProcedure\x12\x12\n\nnew_master\x18\x01 \x01(\r\x12\x1f\n\x17is_new_master_lock_only\x18\x02 \x01(\x08\"\xc3\x02\n\x0bTransaction\x12+\n\x08internal\x18\x01 \x01(\x0b\x32\x19.slog.TransactionInternal\x12\x0e\n\x04\x63ode\x18\x02 \x01(\tH\x00\x12+\n\x08remaster\x18\x03 \x01(\x0b\x32\x17.slog.RemasterProcedureH\x00\x12)\n\x04keys\x18\x04 \x03(\x0b\x32\x1b.slog.Transaction.KeysEntry\x12\x14\n\x0c\x64\x65leted_keys\x18\x05 \x03(\t\x12\'\n\x06status\x18\x06 \x01(\x0e\x32\x17.slog.TransactionStatus\x12\x14\n\x0c\x61\x62ort_reason\x18\x07 \x01(\t\x1a=\n\tKeysEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x1f\n\x05value\x18\x02 \x01(\x0b\x32\x10.slog.ValueEntry:\x02\x38\x01\x42\x0b\n\tprocedure*L\n\x0fTransactionType\x12\x0b\n\x07UNKNOWN\x10\x00\x12\x0f\n\x0bSINGLE_HOME\x10\x01\x12\x1b\n\x17MULTI_HOME_OR_LOCK_ONLY\x10\x02*@\n\x11TransactionStatus\x12\x0f\n\x0bNOT_STARTED\x10\x00\x12\r\n\tCOMMITTED\x10\x01\x12\x0b\n\x07\x41\x42ORTED\x10\x02*\x1e\n\x07KeyType\x12\x08\n\x04READ\x10\x00\x12\t\n\x05WRITE\x10\x01*\x91\x06\n\x10TransactionEvent\x12\x07\n\x03\x41LL\x10\x00\x12\x10\n\x0c\x45NTER_SERVER\x10\x01\x12\x1c\n\x18\x45XIT_SERVER_TO_FORWARDER\x10\x02\x12\x13\n\x0f\x45NTER_FORWARDER\x10\x03\x12\x1f\n\x1b\x45XIT_FORWARDER_TO_SEQUENCER\x10\x04\x12(\n$EXIT_FORWARDER_TO_MULTI_HOME_ORDERER\x10\x05\x12\x1c\n\x18\x45NTER_MULTI_HOME_ORDERER\x10\x06\x12%\n!ENTER_MULTI_HOME_ORDERER_IN_BATCH\x10\x07\x12$\n EXIT_MULTI_HOME_ORDERER_IN_BATCH\x10\x08\x12\x1b\n\x17\x45XIT_MULTI_HOME_ORDERER\x10\t\x12\x13\n\x0f\x45NTER_SEQUENCER\x10\n\x12\x15\n\x11\x45NTER_LOCAL_BATCH\x10\x0b\x12\x1c\n\x18\x45NTER_SEQUENCER_IN_BATCH\x10\x0c\x12\x1b\n\x17\x45XIT_SEQUENCER_IN_BATCH\x10\r\x12\x1e\n\x1a\x45NTER_INTERLEAVER_IN_BATCH\x10\x0e\x12\x14\n\x10\x45XIT_INTERLEAVER\x10\x0f\x12\x13\n\x0f\x45NTER_SCHEDULER\x10\x10\x12\x16\n\x12\x45NTER_SCHEDULER_LO\x10\x11\x12\x16\n\x12\x45NTER_LOCK_MANAGER\x10\x12\x12\x15\n\x11\x44\x45\x41\x44LOCK_DETECTED\x10\x13\x12\x0e\n\nDISPATCHED\x10\x14\x12\x13\n\x0f\x44ISPATCHED_FAST\x10\x15\x12\x13\n\x0f\x44ISPATCHED_SLOW\x10\x16\x12\x1e\n\x1a\x44ISPATCHED_SLOW_DEADLOCKED\x10\x17\x12\x10\n\x0c\x45NTER_WORKER\x10\x18\x12\x14\n\x10GOT_REMOTE_READS\x10\x19\x12\x1f\n\x1bGOT_REMOTE_READS_DEADLOCKED\x10\x1a\x12\x0f\n\x0b\x45XIT_WORKER\x10\x1b\x12\x14\n\x10RETURN_TO_SERVER\x10\x1c\x12\x19\n\x15\x45XIT_SERVER_TO_CLIENT\x10\x1d\x62\x06proto3'
+  serialized_pb=b'\n\x17proto/transaction.proto\x12\x04slog\"1\n\x0eMasterMetadata\x12\x0e\n\x06master\x18\x01 \x01(\r\x12\x0f\n\x07\x63ounter\x18\x02 \x01(\r\"\x81\x01\n\nValueEntry\x12\r\n\x05value\x18\x01 \x01(\t\x12\x11\n\tnew_value\x18\x02 \x01(\t\x12\x1b\n\x04type\x18\x03 \x01(\x0e\x32\r.slog.KeyType\x12(\n\x08metadata\x18\x04 \x01(\x0b\x32\x14.slog.MasterMetadataH\x00\x42\n\n\x08optional\"\xac\x02\n\x13TransactionInternal\x12\n\n\x02id\x18\x01 \x01(\x04\x12#\n\x04type\x18\x02 \x01(\x0e\x32\x15.slog.TransactionType\x12\x0c\n\x04home\x18\x03 \x01(\x05\x12\x1b\n\x13\x63oordinating_server\x18\x04 \x01(\r\x12\x11\n\ttimestamp\x18\x05 \x01(\x03\x12\x1b\n\x13involved_partitions\x18\x06 \x03(\r\x12\x19\n\x11\x61\x63tive_partitions\x18\x07 \x03(\r\x12\x19\n\x11involved_replicas\x18\x08 \x03(\r\x12&\n\x06\x65vents\x18\t \x03(\x0e\x32\x16.slog.TransactionEvent\x12\x13\n\x0b\x65vent_times\x18\n \x03(\x03\x12\x16\n\x0e\x65vent_machines\x18\x0b \x03(\r\"H\n\x11RemasterProcedure\x12\x12\n\nnew_master\x18\x01 \x01(\r\x12\x1f\n\x17is_new_master_lock_only\x18\x02 \x01(\x08\"\xc3\x02\n\x0bTransaction\x12+\n\x08internal\x18\x01 \x01(\x0b\x32\x19.slog.TransactionInternal\x12\x0e\n\x04\x63ode\x18\x02 \x01(\tH\x00\x12+\n\x08remaster\x18\x03 \x01(\x0b\x32\x17.slog.RemasterProcedureH\x00\x12)\n\x04keys\x18\x04 \x03(\x0b\x32\x1b.slog.Transaction.KeysEntry\x12\x14\n\x0c\x64\x65leted_keys\x18\x05 \x03(\t\x12\'\n\x06status\x18\x06 \x01(\x0e\x32\x17.slog.TransactionStatus\x12\x14\n\x0c\x61\x62ort_reason\x18\x07 \x01(\t\x1a=\n\tKeysEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x1f\n\x05value\x18\x02 \x01(\x0b\x32\x10.slog.ValueEntry:\x02\x38\x01\x42\x0b\n\tprocedure*L\n\x0fTransactionType\x12\x0b\n\x07UNKNOWN\x10\x00\x12\x0f\n\x0bSINGLE_HOME\x10\x01\x12\x1b\n\x17MULTI_HOME_OR_LOCK_ONLY\x10\x02*@\n\x11TransactionStatus\x12\x0f\n\x0bNOT_STARTED\x10\x00\x12\r\n\tCOMMITTED\x10\x01\x12\x0b\n\x07\x41\x42ORTED\x10\x02*\x1e\n\x07KeyType\x12\x08\n\x04READ\x10\x00\x12\t\n\x05WRITE\x10\x01*\x91\x06\n\x10TransactionEvent\x12\x07\n\x03\x41LL\x10\x00\x12\x10\n\x0c\x45NTER_SERVER\x10\x01\x12\x1c\n\x18\x45XIT_SERVER_TO_FORWARDER\x10\x02\x12\x13\n\x0f\x45NTER_FORWARDER\x10\x03\x12\x1f\n\x1b\x45XIT_FORWARDER_TO_SEQUENCER\x10\x04\x12(\n$EXIT_FORWARDER_TO_MULTI_HOME_ORDERER\x10\x05\x12\x1c\n\x18\x45NTER_MULTI_HOME_ORDERER\x10\x06\x12%\n!ENTER_MULTI_HOME_ORDERER_IN_BATCH\x10\x07\x12$\n EXIT_MULTI_HOME_ORDERER_IN_BATCH\x10\x08\x12\x1b\n\x17\x45XIT_MULTI_HOME_ORDERER\x10\t\x12\x13\n\x0f\x45NTER_SEQUENCER\x10\n\x12\x15\n\x11\x45NTER_LOCAL_BATCH\x10\x0b\x12\x1c\n\x18\x45NTER_SEQUENCER_IN_BATCH\x10\x0c\x12\x1b\n\x17\x45XIT_SEQUENCER_IN_BATCH\x10\r\x12\x1e\n\x1a\x45NTER_INTERLEAVER_IN_BATCH\x10\x0e\x12\x14\n\x10\x45XIT_INTERLEAVER\x10\x0f\x12\x13\n\x0f\x45NTER_SCHEDULER\x10\x10\x12\x16\n\x12\x45NTER_SCHEDULER_LO\x10\x11\x12\x16\n\x12\x45NTER_LOCK_MANAGER\x10\x12\x12\x15\n\x11\x44\x45\x41\x44LOCK_DETECTED\x10\x13\x12\x0e\n\nDISPATCHED\x10\x14\x12\x13\n\x0f\x44ISPATCHED_FAST\x10\x15\x12\x13\n\x0f\x44ISPATCHED_SLOW\x10\x16\x12\x1e\n\x1a\x44ISPATCHED_SLOW_DEADLOCKED\x10\x17\x12\x10\n\x0c\x45NTER_WORKER\x10\x18\x12\x14\n\x10GOT_REMOTE_READS\x10\x19\x12\x1f\n\x1bGOT_REMOTE_READS_DEADLOCKED\x10\x1a\x12\x0f\n\x0b\x45XIT_WORKER\x10\x1b\x12\x14\n\x10RETURN_TO_SERVER\x10\x1c\x12\x19\n\x15\x45XIT_SERVER_TO_CLIENT\x10\x1d\x62\x06proto3'
 )
 
 _TRANSACTIONTYPE = _descriptor.EnumDescriptor(
@@ -48,8 +48,8 @@ _TRANSACTIONTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=928,
-  serialized_end=1004,
+  serialized_start=919,
+  serialized_end=995,
 )
 _sym_db.RegisterEnumDescriptor(_TRANSACTIONTYPE)
 
@@ -79,8 +79,8 @@ _TRANSACTIONSTATUS = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=1006,
-  serialized_end=1070,
+  serialized_start=997,
+  serialized_end=1061,
 )
 _sym_db.RegisterEnumDescriptor(_TRANSACTIONSTATUS)
 
@@ -105,8 +105,8 @@ _KEYTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=1072,
-  serialized_end=1102,
+  serialized_start=1063,
+  serialized_end=1093,
 )
 _sym_db.RegisterEnumDescriptor(_KEYTYPE)
 
@@ -271,8 +271,8 @@ _TRANSACTIONEVENT = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=1105,
-  serialized_end=1890,
+  serialized_start=1096,
+  serialized_end=1881,
 )
 _sym_db.RegisterEnumDescriptor(_TRANSACTIONEVENT)
 
@@ -452,8 +452,8 @@ _TRANSACTIONINTERNAL = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
     _descriptor.FieldDescriptor(
-      name='sequencer_delay_us', full_name='slog.TransactionInternal.sequencer_delay_us', index=4,
-      number=5, type=4, cpp_type=4, label=1,
+      name='timestamp', full_name='slog.TransactionInternal.timestamp', index=4,
+      number=5, type=3, cpp_type=2, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
@@ -513,7 +513,7 @@ _TRANSACTIONINTERNAL = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=217,
-  serialized_end=526,
+  serialized_end=517,
 )
 
 
@@ -551,8 +551,8 @@ _REMASTERPROCEDURE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=528,
-  serialized_end=600,
+  serialized_start=519,
+  serialized_end=591,
 )
 
 
@@ -590,8 +590,8 @@ _TRANSACTION_KEYSENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=852,
-  serialized_end=913,
+  serialized_start=843,
+  serialized_end=904,
 )
 
 _TRANSACTION = _descriptor.Descriptor(
@@ -668,8 +668,8 @@ _TRANSACTION = _descriptor.Descriptor(
       create_key=_descriptor._internal_create_key,
     fields=[]),
   ],
-  serialized_start=603,
-  serialized_end=926,
+  serialized_start=594,
+  serialized_end=917,
 )
 
 _VALUEENTRY.fields_by_name['type'].enum_type = _KEYTYPE

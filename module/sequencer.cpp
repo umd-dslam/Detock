@@ -50,23 +50,37 @@ void Sequencer::NewBatch() {
 void Sequencer::OnInternalRequestReceived(EnvelopePtr&& env) {
   auto request = env->mutable_request();
   switch (request->type_case()) {
-    case Request::kForwardTxn: {
-      auto txn = request->mutable_forward_txn()->release_txn();
-      RECORD(txn->mutable_internal(), TransactionEvent::ENTER_SEQUENCER);
-      if (txn->internal().sequencer_delay_us() > 0) {
-        auto delay = std::chrono::microseconds(txn->internal().sequencer_delay_us());
-        NewTimedCallback(delay, [this, txn]() { BatchTxn(txn); });
-      } else {
-        BatchTxn(txn);
-      }
+    case Request::kForwardTxn:
+      ProcessForwardRequest(move(env));
       break;
-    }
     case Request::kStats:
       ProcessStatsRequest(request->stats());
       break;
     default:
       LOG(ERROR) << "Unexpected request type received: \"" << CASE_NAME(request->type_case(), Request) << "\"";
       break;
+  }
+}
+
+void Sequencer::ProcessForwardRequest(EnvelopePtr&& env) {
+  auto now = system_clock::now().time_since_epoch().count();
+  auto txn = env->mutable_request()->mutable_forward_txn()->release_txn();
+
+  RECORD(txn->mutable_internal(), TransactionEvent::ENTER_SEQUENCER);
+
+  if (txn->internal().timestamp() <= now) {
+    BatchTxn(txn);
+  } else {
+    auto timestamp = std::make_pair(txn->internal().timestamp(), txn->internal().coordinating_server());
+    txn_buffer_.emplace(timestamp, txn);
+    auto delay = duration_cast<microseconds>(nanoseconds(txn->internal().timestamp() - now)) + 1us;
+    NewTimedCallback(delay, [this]() {
+      auto now = system_clock::now().time_since_epoch().count();
+      while (!txn_buffer_.empty() && txn_buffer_.top().first.first <= now) {
+        BatchTxn(txn_buffer_.top().second);
+        txn_buffer_.pop();
+      }
+    });
   }
 }
 

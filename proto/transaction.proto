@@ -72,7 +72,7 @@ message TransactionInternal {
     TransactionType type = 2;
     int32 home = 3;
     uint32 coordinating_server = 4;
-    uint64 sequencer_delay_us = 5;
+    int64 timestamp = 5;
     repeated uint32 involved_partitions = 6;
     repeated uint32 active_partitions = 7;
     repeated uint32 involved_replicas = 8;

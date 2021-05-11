@@ -38,8 +38,7 @@ Forwarder::Forwarder(const std::shared_ptr<zmq::context_t>& context, const Confi
       batch_size_(0),
       latency_buffers_(config->num_replicas()),
       avg_latencies_us_(config->num_replicas()),
-      max_avg_latency_us_(0),
-      rg_(std::random_device()()),
+      rg_(std::random_device{}()),
       collecting_stats_(false) {}
 
 void Forwarder::Initialize() {
@@ -243,11 +242,12 @@ void Forwarder::UpdateLatency(EnvelopePtr&& env) {
   auto& buffer = latency_buffers_[pong.target()];
   auto& avg_latency = avg_latencies_us_[pong.target()];
 
-  uint64_t new_latency = (now - pong.time()) / 1000 / 2;
+  int64_t new_latency = (now - pong.time()) / 1000 / 2;
 
   // Temporarily turn to sum
   avg_latency *= buffer.size();
 
+  // Update moving sum
   buffer.push(new_latency);
   avg_latency += new_latency;
   if (buffer.size() > kMaxBufferSize) {
@@ -258,10 +258,6 @@ void Forwarder::UpdateLatency(EnvelopePtr&& env) {
   // Turn back to average
   avg_latency /= buffer.size();
 
-  max_avg_latency_us_ = 0;
-  for (auto l : avg_latencies_us_) {
-    max_avg_latency_us_ = std::max(max_avg_latency_us_, l);
-  }
   if (per_thread_metrics_repo != nullptr) {
     per_thread_metrics_repo->RecordLatencyProbe(pong.target(), pong.time(), now);
   }
@@ -308,12 +304,16 @@ void Forwarder::Forward(EnvelopePtr&& env) {
       if (config()->synchronized_batching()) {
         // If synchronized batching is on, compute the batching delay based on latency between the current
         // replica to the involved replicas
-        auto txn = env->mutable_request()->mutable_forward_txn()->mutable_txn();
+        vector<MachineId> destinations;
+        int64_t max_avg_latency_us = 0;
         for (auto rep : txn_internal->involved_replicas()) {
-          auto delay = static_cast<uint64_t>(max_avg_latency_us_ - avg_latencies_us_[rep]);
-          txn->mutable_internal()->set_sequencer_delay_us(delay);
-          Send(*env, config()->MakeMachineId(rep, part), kSequencerChannel);
+          max_avg_latency_us = std::max(max_avg_latency_us, static_cast<int64_t>(avg_latencies_us_[rep]));
+          destinations.push_back(config()->MakeMachineId(rep, part));
         }
+        auto timestamp = system_clock::now() + microseconds(max_avg_latency_us);
+        auto txn = env->mutable_request()->mutable_forward_txn()->mutable_txn();
+        txn->mutable_internal()->set_timestamp(timestamp.time_since_epoch().count());
+        Send(*env, destinations, kSequencerChannel);
       } else {
         vector<MachineId> destinations;
         destinations.reserve(txn_internal->involved_replicas_size());
@@ -335,7 +335,6 @@ void Forwarder::Forward(EnvelopePtr&& env) {
  *    forw_batch_size_pctls:        [int],
  *    forw_batch_duration_ms_pctls: [float],
  *    forw_latencies_us:            [uint64],
- *    forw_max_latency_us:          uint64
  * }
  */
 void Forwarder::ProcessStatsRequest(const internal::StatsRequest& stats_request) {
@@ -354,7 +353,6 @@ void Forwarder::ProcessStatsRequest(const internal::StatsRequest& stats_request)
   }
 
   stats.AddMember(StringRef(FORW_LATENCIES_US), ToJsonArray(avg_latencies_us_, alloc), alloc);
-  stats.AddMember(StringRef(FORW_MAX_LATENCY_US), max_avg_latency_us_, alloc);
 
   stats.AddMember(StringRef(FORW_BATCH_SIZE_PCTLS), Percentiles(stat_batch_sizes_, alloc), alloc);
   stat_batch_sizes_.clear();

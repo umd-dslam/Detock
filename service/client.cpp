@@ -142,12 +142,10 @@ void PrintServerStats(const rapidjson::Document& stats, uint32_t level) {
 
 void PrintForwarderStats(const rapidjson::Document& stats, uint32_t) {
   const auto& latencies_us = stats[FORW_LATENCIES_US].GetArray();
-  const auto& max_latency_us = stats[FORW_MAX_LATENCY_US].GetInt();
   cout << "Latencies (us): ";
   for (size_t i = 0; i < latencies_us.Size(); ++i) {
     cout << latencies_us[i].GetInt() << " ";
   }
-  cout << "\nMax latency (us): " << max_latency_us << "\n";
 
   const auto& batch_duration_ms_pctls = stats[FORW_BATCH_DURATION_MS_PCTLS].GetArray();
   const auto& batch_size_pctls = stats[FORW_BATCH_SIZE_PCTLS].GetArray();
