@@ -38,6 +38,8 @@ Forwarder::Forwarder(const std::shared_ptr<zmq::context_t>& context, const Confi
       batch_size_(0),
       latency_buffers_(config->num_replicas()),
       avg_latencies_us_(config->num_replicas()),
+      clock_offsets_us_(config->num_replicas()),
+      max_clock_offset_us_(0),
       rg_(std::random_device{}()),
       collecting_stats_(false) {}
 
@@ -53,10 +55,10 @@ void Forwarder::ScheduleNextLatencyProbe() {
     for (uint32_t r = 0; r < config()->num_replicas(); r++) {
       auto env = NewEnvelope();
       auto ping = env->mutable_request()->mutable_ping();
-      ping->set_time(std::chrono::steady_clock::now().time_since_epoch().count());
+      ping->set_time(std::chrono::system_clock::now().time_since_epoch().count());
       ping->set_target(r);
       ping->set_from_channel(kForwarderChannel);
-      Send(move(env), config()->MakeMachineId(r, p), kSequencerChannel);
+      Send(move(env), config()->MakeMachineId(r, p), kForwarderChannel);
     }
     ScheduleNextLatencyProbe();
   });
@@ -69,6 +71,9 @@ void Forwarder::OnInternalRequestReceived(EnvelopePtr&& env) {
       break;
     case Request::kLookupMaster:
       ProcessLookUpMasterRequest(move(env));
+      break;
+    case Request::kPing:
+      ProcessPingRequest(move(env));
       break;
     case Request::kStats:
       ProcessStatsRequest(env->request().stats());
@@ -193,6 +198,28 @@ void Forwarder::ProcessLookUpMasterRequest(EnvelopePtr&& env) {
   Send(lookup_env, env->from(), kForwarderChannel);
 }
 
+void Forwarder::ProcessPingRequest(EnvelopePtr&& env) {
+  auto now = system_clock::now().time_since_epoch().count();
+
+  // Reply with pong
+  auto pong_env = NewEnvelope();
+  auto pong = pong_env->mutable_response()->mutable_pong();
+  pong->set_time(env->request().ping().time());
+  pong->set_target(env->request().ping().target());
+  Send(move(pong_env), env->from(), env->request().ping().from_channel());
+
+  // Calibrate local clock
+  if (config()->calibrate_clock()) {
+    auto remote_region = config()->UnpackMachineId(env->from()).first;
+    auto estimated_remote_time = env->request().ping().time() + avg_latencies_us_[remote_region] * 1000;
+    clock_offsets_us_[remote_region] = (estimated_remote_time - now) / 1000;
+    max_clock_offset_us_ = 0;
+    for (auto o : clock_offsets_us_) {
+      max_clock_offset_us_ = std::max(max_clock_offset_us_, o);
+    }
+  }
+}
+
 void Forwarder::OnInternalResponseReceived(EnvelopePtr&& env) {
   switch (env->response().type_case()) {
     case Response::kLookupMaster:
@@ -237,7 +264,7 @@ void Forwarder::UpdateMasterInfo(EnvelopePtr&& env) {
 
 void Forwarder::UpdateLatency(EnvelopePtr&& env) {
   const int kMaxBufferSize = 5;
-  auto now = std::chrono::steady_clock::now().time_since_epoch().count();
+  auto now = std::chrono::system_clock::now().time_since_epoch().count();
   const auto& pong = env->response().pong();
   auto& buffer = latency_buffers_[pong.target()];
   auto& avg_latency = avg_latencies_us_[pong.target()];
@@ -310,7 +337,7 @@ void Forwarder::Forward(EnvelopePtr&& env) {
           max_avg_latency_us = std::max(max_avg_latency_us, static_cast<int64_t>(avg_latencies_us_[rep]));
           destinations.push_back(config()->MakeMachineId(rep, part));
         }
-        auto timestamp = system_clock::now() + microseconds(max_avg_latency_us);
+        auto timestamp = system_clock::now() + microseconds(max_avg_latency_us + max_clock_offset_us_);
         auto txn = env->mutable_request()->mutable_forward_txn()->mutable_txn();
         txn->mutable_internal()->set_timestamp(timestamp.time_since_epoch().count());
         Send(*env, destinations, kSequencerChannel);

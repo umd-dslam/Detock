@@ -151,15 +151,7 @@ bool NetworkedModule::OnEnvelopeReceived(EnvelopePtr&& wrapped_env) {
   }
 
   if (env->has_request()) {
-    if (env->request().has_ping()) {
-      Envelope pong_env;
-      auto pong = pong_env.mutable_response()->mutable_pong();
-      pong->set_time(env->request().ping().time());
-      pong->set_target(env->request().ping().target());
-      Send(move(pong_env), env->from(), env->request().ping().from_channel());
-    } else {
-      OnInternalRequestReceived(move(env));
-    }
+    OnInternalRequestReceived(move(env));
   } else if (env->has_response()) {
     OnInternalResponseReceived(move(env));
   }

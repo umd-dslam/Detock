@@ -46,6 +46,7 @@ class Forwarder : public NetworkedModule {
   void ScheduleNextLatencyProbe();
   void ProcessForwardTxn(EnvelopePtr&& env);
   void ProcessLookUpMasterRequest(EnvelopePtr&& env);
+  void ProcessPingRequest(EnvelopePtr&& env);
   void ProcessStatsRequest(const internal::StatsRequest& stats_request);
 
   void SendLookupMasterRequestBatch();
@@ -64,6 +65,8 @@ class Forwarder : public NetworkedModule {
   int batch_size_;
   std::vector<std::queue<int64_t>> latency_buffers_;
   std::vector<float> avg_latencies_us_;
+  std::vector<int64_t> clock_offsets_us_;
+  int64_t max_clock_offset_us_;
 
   std::mt19937 rg_;
 

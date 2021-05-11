@@ -148,4 +148,6 @@ message Configuration {
     // The forwarder sends probes to measure latency between current region and other regions on a set interval.
     // This interval is in ms.
     uint64 latency_probe_interval = 28;
+    // Calibrate clock based on timestamp and RTT to compensate for clock skew
+    bool calibrate_clock = 29;
 }

@@ -241,4 +241,6 @@ std::array<int, 2> Configuration::interleaver_remote_to_local_ratio() const {
 
 milliseconds Configuration::latency_probe_interval() const { return milliseconds(config_.latency_probe_interval()); }
 
+bool Configuration::calibrate_clock() const { return config_.calibrate_clock(); }
+
 }  // namespace slog
