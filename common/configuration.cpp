@@ -227,8 +227,6 @@ const vector<uint32_t> Configuration::replication_order() const { return replica
 
 bool Configuration::synchronized_batching() const { return config_.synchronized_batching(); }
 
-bool Configuration::sorted_batch() const { return config_.sorted_batch(); }
-
 const internal::MetricOptions& Configuration::metric_options() const { return config_.metric_options(); }
 
 std::array<int, 2> Configuration::interleaver_remote_to_local_ratio() const {

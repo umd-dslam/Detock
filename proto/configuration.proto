@@ -139,15 +139,13 @@ message Configuration {
     // For each MH transaction, the involved regions will wait in such a way that their respective lock-only 
     // txns are put into the batches at approximately the same time
     bool synchronized_batching = 25;
-    // The sequencer will sort each batch based on txn ids before sending one out
-    bool sorted_batch = 26;
     // Options for metrics
-    MetricOptions metric_options = 27;
+    MetricOptions metric_options = 26;
     // The ratio between fetching rate for remote logs message vs fetching rate for local log messages. Expressed
     // in the format "<remote>:<local>". For example "5:1" means the interleaver tries to fetch 5 messages for
     // remote logs before fetching 1 message for local log.
-    bytes interleaver_remote_to_local_ratio = 28;
+    bytes interleaver_remote_to_local_ratio = 27;
     // The forwarder sends probes to measure latency between current region and other regions on a set interval.
     // This interval is in ms.
-    uint64 latency_probe_interval = 29;
+    uint64 latency_probe_interval = 28;
 }
