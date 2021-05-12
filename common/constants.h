@@ -47,6 +47,8 @@ const char PARTIALLY_COMPLETED_TXNS[] = "partially_completed_txns";
 const char FORW_BATCH_SIZE_PCTLS[] = "forw_batch_size_pctls";
 const char FORW_BATCH_DURATION_MS_PCTLS[] = "forw_batch_duration_ms_pctls";
 const char FORW_LATENCIES_US[] = "forw_latencies_us";
+const char FORW_CLOCK_OFFSETS_US[] = "forw_clock_offsets_us";
+const char FORW_MAX_CLOCK_OFFSET_US[] = "forw_max_clock_offset_us";
 
 /* Multi-home orderer */
 const char MHO_BATCH_SIZE_PCTLS[] = "mho_batch_size_pctls";

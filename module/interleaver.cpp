@@ -237,15 +237,18 @@ void Interleaver::AdvanceLogs() {
       if (per_thread_metrics_repo != nullptr && config()->metric_options().interleaver_logs()) {
         for (auto& txn : next_batch->transactions()) {
           const auto& internal = txn.internal();
-          int64_t enter_sequencer_time = 0, enter_local_batch_time = 0;
+          int64_t enter_sequencer_time = 0, enter_local_batch_time = 0, exit_forwarder_time = 0;
           for (int i = 0; i < internal.events_size(); i++) {
             if (internal.events(i) == TransactionEvent::ENTER_SEQUENCER) {
               enter_sequencer_time = internal.event_times(i);
             } else if (internal.events(i) == TransactionEvent::ENTER_LOCAL_BATCH) {
               enter_local_batch_time = internal.event_times(i);
+            } else if (internal.events(i) == TransactionEvent::EXIT_FORWARDER_TO_MULTI_HOME_ORDERER) {
+              exit_forwarder_time = internal.event_times(i);
             }
           }
-          per_thread_metrics_repo->RecordInterleaverLogEntry(r, next_batch->id(), internal.id(), enter_sequencer_time,
+          per_thread_metrics_repo->RecordInterleaverLogEntry(r, next_batch->id(), internal.id(), internal.timestamp(),
+                                                             exit_forwarder_time, enter_sequencer_time,
                                                              enter_local_batch_time);
         }
       }

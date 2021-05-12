@@ -211,7 +211,7 @@ void Forwarder::ProcessPingRequest(EnvelopePtr&& env) {
   // Calibrate local clock
   if (config()->calibrate_clock()) {
     auto remote_region = config()->UnpackMachineId(env->from()).first;
-    auto estimated_remote_time = env->request().ping().time() + avg_latencies_us_[remote_region] * 1000;
+    auto estimated_remote_time = env->request().ping().time() + static_cast<int64_t>(avg_latencies_us_[remote_region]) * 1000;
     clock_offsets_us_[remote_region] = (estimated_remote_time - now) / 1000;
     max_clock_offset_us_ = 0;
     for (auto o : clock_offsets_us_) {
@@ -343,14 +343,14 @@ void Forwarder::Forward(EnvelopePtr&& env) {
 
         auto txn = env->mutable_request()->mutable_forward_txn()->mutable_txn();
         txn->mutable_internal()->set_timestamp(timestamp.time_since_epoch().count());
-        Send(*env, destinations, kSequencerChannel);
+        Send(move(env), destinations, kSequencerChannel);
       } else {
         vector<MachineId> destinations;
         destinations.reserve(txn_internal->involved_replicas_size());
         for (auto rep : txn_internal->involved_replicas()) {
           destinations.push_back(config()->MakeMachineId(rep, part));
         }
-        Send(*env, destinations, kSequencerChannel);
+        Send(move(env), destinations, kSequencerChannel);
       }
     } else {
       VLOG(3) << "Txn " << txn_id << " is a multi-home txn. Sending to the orderer.";
@@ -383,6 +383,8 @@ void Forwarder::ProcessStatsRequest(const internal::StatsRequest& stats_request)
   }
 
   stats.AddMember(StringRef(FORW_LATENCIES_US), ToJsonArray(avg_latencies_us_, alloc), alloc);
+  stats.AddMember(StringRef(FORW_CLOCK_OFFSETS_US), ToJsonArray(clock_offsets_us_, alloc), alloc);
+  stats.AddMember(StringRef(FORW_MAX_CLOCK_OFFSET_US), max_clock_offset_us_, alloc);
 
   stats.AddMember(StringRef(FORW_BATCH_SIZE_PCTLS), Percentiles(stat_batch_sizes_, alloc), alloc);
   stat_batch_sizes_.clear();

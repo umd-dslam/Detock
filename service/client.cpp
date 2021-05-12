@@ -144,8 +144,16 @@ void PrintForwarderStats(const rapidjson::Document& stats, uint32_t) {
   const auto& latencies_us = stats[FORW_LATENCIES_US].GetArray();
   cout << "Latencies (us): ";
   for (size_t i = 0; i < latencies_us.Size(); ++i) {
-    cout << latencies_us[i].GetInt() << " ";
+    cout << latencies_us[i].GetFloat() << " ";
   }
+  const auto& clock_offsets_us = stats[FORW_CLOCK_OFFSETS_US].GetArray();
+  cout << "\n";
+  cout << "Clock offsets (us): ";
+  for (size_t i = 0; i < clock_offsets_us.Size(); ++i) {
+    cout << clock_offsets_us[i].GetInt64() << " ";
+  }
+  cout << "\n";
+  cout << "Max clock offset: " << stats[FORW_MAX_CLOCK_OFFSET_US].GetInt64() << "\n";
 
   const auto& batch_duration_ms_pctls = stats[FORW_BATCH_DURATION_MS_PCTLS].GetArray();
   const auto& batch_size_pctls = stats[FORW_BATCH_SIZE_PCTLS].GetArray();
