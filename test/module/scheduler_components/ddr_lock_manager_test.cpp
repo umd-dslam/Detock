@@ -233,7 +233,7 @@ class DDRLockManagerWithResolverTest : public ::testing::Test {
       // When ddr_interval = 0, we want to manually control when the deadlock resolver
       // runs, so we set poll_timeout to empty so that we can synchronously wait for
       // remote message.
-      optional<milliseconds> poll_timeout;
+      optional<std::chrono::milliseconds> poll_timeout;
       if (ddr_interval > 0) {
         poll_timeout = kTestModuleTimeout;
       }

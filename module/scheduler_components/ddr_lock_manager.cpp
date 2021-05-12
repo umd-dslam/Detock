@@ -16,6 +16,8 @@ using std::optional;
 using std::queue;
 using std::shared_ptr;
 using std::unique_ptr;
+using std::vector;
+using std::chrono::milliseconds;
 
 namespace slog {
 
@@ -50,7 +52,7 @@ class DeadlockResolver : public NetworkedModule {
   }
 
   void Initialize() final {
-    if (config_->ddr_interval() > 0ms) {
+    if (config_->ddr_interval() > milliseconds(0)) {
       ScheduleNextRun();
     }
   }

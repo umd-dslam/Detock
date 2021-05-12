@@ -357,7 +357,7 @@ void Worker::BroadcastReads(const RunId& run_id) {
     }
   }
 
-  vector<MachineId> destinations;
+  std::vector<MachineId> destinations;
   for (auto p : waiting_partitions) {
     if (p != local_partition) {
       destinations.push_back(config()->MakeMachineId(local_replica, p));

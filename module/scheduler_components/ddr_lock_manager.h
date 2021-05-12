@@ -40,7 +40,7 @@ class LockQueueTail {
   std::optional<TxnId> write_lock_requester() const { return write_lock_requester_; }
 
   /* For debugging */
-  vector<TxnId> read_lock_requesters() const { return read_lock_requesters_; }
+  std::vector<TxnId> read_lock_requesters() const { return read_lock_requesters_; }
 
  private:
   std::optional<TxnId> write_lock_requester_;
@@ -82,7 +82,7 @@ class DDRLockManager {
    */
   void InitializeDeadlockResolver(const std::shared_ptr<Broker>& broker,
                                   const MetricsRepositoryManagerPtr& metrics_manager, Channel signal_chan,
-                                  std::optional<milliseconds> poll_timeout = kModuleTimeout);
+                                  std::optional<std::chrono::milliseconds> poll_timeout = kModuleTimeout);
 
   /**
    * Starts the deadlock resolver in a new thread

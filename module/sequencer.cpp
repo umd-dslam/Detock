@@ -16,6 +16,8 @@ using internal::Batch;
 using internal::Request;
 using internal::Response;
 
+using std::chrono::milliseconds;
+
 Sequencer::Sequencer(const std::shared_ptr<zmq::context_t>& context, const ConfigurationPtr& config,
                      const MetricsRepositoryManagerPtr& metrics_manager, milliseconds poll_timeout)
     : NetworkedModule("Sequencer", context, config, config->sequencer_port(), kSequencerChannel, metrics_manager,
@@ -56,7 +58,7 @@ void Sequencer::OnInternalRequestReceived(EnvelopePtr&& env) {
 }
 
 void Sequencer::ProcessForwardRequest(EnvelopePtr&& env) {
-  auto now = system_clock::now().time_since_epoch().count();
+  auto now = std::chrono::system_clock::now().time_since_epoch().count();
   auto txn = env->mutable_request()->mutable_forward_txn()->release_txn();
 
   RECORD(txn->mutable_internal(), TransactionEvent::ENTER_SEQUENCER);
@@ -66,9 +68,10 @@ void Sequencer::ProcessForwardRequest(EnvelopePtr&& env) {
   } else {
     auto timestamp = std::make_pair(txn->internal().timestamp(), txn->internal().coordinating_server());
     txn_buffer_.emplace(timestamp, txn);
-    auto delay = duration_cast<microseconds>(nanoseconds(txn->internal().timestamp() - now)) + 1us;
-    NewTimedCallback(delay, [this]() {
-      auto now = system_clock::now().time_since_epoch().count();
+    auto delay = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::nanoseconds(txn->internal().timestamp() - now));
+    NewTimedCallback(delay + std::chrono::microseconds(1), [this]() {
+      auto now = std::chrono::system_clock::now().time_since_epoch().count();
       while (!txn_buffer_.empty() && txn_buffer_.top().first.first <= now) {
         BatchTxn(txn_buffer_.top().second);
         txn_buffer_.pop();
@@ -103,7 +106,7 @@ void Sequencer::BatchTxn(Transaction* txn) {
       NewBatch();
     });
 
-    batch_starting_time_ = steady_clock::now();
+    batch_starting_time_ = std::chrono::steady_clock::now();
   }
 
   // Batch size is larger than the maximum size, send the batch immediately
@@ -120,7 +123,7 @@ void Sequencer::SendBatch() {
 
   if (collecting_stats_) {
     stat_batch_sizes_.push_back(batch_size_);
-    stat_batch_durations_ms_.push_back((steady_clock::now() - batch_starting_time_).count() / 1000000.0);
+    stat_batch_durations_ms_.push_back((std::chrono::steady_clock::now() - batch_starting_time_).count() / 1000000.0);
   }
 
   auto local_replica = config()->local_replica();

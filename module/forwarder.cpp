@@ -30,7 +30,7 @@ uint32_t ChooseRandomPartition(const Transaction& txn, std::mt19937& rg) {
 
 Forwarder::Forwarder(const std::shared_ptr<zmq::context_t>& context, const ConfigurationPtr& config,
                      const shared_ptr<LookupMasterIndex<Key, Metadata>>& lookup_master_index,
-                     const MetricsRepositoryManagerPtr& metrics_manager, milliseconds poll_timeout)
+                     const MetricsRepositoryManagerPtr& metrics_manager, std::chrono::milliseconds poll_timeout)
     : NetworkedModule("Forwarder", context, config, config->forwarder_port(), kForwarderChannel, metrics_manager,
                       poll_timeout),
       lookup_master_index_(lookup_master_index),
@@ -44,7 +44,7 @@ Forwarder::Forwarder(const std::shared_ptr<zmq::context_t>& context, const Confi
       collecting_stats_(false) {}
 
 void Forwarder::Initialize() {
-  if (config()->latency_probe_interval() > 0ms) {
+  if (config()->latency_probe_interval() > std::chrono::milliseconds(0)) {
     ScheduleNextLatencyProbe();
   }
 }
@@ -141,7 +141,7 @@ void Forwarder::ProcessForwardTxn(EnvelopePtr&& env) {
   if (batch_size_ == 1) {
     NewTimedCallback(config()->forwarder_batch_duration(), [this]() { SendLookupMasterRequestBatch(); });
 
-    batch_starting_time_ = steady_clock::now();
+    batch_starting_time_ = std::chrono::steady_clock::now();
   }
 
   // Batch size is larger than the maximum size, send the batch immediately
@@ -156,7 +156,7 @@ void Forwarder::ProcessForwardTxn(EnvelopePtr&& env) {
 void Forwarder::SendLookupMasterRequestBatch() {
   if (collecting_stats_) {
     stat_batch_sizes_.push_back(batch_size_);
-    stat_batch_durations_ms_.push_back((steady_clock::now() - batch_starting_time_).count() / 1000000.0);
+    stat_batch_durations_ms_.push_back((std::chrono::steady_clock::now() - batch_starting_time_).count() / 1000000.0);
   }
 
   auto local_rep = config()->local_replica();
@@ -199,7 +199,7 @@ void Forwarder::ProcessLookUpMasterRequest(EnvelopePtr&& env) {
 }
 
 void Forwarder::ProcessPingRequest(EnvelopePtr&& env) {
-  auto now = system_clock::now().time_since_epoch().count();
+  auto now = std::chrono::system_clock::now().time_since_epoch().count();
 
   // Reply with pong
   auto pong_env = NewEnvelope();
@@ -211,7 +211,8 @@ void Forwarder::ProcessPingRequest(EnvelopePtr&& env) {
   // Calibrate local clock
   if (config()->calibrate_clock()) {
     auto remote_region = config()->UnpackMachineId(env->from()).first;
-    auto estimated_remote_time = env->request().ping().time() + static_cast<int64_t>(avg_latencies_us_[remote_region]) * 1000;
+    auto estimated_remote_time =
+        env->request().ping().time() + static_cast<int64_t>(avg_latencies_us_[remote_region]) * 1000;
     clock_offsets_us_[remote_region] = (estimated_remote_time - now) / 1000;
     max_clock_offset_us_ = 0;
     for (auto o : clock_offsets_us_) {
@@ -331,21 +332,22 @@ void Forwarder::Forward(EnvelopePtr&& env) {
       if (config()->synchronized_batching()) {
         // If synchronized batching is on, compute the batching delay based on latency between the current
         // replica to the involved replicas
-        vector<MachineId> destinations;
+        std::vector<MachineId> destinations;
         int64_t max_avg_latency_us = 0;
         for (auto rep : txn_internal->involved_replicas()) {
           max_avg_latency_us = std::max(max_avg_latency_us, static_cast<int64_t>(avg_latencies_us_[rep]));
           destinations.push_back(config()->MakeMachineId(rep, part));
         }
 
-        auto timestamp = system_clock::now() +
-                         microseconds(max_avg_latency_us + max_clock_offset_us_ + config()->timestamp_buffer_us());
+        auto timestamp =
+            std::chrono::system_clock::now() +
+            std::chrono::microseconds(max_avg_latency_us + max_clock_offset_us_ + config()->timestamp_buffer_us());
 
         auto txn = env->mutable_request()->mutable_forward_txn()->mutable_txn();
         txn->mutable_internal()->set_timestamp(timestamp.time_since_epoch().count());
         Send(move(env), destinations, kSequencerChannel);
       } else {
-        vector<MachineId> destinations;
+        std::vector<MachineId> destinations;
         destinations.reserve(txn_internal->involved_replicas_size());
         for (auto rep : txn_internal->involved_replicas()) {
           destinations.push_back(config()->MakeMachineId(rep, part));
