@@ -38,6 +38,7 @@ class Sequencer : public NetworkedModule {
   using TimestampedTxn = std::pair<Timestamp, Transaction*>;
 
   void ProcessForwardRequest(EnvelopePtr&& env);
+  void ProcessPingRequest(EnvelopePtr&& env);
   void ProcessStatsRequest(const internal::StatsRequest& stats_request);
 
   void NewBatch();

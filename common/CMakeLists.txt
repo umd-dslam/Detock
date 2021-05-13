@@ -1,5 +1,7 @@
 target_sources(slog-core
   PRIVATE
+    clock.cpp
+    clock.h
     configuration.cpp
     configuration.h
     constants.h

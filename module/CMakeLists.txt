@@ -4,6 +4,8 @@ target_sources(slog-core
     base/module.h
     base/networked_module.cpp
     base/networked_module.h
+    clock_synchronizer.cpp
+    clock_synchronizer.h
     consensus.cpp
     consensus.h
     forwarder.cpp

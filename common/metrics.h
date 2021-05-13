@@ -33,7 +33,10 @@ class MetricsRepository {
   void RecordInterleaverLogEntry(uint32_t replica, BatchId batch_id, TxnId txn_id, int64_t txn_timestamp,
                                  int64_t exit_forwarder_time, int64_t enter_sequencer_time,
                                  int64_t enter_local_batch_time);
-  void RecordLatencyProbe(uint32_t replica, int64_t send_time, int64_t recv_time);
+  void RecordForwSequLatency(uint32_t replica, int64_t send_time, int64_t recv_time, int64_t avg_latency);
+  void RecordClockSync(uint32_t dst, int64_t src_send_time, int64_t dst_send_time, int64_t src_recv_time,
+                       int64_t local_slog_time, int64_t avg_latency, int64_t new_offset);
+
   std::unique_ptr<AllMetrics> Reset();
 
  private:

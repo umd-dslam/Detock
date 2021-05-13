@@ -75,6 +75,9 @@ Sender::SocketPtr& Sender::GetRemoteSocket(MachineId machine_id, Channel channel
       case kSequencerChannel:
         port = config_->sequencer_port();
         break;
+      case kClockSynchronizerChannel:
+        port = config_->clock_synchronizer_port();
+        break;
       default:
         port = config_->broker_ports(0);
     }

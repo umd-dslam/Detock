@@ -12,4 +12,5 @@ enum ModuleId {
   INTERLEAVER = 7;
   SCHEDULER = 8;
   WORKER = 9;
+  CLOCK_SYNCHRONIZER = 10;
 }

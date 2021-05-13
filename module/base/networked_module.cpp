@@ -28,7 +28,6 @@ NetworkedModule::NetworkedModule(const std::string& name, const std::shared_ptr<
       channel_(channel),
       port_(std::nullopt),
       metrics_manager_(metrics_manager),
-      inproc_socket_(*context_, ZMQ_PULL),
       sender_(config, context),
       poller_(poll_timeout),
       recv_retries_start_(config->recv_retries()),
@@ -67,6 +66,7 @@ zmq::socket_t& NetworkedModule::GetCustomSocket(size_t i) { return custom_socket
 void NetworkedModule::SetUp() {
   VLOG(1) << "Thread info: " << debug_info_;
 
+  inproc_socket_ = zmq::socket_t(*context_, ZMQ_PULL);
   inproc_socket_.bind(MakeInProcChannelAddress(channel_));
   inproc_socket_.set(zmq::sockopt::rcvhwm, 0);
   poller_.PushSocket(inproc_socket_);
@@ -76,10 +76,9 @@ void NetworkedModule::SetUp() {
     auto addr = MakeRemoteAddress(config_->protocol(), config_->local_address(), port_.value(), true /* binding */);
     outproc_socket_.bind(addr);
     outproc_socket_.set(zmq::sockopt::rcvhwm, 0);
+    poller_.PushSocket(outproc_socket_);
 
     LOG(INFO) << "Bound " << name() << " to \"" << addr << "\"";
-
-    poller_.PushSocket(outproc_socket_);
   }
 
   if (metrics_manager_ != nullptr) {

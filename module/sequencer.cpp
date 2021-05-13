@@ -4,6 +4,7 @@
 
 #include <algorithm>
 
+#include "common/clock.h"
 #include "common/json_utils.h"
 #include "common/proto_utils.h"
 #include "paxos/simulated_multi_paxos.h"
@@ -48,6 +49,9 @@ void Sequencer::OnInternalRequestReceived(EnvelopePtr&& env) {
     case Request::kForwardTxn:
       ProcessForwardRequest(move(env));
       break;
+    case Request::kPing:
+      ProcessPingRequest(move(env));
+      break;
     case Request::kStats:
       ProcessStatsRequest(request->stats());
       break;
@@ -58,7 +62,7 @@ void Sequencer::OnInternalRequestReceived(EnvelopePtr&& env) {
 }
 
 void Sequencer::ProcessForwardRequest(EnvelopePtr&& env) {
-  auto now = std::chrono::system_clock::now().time_since_epoch().count();
+  auto now = slog_clock::now().time_since_epoch().count();
   auto txn = env->mutable_request()->mutable_forward_txn()->release_txn();
 
   RECORD(txn->mutable_internal(), TransactionEvent::ENTER_SEQUENCER);
@@ -71,7 +75,7 @@ void Sequencer::ProcessForwardRequest(EnvelopePtr&& env) {
     auto delay = std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::nanoseconds(txn->internal().timestamp() - now));
     NewTimedCallback(delay + std::chrono::microseconds(1), [this]() {
-      auto now = std::chrono::system_clock::now().time_since_epoch().count();
+      auto now = slog_clock::now().time_since_epoch().count();
       while (!txn_buffer_.empty() && txn_buffer_.top().first.first <= now) {
         BatchTxn(txn_buffer_.top().second);
         txn_buffer_.pop();
@@ -211,6 +215,14 @@ EnvelopePtr Sequencer::NewBatchRequest(internal::Batch* batch) {
   forward_batch->set_same_origin_position(batch_id_counter_ - 1);
   forward_batch->set_allocated_batch_data(batch);
   return env;
+}
+
+void Sequencer::ProcessPingRequest(EnvelopePtr&& env) {
+  auto pong_env = NewEnvelope();
+  auto pong = pong_env->mutable_response()->mutable_pong();
+  pong->set_src_send_time(env->request().ping().src_send_time());
+  pong->set_dst(env->request().ping().dst());
+  Send(move(pong_env), env->from(), kForwarderChannel);
 }
 
 /**

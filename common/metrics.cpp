@@ -226,27 +226,70 @@ class InterleaverLogs {
   vector<Data> global_log_;
 };
 
-class CrossRegionLatencyProbe {
+class ForwSequLatencyMetrics {
  public:
-  CrossRegionLatencyProbe(int sample_rate) : sampler_(sample_rate, 1) {}
+  ForwSequLatencyMetrics(int sample_rate) : sampler_(sample_rate, 1) {}
 
-  void Record(uint32_t replica, int64_t send_time, int64_t recv_time) {
+  void Record(uint32_t dst, int64_t send_time, int64_t recv_time, int64_t avg_latency) {
     if (sampler_.IsChosen(0)) {
-      data_.push_back({.replica = replica, .send_time = send_time, .recv_time = recv_time});
+      data_.push_back({.dst = dst, .send_time = send_time, .recv_time = recv_time, .avg_latency = avg_latency});
     }
   }
 
   struct Data {
-    uint32_t replica;
+    uint32_t dst;
     int64_t send_time;
     int64_t recv_time;
+    int64_t avg_latency;
   };
   list<Data>& data() { return data_; }
 
   static void WriteToDisk(const std::string& dir, const list<Data>& data) {
-    CSVWriter latency_probe_csv(dir + "/latency_probe.csv", {"replica", "send_time", "recv_time"});
+    CSVWriter forw_sequ_latency_csv(dir + "/forw_sequ_latency.csv", {"dst", "send_time", "recv_time", "avg_latency"});
     for (const auto& d : data) {
-      latency_probe_csv << d.replica << d.send_time << d.recv_time << csvendl;
+      forw_sequ_latency_csv << d.dst << d.send_time << d.recv_time << d.avg_latency << csvendl;
+    }
+  }
+
+ private:
+  Sampler sampler_;
+  list<Data> data_;
+};
+
+class ClockSyncMetrics {
+ public:
+  ClockSyncMetrics(int sample_rate) : sampler_(sample_rate, 1) {}
+
+  void Record(uint32_t dst, int64_t src_send_time, int64_t dst_send_time, int64_t src_recv_time,
+              int64_t local_slog_time, int64_t avg_latency, int64_t new_offset) {
+    if (sampler_.IsChosen(0)) {
+      data_.push_back({.dst = dst,
+                       .src_send_time = src_send_time,
+                       .dst_send_time = dst_send_time,
+                       .src_recv_time = src_recv_time,
+                       .local_slog_time = local_slog_time,
+                       .avg_latency = avg_latency,
+                       .new_offset = new_offset});
+    }
+  }
+
+  struct Data {
+    uint32_t dst;
+    int64_t src_send_time;
+    int64_t dst_send_time;
+    int64_t src_recv_time;
+    int64_t local_slog_time;
+    int64_t avg_latency;
+    int64_t new_offset;
+  };
+  list<Data>& data() { return data_; }
+
+  static void WriteToDisk(const std::string& dir, const list<Data>& data) {
+    CSVWriter clock_sync_csv(dir + "/clock_sync.csv", {"dst", "src_send_time", "dst_send_time", "src_recv_time",
+                                                       "local_slog_time", "avg_latency", "new_offset"});
+    for (const auto& d : data) {
+      clock_sync_csv << d.dst << d.src_send_time << d.dst_send_time << d.src_recv_time << d.local_slog_time
+                     << d.avg_latency << d.new_offset << csvendl;
     }
   }
 
@@ -260,7 +303,8 @@ struct AllMetrics {
   DeadlockResolverRunMetrics deadlock_resolver_run_metrics;
   DeadlockResolverDeadlockMetrics deadlock_resolver_deadlock_metrics;
   InterleaverLogs interleaver_logs;
-  CrossRegionLatencyProbe latency_probe;
+  ForwSequLatencyMetrics forw_sequ_latency_metrics;
+  ClockSyncMetrics clock_sync_metrics;
 };
 
 /**
@@ -300,9 +344,18 @@ void MetricsRepository::RecordInterleaverLogEntry(uint32_t replica, BatchId batc
                                            enter_sequencer_time, enter_local_batch_time);
 }
 
-void MetricsRepository::RecordLatencyProbe(uint32_t replica, int64_t send_time, int64_t recv_time) {
+void MetricsRepository::RecordForwSequLatency(uint32_t replica, int64_t send_time, int64_t recv_time,
+                                              int64_t avg_latency) {
   std::lock_guard<SpinLatch> guard(latch_);
-  return metrics_->latency_probe.Record(replica, send_time, recv_time);
+  return metrics_->forw_sequ_latency_metrics.Record(replica, send_time, recv_time, avg_latency);
+}
+
+void MetricsRepository::RecordClockSync(uint32_t dst, int64_t src_send_time, int64_t dst_send_time,
+                                        int64_t src_recv_time, int64_t local_slog_time, int64_t avg_latency,
+                                        int64_t new_offset) {
+  std::lock_guard<SpinLatch> guard(latch_);
+  return metrics_->clock_sync_metrics.Record(dst, src_send_time, dst_send_time, src_recv_time, local_slog_time,
+                                             avg_latency, new_offset);
 }
 
 std::unique_ptr<AllMetrics> MetricsRepository::Reset() {
@@ -317,7 +370,8 @@ std::unique_ptr<AllMetrics> MetricsRepository::Reset() {
                                            config_->metric_options().deadlock_resolver_deadlock_details(),
                                            config_->local_replica(), config_->local_partition()),
        .interleaver_logs = InterleaverLogs(),
-       .latency_probe = CrossRegionLatencyProbe(config_->metric_options().latency_probes_sample())}));
+       .forw_sequ_latency_metrics = ForwSequLatencyMetrics(config_->metric_options().forw_sequ_latency_sample()),
+       .clock_sync_metrics = ClockSyncMetrics(config_->metric_options().clock_sync_sample())}));
 
   std::lock_guard<SpinLatch> guard(latch_);
   metrics_.swap(new_metrics);
@@ -346,7 +400,8 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
   list<DeadlockResolverRunMetrics::Data> deadlock_resolver_run_data;
   list<DeadlockResolverDeadlockMetrics::Data> deadlock_resolver_deadlock_data;
   vector<InterleaverLogs::Data> global_log;
-  list<CrossRegionLatencyProbe::Data> latency_probe;
+  list<ForwSequLatencyMetrics::Data> forw_sequ_latency_data;
+  list<ClockSyncMetrics::Data> clock_sync_data;
   {
     std::lock_guard<std::mutex> guard(mut_);
     for (auto& kv : metrics_repos_) {
@@ -360,7 +415,8 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
       if (!metrics->interleaver_logs.global_log().empty()) {
         global_log = metrics->interleaver_logs.global_log();
       }
-      latency_probe.splice(latency_probe.end(), metrics->latency_probe.data());
+      forw_sequ_latency_data.splice(forw_sequ_latency_data.end(), metrics->forw_sequ_latency_metrics.data());
+      clock_sync_data.splice(clock_sync_data.end(), metrics->clock_sync_metrics.data());
     }
   }
 
@@ -371,7 +427,8 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
     DeadlockResolverDeadlockMetrics::WriteToDisk(dir, deadlock_resolver_deadlock_data,
                                                  config_->metric_options().deadlock_resolver_deadlock_details());
     InterleaverLogs::WriteToDisk(dir, global_log);
-    CrossRegionLatencyProbe::WriteToDisk(dir, latency_probe);
+    ForwSequLatencyMetrics::WriteToDisk(dir, forw_sequ_latency_data);
+    ClockSyncMetrics::WriteToDisk(dir, clock_sync_data);
     LOG(INFO) << "Metrics written to: \"" << dir << "/\"";
   } catch (std::runtime_error& e) {
     LOG(ERROR) << e.what();

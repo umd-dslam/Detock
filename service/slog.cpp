@@ -9,6 +9,7 @@
 #include "common/offline_data_reader.h"
 #include "common/types.h"
 #include "connection/broker.h"
+#include "module/clock_synchronizer.h"
 #include "module/consensus.h"
 #include "module/forwarder.h"
 #include "module/interleaver.h"
@@ -175,6 +176,11 @@ int main(int argc, char* argv[]) {
   // One region is selected to globally order the multihome batches
   if (config->leader_replica_for_multi_home_ordering() == config->local_replica()) {
     modules.emplace_back(MakeRunnerFor<slog::GlobalPaxos>(broker), slog::ModuleId::GLOBALPAXOS);
+  }
+
+  if (config->clock_synchronizer_port() != 0) {
+    modules.emplace_back(MakeRunnerFor<slog::ClockSynchronizer>(broker->context(), broker->config(), metrics_manager),
+                         slog::ModuleId::CLOCK_SYNCHRONIZER);
   }
 
   // Block SIGINT from here so that the new threads inherit the block mask

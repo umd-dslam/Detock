@@ -29,6 +29,7 @@ class Configuration {
   uint32_t server_port() const;
   uint32_t forwarder_port() const;
   uint32_t sequencer_port() const;
+  uint32_t clock_synchronizer_port() const;
   uint32_t num_replicas() const;
   uint32_t num_partitions() const;
   uint32_t num_workers() const;
@@ -70,8 +71,8 @@ class Configuration {
   bool synchronized_batching() const;
   const internal::MetricOptions& metric_options() const;
   std::array<int, 2> interleaver_remote_to_local_ratio() const;
-  std::chrono::milliseconds latency_probe_interval() const;
-  bool calibrate_clock() const;
+  std::chrono::milliseconds fs_latency_interval() const;
+  std::chrono::milliseconds clock_sync_interval() const;
   int64_t timestamp_buffer_us() const;
 
  private:

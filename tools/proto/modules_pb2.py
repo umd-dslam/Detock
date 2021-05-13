@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=None,
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\x13proto/modules.proto\x12\x04slog*\x9c\x01\n\x08ModuleId\x12\n\n\x06\x42ROKER\x10\x00\x12\n\n\x06SERVER\x10\x01\x12\r\n\tMHORDERER\x10\x02\x12\x0e\n\nLOCALPAXOS\x10\x03\x12\x0f\n\x0bGLOBALPAXOS\x10\x04\x12\r\n\tFORWARDER\x10\x05\x12\r\n\tSEQUENCER\x10\x06\x12\x0f\n\x0bINTERLEAVER\x10\x07\x12\r\n\tSCHEDULER\x10\x08\x12\n\n\x06WORKER\x10\tb\x06proto3'
+  serialized_pb=b'\n\x13proto/modules.proto\x12\x04slog*\xb4\x01\n\x08ModuleId\x12\n\n\x06\x42ROKER\x10\x00\x12\n\n\x06SERVER\x10\x01\x12\r\n\tMHORDERER\x10\x02\x12\x0e\n\nLOCALPAXOS\x10\x03\x12\x0f\n\x0bGLOBALPAXOS\x10\x04\x12\r\n\tFORWARDER\x10\x05\x12\r\n\tSEQUENCER\x10\x06\x12\x0f\n\x0bINTERLEAVER\x10\x07\x12\r\n\tSCHEDULER\x10\x08\x12\n\n\x06WORKER\x10\t\x12\x16\n\x12\x43LOCK_SYNCHRONIZER\x10\nb\x06proto3'
 )
 
 _MODULEID = _descriptor.EnumDescriptor(
@@ -80,11 +80,16 @@ _MODULEID = _descriptor.EnumDescriptor(
       serialized_options=None,
       type=None,
       create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='CLOCK_SYNCHRONIZER', index=10, number=10,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
   ],
   containing_type=None,
   serialized_options=None,
   serialized_start=30,
-  serialized_end=186,
+  serialized_end=210,
 )
 _sym_db.RegisterEnumDescriptor(_MODULEID)
 
@@ -99,6 +104,7 @@ SEQUENCER = 6
 INTERLEAVER = 7
 SCHEDULER = 8
 WORKER = 9
+CLOCK_SYNCHRONIZER = 10
 
 
 DESCRIPTOR.enum_types_by_name['ModuleId'] = _MODULEID

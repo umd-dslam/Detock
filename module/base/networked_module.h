@@ -27,14 +27,23 @@ struct ChannelOption {
  */
 class NetworkedModule : public Module {
  public:
+  /**
+   * Don't receive external messages.
+   */
   NetworkedModule(const std::string& name, const std::shared_ptr<zmq::context_t>& context,
                   const ConfigurationPtr& config, Channel channel, const MetricsRepositoryManagerPtr& metrics_manager,
                   std::optional<std::chrono::milliseconds> poll_timeout);
 
+  /**
+   * Use broker to receive external messages.
+   */
   NetworkedModule(const std::string& name, const std::shared_ptr<Broker>& broker, ChannelOption chopt,
                   const MetricsRepositoryManagerPtr& metrics_manager,
                   std::optional<std::chrono::milliseconds> poll_timeout);
 
+  /**
+   * Use owned socket to receive external messages.
+   */
   NetworkedModule(const std::string& name, const std::shared_ptr<zmq::context_t>& context,
                   const ConfigurationPtr& config, uint32_t port, Channel channel,
                   const MetricsRepositoryManagerPtr& metrics_manager,

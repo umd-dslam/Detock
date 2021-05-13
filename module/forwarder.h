@@ -1,6 +1,5 @@
 #pragma once
 
-#include <queue>
 #include <random>
 #include <unordered_map>
 
@@ -8,6 +7,7 @@
 #include "common/metrics.h"
 #include "common/types.h"
 #include "connection/broker.h"
+#include "data_structure/rolling_window.h"
 #include "module/base/networked_module.h"
 #include "proto/transaction.pb.h"
 #include "storage/lookup_master_index.h"
@@ -47,7 +47,6 @@ class Forwarder : public NetworkedModule {
   void ScheduleNextLatencyProbe();
   void ProcessForwardTxn(EnvelopePtr&& env);
   void ProcessLookUpMasterRequest(EnvelopePtr&& env);
-  void ProcessPingRequest(EnvelopePtr&& env);
   void ProcessStatsRequest(const internal::StatsRequest& stats_request);
 
   void SendLookupMasterRequestBatch();
@@ -64,10 +63,7 @@ class Forwarder : public NetworkedModule {
   std::unordered_map<TxnId, EnvelopePtr> pending_transactions_;
   std::vector<internal::Envelope> partitioned_lookup_request_;
   int batch_size_;
-  std::vector<std::queue<int64_t>> latency_buffers_;
-  std::vector<float> avg_latencies_us_;
-  std::vector<int64_t> clock_offsets_us_;
-  int64_t max_clock_offset_us_;
+  std::vector<RollingWindow<int64_t>> latencies_ns_;
 
   std::mt19937 rg_;
 

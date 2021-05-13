@@ -26,13 +26,13 @@ zmq::socket_t MakePullSocket(zmq::context_t& context, Channel chan) {
 
 EnvelopePtr MakePing(int64_t time) {
   auto env = std::make_unique<internal::Envelope>();
-  env->mutable_request()->mutable_ping()->set_time(time);
+  env->mutable_request()->mutable_ping()->set_src_send_time(time);
   return env;
 }
 
 EnvelopePtr MakePong(int64_t time) {
   auto env = std::make_unique<internal::Envelope>();
-  env->mutable_response()->mutable_pong()->set_time(time);
+  env->mutable_response()->mutable_pong()->set_src_send_time(time);
   return env;
 }
 
@@ -57,7 +57,7 @@ TEST(BrokerAndSenderTest, PingPong) {
     auto res = RecvEnvelope(recv_socket);
     ASSERT_TRUE(res != nullptr);
     ASSERT_TRUE(res->has_response());
-    ASSERT_EQ(99, res->response().pong().time());
+    ASSERT_EQ(99, res->response().pong().src_send_time());
   });
 
   auto pong = thread([&]() {
@@ -74,7 +74,7 @@ TEST(BrokerAndSenderTest, PingPong) {
     auto req = RecvEnvelope(socket);
     ASSERT_TRUE(req != nullptr);
     ASSERT_TRUE(req->has_request());
-    ASSERT_EQ(99, req->request().ping().time());
+    ASSERT_EQ(99, req->request().ping().src_send_time());
 
     // Send pong
     auto pong_res = MakePong(99);
@@ -105,7 +105,7 @@ TEST(BrokerTest, LocalPingPong) {
     // Wait for pong
     auto res = RecvEnvelope(socket);
     ASSERT_TRUE(res != nullptr);
-    ASSERT_EQ(99, res->response().pong().time());
+    ASSERT_EQ(99, res->response().pong().src_send_time());
   });
 
   auto pong = thread([&]() {
@@ -115,7 +115,7 @@ TEST(BrokerTest, LocalPingPong) {
     // Wait for ping
     auto req = RecvEnvelope(socket);
     ASSERT_TRUE(req != nullptr);
-    ASSERT_EQ(99, req->request().ping().time());
+    ASSERT_EQ(99, req->request().ping().src_send_time());
 
     // Send pong
     sender.Send(MakePong(99), PING);
@@ -152,7 +152,7 @@ TEST(BrokerTest, MultiSend) {
       auto res = RecvEnvelope(socket);
       ASSERT_TRUE(res != nullptr);
       ASSERT_TRUE(res->has_response());
-      ASSERT_EQ(99, res->response().pong().time());
+      ASSERT_EQ(99, res->response().pong().src_send_time());
     }
   });
 
@@ -171,7 +171,7 @@ TEST(BrokerTest, MultiSend) {
       auto req = RecvEnvelope(socket);
       ASSERT_TRUE(req != nullptr);
       ASSERT_TRUE(req->has_request());
-      ASSERT_EQ(99, req->request().ping().time());
+      ASSERT_EQ(99, req->request().ping().src_send_time());
 
       // Send pong
       auto pong_res = MakePong(99);
@@ -243,7 +243,7 @@ TEST(BrokerTest, CreateRedirection) {
     auto ping_req = RecvEnvelope(pong_socket);
     ASSERT_TRUE(ping_req != nullptr);
     ASSERT_TRUE(ping_req->has_request());
-    ASSERT_EQ(99, ping_req->request().ping().time());
+    ASSERT_EQ(99, ping_req->request().ping().src_send_time());
   }
 
   // Send pong
@@ -258,7 +258,7 @@ TEST(BrokerTest, CreateRedirection) {
     auto pong_res = RecvEnvelope(ping_socket);
     ASSERT_TRUE(pong_res != nullptr);
     ASSERT_TRUE(pong_res->has_response());
-    ASSERT_EQ(99, pong_res->response().pong().time());
+    ASSERT_EQ(99, pong_res->response().pong().src_send_time());
   }
 }
 
@@ -302,7 +302,7 @@ TEST(BrokerTest, RemoveRedirection) {
     auto ping_req = RecvEnvelope(pong_socket);
     ASSERT_TRUE(ping_req != nullptr);
     ASSERT_TRUE(ping_req->has_request());
-    ASSERT_EQ(99, ping_req->request().ping().time());
+    ASSERT_EQ(99, ping_req->request().ping().src_send_time());
   }
 
   // Remove the redirection

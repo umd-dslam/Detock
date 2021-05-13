@@ -59,8 +59,8 @@ Configuration::Configuration(const internal::Configuration& config, const string
       << "Maximum number of broker threads is " << kMaxChannel - kBrokerChannel;
   CHECK_GT(config_.broker_ports_size(), 0) << "There must be at least one broker";
   CHECK_NE(config_.server_port(), 0) << "Server port must be set";
-  CHECK_NE(config_.sequencer_port(), 0) << "Sequencer port must be set";
   CHECK_NE(config_.forwarder_port(), 0) << "Forwarder port must be set";
+  CHECK_NE(config_.sequencer_port(), 0) << "Sequencer port must be set";
 
   bool local_address_is_valid = local_address_.empty();
   for (int r = 0; r < config_.replicas_size(); r++) {
@@ -117,6 +117,8 @@ uint32_t Configuration::server_port() const { return config_.server_port(); }
 uint32_t Configuration::forwarder_port() const { return config_.forwarder_port(); }
 
 uint32_t Configuration::sequencer_port() const { return config_.sequencer_port(); }
+
+uint32_t Configuration::clock_synchronizer_port() const { return config_.clock_synchronizer_port(); }
 
 milliseconds Configuration::forwarder_batch_duration() const {
   return milliseconds(config_.forwarder_batch_duration());
@@ -242,9 +244,9 @@ std::array<int, 2> Configuration::interleaver_remote_to_local_ratio() const {
   return {std::stoi(ratio[0]), std::stoi(ratio[1])};
 }
 
-milliseconds Configuration::latency_probe_interval() const { return milliseconds(config_.latency_probe_interval()); }
+milliseconds Configuration::fs_latency_interval() const { return milliseconds(config_.fs_latency_interval()); }
 
-bool Configuration::calibrate_clock() const { return config_.calibrate_clock(); }
+milliseconds Configuration::clock_sync_interval() const { return milliseconds(config_.clock_sync_interval()); }
 
 int64_t Configuration::timestamp_buffer_us() const { return config_.timestamp_buffer_us(); }
 
