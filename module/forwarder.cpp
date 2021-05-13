@@ -40,7 +40,7 @@ Forwarder::Forwarder(const std::shared_ptr<zmq::context_t>& context, const Confi
       rg_(std::random_device{}()),
       collecting_stats_(false) {
   for (uint32_t i = 0; i < config->num_replicas(); i++) {
-    latencies_ns_.emplace_back(5);
+    latencies_ns_.emplace_back(config->avg_latency_window_size());
   }
 }
 
@@ -297,11 +297,13 @@ void Forwarder::Forward(EnvelopePtr&& env) {
           destinations.push_back(config()->MakeMachineId(rep, part));
         }
 
-        auto timestamp = slog_clock::now() + std::chrono::nanoseconds(max_avg_latency_ns) +
+        auto now = slog_clock::now();
+        auto timestamp = now + std::chrono::nanoseconds(max_avg_latency_ns) +
                          std::chrono::microseconds(config()->timestamp_buffer_us());
 
         auto txn = env->mutable_request()->mutable_forward_txn()->mutable_txn();
         txn->mutable_internal()->set_timestamp(timestamp.time_since_epoch().count());
+        txn->mutable_internal()->set_mh_depart_from_coordinator_time(now.time_since_epoch().count());
         Send(move(env), destinations, kSequencerChannel);
       } else {
         std::vector<MachineId> destinations;

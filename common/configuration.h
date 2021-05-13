@@ -74,6 +74,7 @@ class Configuration {
   std::chrono::milliseconds fs_latency_interval() const;
   std::chrono::milliseconds clock_sync_interval() const;
   int64_t timestamp_buffer_us() const;
+  uint32_t avg_latency_window_size() const;
 
  private:
   internal::Configuration config_;

@@ -192,33 +192,35 @@ class DeadlockResolverDeadlockMetrics {
 
 class InterleaverLogs {
  public:
-  void Record(uint32_t replica, BatchId batch_id, TxnId txn_id, int64_t txn_timestamp, int64_t exit_forwarder_time,
-              int64_t enter_sequencer_time, int64_t enter_local_batch_time) {
+  void Record(uint32_t replica, BatchId batch_id, TxnId txn_id, int64_t txn_timestamp,
+              int64_t mh_depart_from_coordinator_time, int64_t mh_arrive_at_home_time,
+              int64_t mh_enter_local_batch_time) {
     global_log_.push_back({.replica = replica,
                            .txn_id = txn_id,
                            .batch_id = batch_id,
                            .txn_timestamp = txn_timestamp,
-                           .exit_forwarder_time = exit_forwarder_time,
-                           .enter_sequencer_time = enter_sequencer_time,
-                           .enter_local_batch_time = enter_local_batch_time});
+                           .mh_depart_from_coordinator_time = mh_depart_from_coordinator_time,
+                           .mh_arrive_at_home_time = mh_arrive_at_home_time,
+                           .mh_enter_local_batch_time = mh_enter_local_batch_time});
   }
   struct Data {
     uint32_t replica;
     TxnId txn_id;
     BatchId batch_id;
     int64_t txn_timestamp;
-    int64_t exit_forwarder_time;
-    int64_t enter_sequencer_time;
-    int64_t enter_local_batch_time;
+    int64_t mh_depart_from_coordinator_time;
+    int64_t mh_arrive_at_home_time;
+    int64_t mh_enter_local_batch_time;
   };
   const vector<Data>& global_log() const { return global_log_; }
 
   static void WriteToDisk(const std::string& dir, const vector<Data>& global_log) {
-    CSVWriter global_log_csv(dir + "/global_log.csv", {"replica", "batch_id", "txn_id", "timestamp", "exit_forwarder",
-                                                       "enter_sequencer", "enter_local_batch"});
+    CSVWriter global_log_csv(dir + "/global_log.csv",
+                             {"replica", "batch_id", "txn_id", "timestamp", "depart_from_coordinator", "arrive_at_home",
+                              "enter_local_batch"});
     for (const auto& e : global_log) {
-      global_log_csv << e.replica << e.batch_id << e.txn_id << e.txn_timestamp << e.exit_forwarder_time
-                     << e.enter_sequencer_time << e.enter_local_batch_time << csvendl;
+      global_log_csv << e.replica << e.batch_id << e.txn_id << e.txn_timestamp << e.mh_depart_from_coordinator_time
+                     << e.mh_arrive_at_home_time << e.mh_enter_local_batch_time << csvendl;
     }
   }
 
@@ -334,14 +336,14 @@ void MetricsRepository::RecordDeadlockResolverDeadlock(int num_vertices,
 }
 
 void MetricsRepository::RecordInterleaverLogEntry(uint32_t replica, BatchId batch_id, TxnId txn_id,
-                                                  int64_t txn_timestamp, int64_t exit_forwarder_time,
-                                                  int64_t enter_sequencer_time, int64_t enter_local_batch_time) {
+                                                  int64_t txn_timestamp, int64_t mh_depart_from_coordinator_time,
+                                                  int64_t mh_arrive_at_home_time, int64_t mh_enter_local_batch_time) {
   if (!config_->metric_options().interleaver_logs()) {
     return;
   }
   std::lock_guard<SpinLatch> guard(latch_);
-  return metrics_->interleaver_logs.Record(replica, batch_id, txn_id, txn_timestamp, exit_forwarder_time,
-                                           enter_sequencer_time, enter_local_batch_time);
+  return metrics_->interleaver_logs.Record(replica, batch_id, txn_id, txn_timestamp, mh_depart_from_coordinator_time,
+                                           mh_arrive_at_home_time, mh_enter_local_batch_time);
 }
 
 void MetricsRepository::RecordForwSequLatency(uint32_t replica, int64_t send_time, int64_t recv_time,

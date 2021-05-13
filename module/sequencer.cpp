@@ -67,17 +67,28 @@ void Sequencer::ProcessForwardRequest(EnvelopePtr&& env) {
 
   RECORD(txn->mutable_internal(), TransactionEvent::ENTER_SEQUENCER);
 
+  txn->mutable_internal()->set_mh_arrive_at_home_time(now);
+
   if (txn->internal().timestamp() <= now) {
+    // Put to batch immediately
+    txn->mutable_internal()->set_mh_enter_local_batch_time(now);
     BatchTxn(txn);
   } else {
     auto timestamp = std::make_pair(txn->internal().timestamp(), txn->internal().coordinating_server());
     txn_buffer_.emplace(timestamp, txn);
     auto delay = std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::nanoseconds(txn->internal().timestamp() - now));
+
+    // Wait until local time reaches timestamp to put into batch
     NewTimedCallback(delay + std::chrono::microseconds(1), [this]() {
       auto now = slog_clock::now().time_since_epoch().count();
+
       while (!txn_buffer_.empty() && txn_buffer_.top().first.first <= now) {
-        BatchTxn(txn_buffer_.top().second);
+        auto txn = txn_buffer_.top().second;
+
+        txn->mutable_internal()->set_mh_enter_local_batch_time(now);
+        BatchTxn(txn);
+
         txn_buffer_.pop();
       }
     });

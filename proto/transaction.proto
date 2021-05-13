@@ -81,6 +81,11 @@ message TransactionInternal {
     repeated TransactionEvent events = 9;
     repeated int64 event_times = 10;    // when the events took place
     repeated uint32 event_machines = 11; // where the events took place
+
+    // These fields are in slog time
+    int64 mh_depart_from_coordinator_time = 12;
+    int64 mh_arrive_at_home_time = 13;
+    int64 mh_enter_local_batch_time = 14;
 }
 
 message RemasterProcedure {

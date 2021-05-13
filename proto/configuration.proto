@@ -159,4 +159,6 @@ message Configuration {
     // estimation may be off. The txn may arrive at a region A when time at A has already passed the txn's
     // timestamp. This value is thus used to extend the time a txn might be buffered at a region.
     int64 timestamp_buffer_us = 31;
+    // Rolling window size used to average the latency measurement
+    uint32 avg_latency_window_size = 32;
 }
