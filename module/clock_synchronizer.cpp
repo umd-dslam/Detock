@@ -11,7 +11,12 @@ ClockSynchronizer::ClockSynchronizer(const std::shared_ptr<zmq::context_t>& cont
     : NetworkedModule("ClockSynchronizer", context, config, config->clock_synchronizer_port(),
                       kClockSynchronizerChannel, metrics_manager, poll_timeout_ms) {
   CHECK_NE(config->clock_synchronizer_port(), 0) << "Cannot initialize clock synchronizer with port 0";
-  size_t avg_window = std::max(2, 1000 / static_cast<int>(config->clock_sync_interval().count()));
+  size_t avg_window;
+  if (config->clock_sync_interval().count() == 0) {
+    avg_window = 1;
+  } else {
+    avg_window = std::max(2, 1000 / static_cast<int>(config->clock_sync_interval().count()));
+  }
   for (uint32_t i = 0; i < config->num_replicas(); i++) {
     latencies_ns_.emplace_back(avg_window);
   }
