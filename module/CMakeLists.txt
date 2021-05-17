@@ -32,6 +32,8 @@ target_sources(slog-core
     scheduler_components/worker.h
     sequencer.cpp
     sequencer.h
+    sequencer_components/batcher.cpp
+    sequencer_components/batcher.h
     server.cpp
     server.h
     txn_generator.cpp

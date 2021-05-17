@@ -12,18 +12,19 @@ const auto kModuleTimeout = std::chrono::milliseconds(1000);
 const Channel kServerChannel = 1;
 const Channel kForwarderChannel = 2;
 const Channel kSequencerChannel = 3;
-const Channel kMultiHomeOrdererChannel = 4;
-const Channel kClockSynchronizerChannel = 5;
-const Channel kInterleaverChannel = 6;
-const Channel kLocalLogChannel = 7;
-const Channel kSchedulerChannel = 8;
-const Channel kLocalPaxos = 9;
-const Channel kGlobalPaxos = 10;
-const Channel kWorkerChannel = 11;
-const Channel kDeadlockResolverChannel = 12;
+const Channel kBatcherChannel = 4;
+const Channel kMultiHomeOrdererChannel = 5;
+const Channel kClockSynchronizerChannel = 6;
+const Channel kInterleaverChannel = 7;
+const Channel kLocalLogChannel = 8;
+const Channel kSchedulerChannel = 9;
+const Channel kLocalPaxos = 10;
+const Channel kGlobalPaxos = 11;
+const Channel kWorkerChannel = 12;
+const Channel kDeadlockResolverChannel = 13;
 // Broker channels range from kBrokerChannel to kMaxChannel - 1
-const Channel kBrokerChannel = 13;
-const Channel kMaxChannel = 16;
+const Channel kBrokerChannel = 14;
+const Channel kMaxChannel = 17;
 
 const uint32_t kMaxNumMachines = 100;
 
@@ -53,10 +54,6 @@ const char FORW_LATENCIES_NS[] = "forw_latencies_us";
 /* Multi-home orderer */
 const char MHO_BATCH_SIZE_PCTLS[] = "mho_batch_size_pctls";
 const char MHO_BATCH_DURATION_MS_PCTLS[] = "mho_batch_duration_ms_pctls";
-
-/* Sequencer */
-const char SEQ_BATCH_SIZE_PCTLS[] = "seq_batch_size_pctls";
-const char SEQ_BATCH_DURATION_MS_PCTLS[] = "seq_batch_duration_ms_pctls";
 
 /* Scheduler */
 const char ALL_TXNS[] = "all_txns";

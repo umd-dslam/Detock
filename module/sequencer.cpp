@@ -15,33 +15,16 @@ namespace slog {
 
 using internal::Batch;
 using internal::Request;
-using internal::Response;
-
 using std::chrono::milliseconds;
 
 Sequencer::Sequencer(const std::shared_ptr<zmq::context_t>& context, const ConfigurationPtr& config,
                      const MetricsRepositoryManagerPtr& metrics_manager, milliseconds poll_timeout)
     : NetworkedModule("Sequencer", context, config, config->sequencer_port(), kSequencerChannel, metrics_manager,
                       poll_timeout),
-      batch_id_counter_(0),
-      rg_(std::random_device()()),
-      collecting_stats_(false) {
-  partitioned_batch_.resize(config->num_partitions());
-  NewBatch();
-}
+      batcher_(std::make_shared<Batcher>(context, config, metrics_manager, poll_timeout)),
+      batcher_runner_(std::static_pointer_cast<Module>(batcher_)) {}
 
-void Sequencer::NewBatch() {
-  ++batch_id_counter_;
-  batch_size_ = 0;
-  for (auto& batch : partitioned_batch_) {
-    if (batch == nullptr) {
-      batch.reset(new Batch());
-    }
-    batch->Clear();
-    batch->set_transaction_type(TransactionType::SINGLE_HOME);
-    batch->set_id(batch_id());
-  }
-}
+void Sequencer::Initialize() { batcher_runner_.StartInNewThread(); }
 
 void Sequencer::OnInternalRequestReceived(EnvelopePtr&& env) {
   auto request = env->mutable_request();
@@ -52,9 +35,6 @@ void Sequencer::OnInternalRequestReceived(EnvelopePtr&& env) {
     case Request::kPing:
       ProcessPingRequest(move(env));
       break;
-    case Request::kStats:
-      ProcessStatsRequest(request->stats());
-      break;
     default:
       LOG(ERROR) << "Unexpected request type received: \"" << CASE_NAME(request->type_case(), Request) << "\"";
       break;
@@ -63,169 +43,33 @@ void Sequencer::OnInternalRequestReceived(EnvelopePtr&& env) {
 
 void Sequencer::ProcessForwardRequest(EnvelopePtr&& env) {
   auto now = slog_clock::now().time_since_epoch().count();
-  auto txn = env->mutable_request()->mutable_forward_txn()->release_txn();
+  auto txn = env->mutable_request()->mutable_forward_txn()->mutable_txn();
+  auto txn_internal = txn->mutable_internal();
 
-  RECORD(txn->mutable_internal(), TransactionEvent::ENTER_SEQUENCER);
+  RECORD(txn_internal, TransactionEvent::ENTER_SEQUENCER);
 
-  txn->mutable_internal()->set_mh_arrive_at_home_time(now);
+  txn_internal->set_mh_arrive_at_home_time(now);
 
-  if (txn->internal().timestamp() <= now) {
+  if (txn_internal->timestamp() <= now) {
+    VLOG(3) << "Txn " << txn_internal->id() << " has expired or up-to-date timestamp";
+
     // Put to batch immediately
-    txn->mutable_internal()->set_mh_enter_local_batch_time(now);
-    BatchTxn(txn);
+    txn_internal->set_mh_enter_local_batch_time(now);
+    Send(move(env), kBatcherChannel);
   } else {
-    auto timestamp = std::make_pair(txn->internal().timestamp(), txn->internal().coordinating_server());
-    txn_buffer_.emplace(timestamp, txn);
-    auto delay = std::chrono::duration_cast<std::chrono::microseconds>(
-        std::chrono::nanoseconds(txn->internal().timestamp() - now));
+    VLOG(3) << "Txn " << txn_internal->id() << " has a timestamp " << (txn_internal->timestamp() - now) / 1000
+            << " us into the future";
 
-    // Wait until local time reaches timestamp to put into batch
-    NewTimedCallback(delay + std::chrono::microseconds(1), [this]() {
-      auto now = slog_clock::now().time_since_epoch().count();
-
-      while (!txn_buffer_.empty() && txn_buffer_.top().first.first <= now) {
-        auto txn = txn_buffer_.top().second;
-
-        txn->mutable_internal()->set_mh_enter_local_batch_time(now);
-        BatchTxn(txn);
-
-        txn_buffer_.pop();
-      }
-    });
-  }
-}
-
-void Sequencer::BatchTxn(Transaction* txn) {
-  RECORD(txn->mutable_internal(), TransactionEvent::ENTER_LOCAL_BATCH);
-
-  if (txn->internal().type() == TransactionType::MULTI_HOME_OR_LOCK_ONLY) {
-    txn = GenerateLockOnlyTxn(txn, config()->local_replica(), true /* in_place */);
-  }
-
-  auto num_involved_partitions = txn->internal().involved_partitions_size();
-  for (int i = 0; i < num_involved_partitions; ++i) {
-    bool in_place = i == (num_involved_partitions - 1);
-    auto p = txn->internal().involved_partitions(i);
-    auto new_txn = GeneratePartitionedTxn(config(), txn, p, in_place);
-    if (new_txn != nullptr) {
-      partitioned_batch_[p]->mutable_transactions()->AddAllocated(new_txn);
+    // Put to a sorted buffer and wait until local clock reaches txn timestamp.
+    // Send a signal to the batcher if the earliest time in the buffer has changed, so that
+    // batcher is reschedule to wake up at this ealier time
+    bool signal_needed = batcher_->BufferFutureTxn(env->mutable_request()->mutable_forward_txn()->release_txn());
+    if (signal_needed) {
+      auto env = NewEnvelope();
+      env->mutable_request()->mutable_signal();
+      Send(move(env), kBatcherChannel);
     }
   }
-
-  ++batch_size_;
-
-  // If this is the first txn in the batch, schedule to send the batch at a later time
-  if (batch_size_ == 1) {
-    NewTimedCallback(config()->sequencer_batch_duration(), [this]() {
-      SendBatch();
-      NewBatch();
-    });
-
-    batch_starting_time_ = std::chrono::steady_clock::now();
-  }
-
-  // Batch size is larger than the maximum size, send the batch immediately
-  auto max_batch_size = config()->sequencer_max_batch_size();
-  if (max_batch_size > 0 && batch_size_ >= max_batch_size) {
-    SendBatch();
-    NewBatch();
-  }
-}
-
-void Sequencer::SendBatch() {
-  VLOG(3) << "Finished batch " << batch_id() << " of size " << batch_size_
-          << ". Sending out for ordering and replicating";
-
-  if (collecting_stats_) {
-    stat_batch_sizes_.push_back(batch_size_);
-    stat_batch_durations_ms_.push_back((std::chrono::steady_clock::now() - batch_starting_time_).count() / 1000000.0);
-  }
-
-  auto local_replica = config()->local_replica();
-  auto local_partition = config()->local_partition();
-  auto paxos_env = NewEnvelope();
-  auto paxos_propose = paxos_env->mutable_request()->mutable_paxos_propose();
-  paxos_propose->set_value(local_partition);
-  Send(move(paxos_env), kLocalPaxos);
-
-  auto num_partitions = config()->num_partitions();
-
-  if (!SendBatchDelayed()) {
-    auto num_replicas = config()->num_replicas();
-    for (uint32_t part = 0; part < num_partitions; part++) {
-      auto env = NewBatchRequest(partitioned_batch_[part].release());
-
-      RECORD(env->mutable_request()->mutable_forward_batch()->mutable_batch_data(),
-             TransactionEvent::EXIT_SEQUENCER_IN_BATCH);
-
-      bool send_local = false;
-      vector<MachineId> destinations;
-      destinations.reserve(num_replicas);
-      for (uint32_t rep = 0; rep < num_replicas; rep++) {
-        if (part == local_partition && rep == local_replica) {
-          send_local = true;
-        } else {
-          destinations.push_back(config()->MakeMachineId(rep, part));
-        }
-      }
-      Send(*env, destinations, kInterleaverChannel);
-      if (send_local) {
-        Send(move(env), kLocalLogChannel);
-      }
-    }
-  }
-}
-
-bool Sequencer::SendBatchDelayed() {
-  if (!config()->replication_delay_pct()) {
-    return false;
-  }
-
-  std::bernoulli_distribution is_delayed(config()->replication_delay_pct() / 100.0);
-  if (!is_delayed(rg_)) {
-    return false;
-  }
-
-  auto delay_ms = config()->replication_delay_amount_ms();
-
-  VLOG(3) << "Delay batch " << batch_id() << " for " << delay_ms << " ms";
-
-  for (uint32_t part = 0; part < config()->num_partitions(); part++) {
-    auto env = NewBatchRequest(partitioned_batch_[part].release());
-
-    // Send to the partition in the local replica immediately
-    if (part == config()->local_partition()) {
-      auto copied_env = std::make_unique<internal::Envelope>(*env);
-      Send(move(copied_env), kLocalLogChannel);
-    } else {
-      Send(*env, config()->MakeMachineId(config()->local_replica(), part), kInterleaverChannel);
-    }
-
-    NewTimedCallback(milliseconds(delay_ms), [this, part, delayed_env = env.release()]() {
-      VLOG(3) << "Sending delayed batch " << delayed_env->request().forward_batch().batch_data().id();
-      // Replicate batch to all replicas EXCEPT local replica
-      vector<MachineId> destinations;
-      destinations.reserve(config()->num_replicas());
-      for (uint32_t rep = 0; rep < config()->num_replicas(); rep++) {
-        if (rep != config()->local_replica()) {
-          destinations.push_back(config()->MakeMachineId(rep, part));
-        }
-      }
-      Send(*delayed_env, destinations, kInterleaverChannel);
-      delete delayed_env;
-    });
-  }
-
-  return true;
-}
-
-EnvelopePtr Sequencer::NewBatchRequest(internal::Batch* batch) {
-  auto env = NewEnvelope();
-  auto forward_batch = env->mutable_request()->mutable_forward_batch();
-  // Minus 1 so that batch id counter starts from 0
-  forward_batch->set_same_origin_position(batch_id_counter_ - 1);
-  forward_batch->set_allocated_batch_data(batch);
-  return env;
 }
 
 void Sequencer::ProcessPingRequest(EnvelopePtr&& env) {
@@ -234,44 +78,6 @@ void Sequencer::ProcessPingRequest(EnvelopePtr&& env) {
   pong->set_src_send_time(env->request().ping().src_send_time());
   pong->set_dst(env->request().ping().dst());
   Send(move(pong_env), env->from(), kForwarderChannel);
-}
-
-/**
- * {
- *    seq_batch_size_pctls:        [int],
- *    seq_batch_duration_ms_pctls: [float]
- * }
- */
-void Sequencer::ProcessStatsRequest(const internal::StatsRequest& stats_request) {
-  using rapidjson::StringRef;
-
-  int level = stats_request.level();
-
-  rapidjson::Document stats;
-  stats.SetObject();
-  auto& alloc = stats.GetAllocator();
-
-  if (level == 0) {
-    collecting_stats_ = false;
-  } else if (level > 0) {
-    collecting_stats_ = true;
-  }
-
-  stats.AddMember(StringRef(SEQ_BATCH_SIZE_PCTLS), Percentiles(stat_batch_sizes_, alloc), alloc);
-  stat_batch_sizes_.clear();
-
-  stats.AddMember(StringRef(SEQ_BATCH_DURATION_MS_PCTLS), Percentiles(stat_batch_durations_ms_, alloc), alloc);
-  stat_batch_durations_ms_.clear();
-
-  // Write JSON object to a buffer and send back to the server
-  rapidjson::StringBuffer buf;
-  rapidjson::Writer<rapidjson::StringBuffer> writer(buf);
-  stats.Accept(writer);
-
-  auto env = NewEnvelope();
-  env->mutable_response()->mutable_stats()->set_id(stats_request.id());
-  env->mutable_response()->mutable_stats()->set_stats_json(buf.GetString());
-  Send(move(env), kServerChannel);
 }
 
 }  // namespace slog

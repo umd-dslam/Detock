@@ -315,7 +315,7 @@ class DeadlockResolver : public NetworkedModule {
       }
 
       // Send signal that there are new ready txns
-      auto env = make_unique<internal::Envelope>();
+      auto env = NewEnvelope();
       env->mutable_request()->mutable_signal();
       Send(move(env), signal_chan_);
     }

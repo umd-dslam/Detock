@@ -176,9 +176,11 @@ void NetworkedModule::Send(EnvelopePtr&& env, const std::vector<MachineId>& to_m
   sender_.Send(move(env), to_machine_ids, to_channel);
 }
 
-void NetworkedModule::NewTimedCallback(std::chrono::microseconds timeout, std::function<void()>&& cb) {
-  poller_.AddTimedCallback(timeout, std::move(cb));
+int NetworkedModule::NewTimedCallback(std::chrono::microseconds timeout, std::function<void()>&& cb) {
+  return poller_.AddTimedCallback(timeout, std::move(cb));
 }
+
+void NetworkedModule::RemoveTimedCallback(int id) { poller_.RemoveTimedCallback(id); }
 
 void NetworkedModule::ClearTimedCallbacks() { poller_.ClearTimedCallbacks(); }
 

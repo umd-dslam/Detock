@@ -9,6 +9,7 @@
 #include "common/types.h"
 #include "connection/broker.h"
 #include "module/base/networked_module.h"
+#include "module/sequencer_components/batcher.h"
 
 namespace slog {
 
@@ -31,33 +32,15 @@ class Sequencer : public NetworkedModule {
             std::chrono::milliseconds poll_timeout = kModuleTimeout);
 
  protected:
+  void Initialize() final;
   void OnInternalRequestReceived(EnvelopePtr&& env) final;
 
  private:
-  using Timestamp = std::pair<int64_t, uint32_t>;
-  using TimestampedTxn = std::pair<Timestamp, Transaction*>;
-
   void ProcessForwardRequest(EnvelopePtr&& env);
   void ProcessPingRequest(EnvelopePtr&& env);
-  void ProcessStatsRequest(const internal::StatsRequest& stats_request);
 
-  void NewBatch();
-  void BatchTxn(Transaction* txn);
-  BatchId batch_id() const { return batch_id_counter_ * kMaxNumMachines + config()->local_machine_id(); }
-  void SendBatch();
-  EnvelopePtr NewBatchRequest(internal::Batch* batch);
-  bool SendBatchDelayed();
-
-  std::priority_queue<TimestampedTxn, std::vector<TimestampedTxn>, std::greater<TimestampedTxn>> txn_buffer_;
-  std::vector<std::unique_ptr<internal::Batch>> partitioned_batch_;
-  BatchId batch_id_counter_;
-  int batch_size_;
-  std::mt19937 rg_;
-
-  bool collecting_stats_;
-  std::chrono::steady_clock::time_point batch_starting_time_;
-  std::vector<int> stat_batch_sizes_;
-  std::vector<float> stat_batch_durations_ms_;
+  std::shared_ptr<Batcher> batcher_;
+  ModuleRunner batcher_runner_;
 };
 
 }  // namespace slog

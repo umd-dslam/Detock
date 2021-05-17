@@ -2,8 +2,8 @@
 
 #include <functional>
 #include <list>
+#include <map>
 #include <optional>
-#include <queue>
 #include <vector>
 #include <zmq.hpp>
 
@@ -21,7 +21,8 @@ class Poller {
 
   bool is_socket_ready(size_t i) const;
 
-  void AddTimedCallback(std::chrono::microseconds timeout, std::function<void()>&& cb);
+  int AddTimedCallback(std::chrono::microseconds timeout, std::function<void()>&& cb);
+  void RemoveTimedCallback(int id);
 
   void ClearTimedCallbacks();
 
@@ -29,13 +30,14 @@ class Poller {
     std::chrono::steady_clock::time_point when;
     std::function<void()> callback;
 
-    bool operator>(const TimedCallback& other) const { return when > other.when; }
+    bool operator<(const TimedCallback& other) const { return when < other.when; }
   };
 
  private:
   std::optional<std::chrono::microseconds> poll_timeout_;
   std::vector<zmq::pollitem_t> poll_items_;
-  std::priority_queue<TimedCallback, std::vector<TimedCallback>, std::greater<TimedCallback>> timed_callbacks_;
+  std::map<int, TimedCallback> timed_callbacks_;
+  int timed_callback_counter_;
 };
 
 }  // namespace slog

@@ -79,7 +79,7 @@ message Ping {
 /**
  * Generic signal message
  */
- message Signal {
+message Signal {
 }
 
 message BrokerRedirect {

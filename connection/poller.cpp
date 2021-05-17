@@ -7,7 +7,7 @@ using std::vector;
 
 namespace slog {
 
-Poller::Poller(optional<microseconds> timeout) : poll_timeout_(timeout) {}
+Poller::Poller(optional<microseconds> timeout) : poll_timeout_(timeout), timed_callback_counter_(0) {}
 
 void Poller::PushSocket(zmq::socket_t& socket) {
   poll_items_.push_back({
@@ -21,9 +21,9 @@ bool Poller::NextEvent(bool dont_wait) {
   if (!dont_wait) {
     // Compute the time that we need to wait until the next event
     auto shortest_timeout = poll_timeout_;
-    auto now = std::chrono::steady_clock::now();
+    auto now = steady_clock::now();
     if (!timed_callbacks_.empty()) {
-      const auto& next_ev_time = timed_callbacks_.top().when;
+      const auto& next_ev_time = timed_callbacks_.begin()->second.when;
       if (next_ev_time <= now) {
         shortest_timeout = 0us;
       } else if (!shortest_timeout.has_value() || next_ev_time - now < shortest_timeout.value()) {
@@ -47,12 +47,15 @@ bool Poller::NextEvent(bool dont_wait) {
 
   // Process and clean up triggered callbacks
   if (!timed_callbacks_.empty()) {
-    auto now = std::chrono::steady_clock::now();
-    while (!timed_callbacks_.empty() && timed_callbacks_.top().when <= now) {
-      auto cb{std::move(timed_callbacks_.top().callback)};
-      timed_callbacks_.pop();
-      cb();
+    auto now = steady_clock::now();
+    auto it = timed_callbacks_.begin();
+    for (; it != timed_callbacks_.end(); it++) {
+      if (it->second.when > now) {
+        break;
+      }
+      it->second.callback();
     }
+    timed_callbacks_.erase(timed_callbacks_.begin(), it);
   }
 
   return may_has_msg;
@@ -60,9 +63,13 @@ bool Poller::NextEvent(bool dont_wait) {
 
 bool Poller::is_socket_ready(size_t i) const { return poll_items_[i].revents & ZMQ_POLLIN; }
 
-void Poller::AddTimedCallback(microseconds timeout, std::function<void()>&& cb) {
-  timed_callbacks_.push({.when = std::chrono::steady_clock::now() + timeout, .callback = move(cb)});
+int Poller::AddTimedCallback(microseconds timeout, std::function<void()>&& cb) {
+  timed_callbacks_.emplace(timed_callback_counter_,
+                           TimedCallback{.when = steady_clock::now() + timeout, .callback = move(cb)});
+  return timed_callback_counter_++;
 }
+
+void Poller::RemoveTimedCallback(int id) { timed_callbacks_.erase(id); }
 
 void Poller::ClearTimedCallbacks() { timed_callbacks_ = {}; }
 

@@ -250,8 +250,6 @@ milliseconds Configuration::clock_sync_interval() const { return milliseconds(co
 
 int64_t Configuration::timestamp_buffer_us() const { return config_.timestamp_buffer_us(); }
 
-uint32_t Configuration::avg_latency_window_size() const { 
-  return std::max(config_.avg_latency_window_size(), 1U) ;
-}
+uint32_t Configuration::avg_latency_window_size() const { return std::max(config_.avg_latency_window_size(), 1U); }
 
 }  // namespace slog
