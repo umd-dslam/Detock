@@ -35,6 +35,9 @@ void Sequencer::OnInternalRequestReceived(EnvelopePtr&& env) {
     case Request::kPing:
       ProcessPingRequest(move(env));
       break;
+    case Request::kStats:
+      Send(move(env), kBatcherChannel);
+      break;
     default:
       LOG(ERROR) << "Unexpected request type received: \"" << CASE_NAME(request->type_case(), Request) << "\"";
       break;

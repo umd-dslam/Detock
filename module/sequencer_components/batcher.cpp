@@ -1,6 +1,7 @@
 #include "module/sequencer_components/batcher.h"
 
 #include "common/clock.h"
+#include "common/json_utils.h"
 #include "common/proto_utils.h"
 
 using namespace std::chrono;
@@ -42,6 +43,9 @@ void Batcher::OnInternalRequestReceived(EnvelopePtr&& env) {
       ProcessReadyFutureTxns();
       break;
     }
+    case Request::kStats:
+      ProcessStatsRequest(request->stats());
+      break;
     default:
       LOG(ERROR) << "Unexpected request type received: \"" << CASE_NAME(request->type_case(), Request) << "\"";
       break;
@@ -223,6 +227,48 @@ EnvelopePtr Batcher::NewBatchRequest(internal::Batch* batch) {
   forward_batch->set_same_origin_position(batch_id_counter_ - 1);
   forward_batch->set_allocated_batch_data(batch);
   return env;
+}
+
+
+/**
+ * {
+ *    seq_batch_size_pctls:        [int],
+ *    seq_batch_duration_ms_pctls: [float]
+ * }
+ */
+void Batcher::ProcessStatsRequest(const internal::StatsRequest& stats_request) {
+  using rapidjson::StringRef;
+
+  int level = stats_request.level();
+
+  rapidjson::Document stats;
+  stats.SetObject();
+  auto& alloc = stats.GetAllocator();
+
+  stats.AddMember(StringRef(SEQ_PROCESS_FUTURE_TXN_CALLBACK_ID), process_future_txn_callback_id_.value_or(-1), alloc);
+  stats.AddMember(StringRef(SEQ_BATCH_SIZE), batch_size_, alloc);
+  stats.AddMember(StringRef(SEQ_SEND_BATCH_CALLBACK_ID), send_batch_callback_id_.value_or(-1), alloc);
+  {
+    std::lock_guard<SpinLatch> guard(future_txns_mut_);
+    stats.AddMember(StringRef(SEQ_NUM_FUTURE_TXNS), future_txns_.size(), alloc);
+    if (level > 0) {
+      stats.AddMember(StringRef(SEQ_FUTURE_TXNS), ToJsonArray(future_txns_, [&alloc](const std::pair<Timestamp, Transaction*>& item) {
+        rapidjson::Value entry(rapidjson::kArrayType);
+        entry.PushBack(item.first.first, alloc).PushBack(item.second->internal().id(), alloc);
+        return entry;
+      }, alloc), alloc);
+    }
+  }
+
+  // Write JSON object to a buffer and send back to the server
+  rapidjson::StringBuffer buf;
+  rapidjson::Writer<rapidjson::StringBuffer> writer(buf);
+  stats.Accept(writer);
+
+  auto env = NewEnvelope();
+  env->mutable_response()->mutable_stats()->set_id(stats_request.id());
+  env->mutable_response()->mutable_stats()->set_stats_json(buf.GetString());
+  Send(move(env), kServerChannel);
 }
 
 }  // namespace slog

@@ -30,6 +30,8 @@ class Batcher : public NetworkedModule {
   bool SendBatchDelayed();
   EnvelopePtr NewBatchRequest(internal::Batch* batch);
 
+  void ProcessStatsRequest(const internal::StatsRequest& stats_request);
+
   SpinLatch future_txns_mut_;
   std::map<Timestamp, Transaction*> future_txns_;
   std::optional<int> process_future_txn_callback_id_;

@@ -192,6 +192,19 @@ void PrintMHOrdererStats(const rapidjson::Document& stats, uint32_t) {
   }
 }
 
+void PrintSequencerStats(const rapidjson::Document& stats, uint32_t level) {
+  cout << "Batch size: " << stats[SEQ_BATCH_SIZE].GetInt() << "\n";
+  cout << "Send batch callback id: " << stats[SEQ_SEND_BATCH_CALLBACK_ID].GetInt() << "\n";
+  cout << "Num future txns: " << stats[SEQ_NUM_FUTURE_TXNS].GetInt() << "\n";
+  cout << "Process future txn callback id: " << stats[SEQ_PROCESS_FUTURE_TXN_CALLBACK_ID].GetInt() << "\n";
+  if (level > 0) {
+    cout << "Future txns:\n";
+    TRUNCATED_FOR_EACH(entry, stats[SEQ_FUTURE_TXNS].GetArray()) {
+      cout << "\t" << entry.GetArray()[0].GetInt() << " " << entry.GetArray()[1].GetUint() << "\n";
+    }
+  }
+}
+
 string LockModeStr(LockMode mode) {
   switch (mode) {
     case LockMode::UNLOCKED:
@@ -289,6 +302,7 @@ void PrintSchedulerStats(const rapidjson::Document& stats, uint32_t level) {
 
 const unordered_map<string, StatsModule> STATS_MODULES = {{"server", {ModuleId::SERVER, PrintServerStats}},
                                                           {"forwarder", {ModuleId::FORWARDER, PrintForwarderStats}},
+                                                          {"sequencer", {ModuleId::SEQUENCER, PrintSequencerStats}},
                                                           {"mhorderer", {ModuleId::MHORDERER, PrintMHOrdererStats}},
                                                           {"scheduler", {ModuleId::SCHEDULER, PrintSchedulerStats}}};
 
