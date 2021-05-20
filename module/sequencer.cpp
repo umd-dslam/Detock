@@ -60,9 +60,9 @@ void Sequencer::ProcessForwardRequest(EnvelopePtr&& env) {
     VLOG(3) << "Txn " << txn_internal->id() << " has a timestamp " << (txn_internal->timestamp() - now) / 1000
             << " us into the future";
 
-    // Put to a sorted buffer and wait until local clock reaches txn timestamp.
+    // Put into a sorted buffer and wait until local clock reaches the txn's timestamp.
     // Send a signal to the batcher if the earliest time in the buffer has changed, so that
-    // batcher is reschedule to wake up at this ealier time
+    // the batcher is rescheduled to wake up at this ealier time
     bool signal_needed = batcher_->BufferFutureTxn(env->mutable_request()->mutable_forward_txn()->release_txn());
     if (signal_needed) {
       auto env = NewEnvelope();

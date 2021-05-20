@@ -3,6 +3,7 @@
 #include <map>
 #include <mutex>
 
+#include "common/spin_latch.h"
 #include "module/base/networked_module.h"
 
 namespace slog {
@@ -29,7 +30,7 @@ class Batcher : public NetworkedModule {
   bool SendBatchDelayed();
   EnvelopePtr NewBatchRequest(internal::Batch* batch);
 
-  std::mutex future_txns_mut_;
+  SpinLatch future_txns_mut_;
   std::map<Timestamp, Transaction*> future_txns_;
   std::optional<int> process_future_txn_callback_id_;
 

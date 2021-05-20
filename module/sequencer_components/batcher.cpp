@@ -23,7 +23,7 @@ Batcher::Batcher(const std::shared_ptr<zmq::context_t>& context, const Configura
 bool Batcher::BufferFutureTxn(Transaction* txn) {
   auto timestamp = std::make_pair(txn->internal().timestamp(), txn->internal().coordinating_server());
 
-  std::lock_guard<std::mutex> guard(future_txns_mut_);
+  std::lock_guard<SpinLatch> guard(future_txns_mut_);
   bool earliest_txn_changed = future_txns_.empty() || txn->internal().timestamp() < future_txns_.begin()->first.first;
   future_txns_.emplace(timestamp, txn);
   return earliest_txn_changed;
@@ -54,7 +54,7 @@ void Batcher::ProcessReadyFutureTxns() {
   std::optional<int64_t> earliest_timestamp;
   std::vector<Transaction*> ready_txns;
   {
-    std::lock_guard<std::mutex> guard(future_txns_mut_);
+    std::lock_guard<SpinLatch> guard(future_txns_mut_);
     auto it = future_txns_.begin();
     for (; it != future_txns_.end(); it++) {
       if (it->first.first > now) {
