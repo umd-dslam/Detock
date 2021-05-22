@@ -15,8 +15,8 @@ std::string Trim(std::string str);
 
 std::vector<std::string> Split(const std::string& str, const std::string& delims);
 
-template <typename T, typename R>
-std::string Join(const std::vector<std::pair<T, R>> parts, char delim = ';') {
+template <template <typename, typename...> class Container, typename T, typename R>
+std::string Join(const Container<std::pair<T, R>>& parts, char delim = ';') {
   std::ostringstream ss;
   bool first = true;
   for (const auto& p : parts) {
@@ -30,8 +30,8 @@ std::string Join(const std::vector<std::pair<T, R>> parts, char delim = ';') {
   return ss.str();
 }
 
-template <typename T>
-std::string Join(const std::vector<T> parts, char delim = ';') {
+template <typename Container>
+std::string Join(const Container& parts, char delim = ';') {
   std::ostringstream ss;
   bool first = true;
   for (const auto& p : parts) {
