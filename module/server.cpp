@@ -143,6 +143,9 @@ bool Server::OnCustomSocket() {
         case ModuleId::SEQUENCER:
           Send(move(env), kSequencerChannel);
           break;
+        case ModuleId::INTERLEAVER:
+          Send(move(env), kInterleaverChannel);
+          break;
         case ModuleId::SCHEDULER:
           Send(move(env), kSchedulerChannel);
           break;

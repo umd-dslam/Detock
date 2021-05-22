@@ -127,45 +127,29 @@ void PrintServerStats(const rapidjson::Document& stats, uint32_t level) {
   if (level >= 1) {
     cout << "List of pending responses (txn_id, stream_id):\n";
     TRUNCATED_FOR_EACH(entry, stats[PENDING_RESPONSES].GetArray()) {
-      cout << "(" << entry.GetArray()[0].GetUint() << ", " << entry.GetArray()[1].GetUint() << ")\n";
+      cout << "(" << entry.GetArray()[0].GetUint64() << ", " << entry.GetArray()[1].GetUint64() << ")\n";
     }
     cout << "\n";
   }
-  cout << "Partially completed txns: " << stats[NUM_PARTIALLY_COMPLETED_TXNS].GetUint() << "\n";
+  cout << "Partially completed txns: " << stats[NUM_PARTIALLY_COMPLETED_TXNS].GetUint64() << "\n";
   if (level >= 1) {
     cout << "List of partially completed txns: ";
-    TRUNCATED_FOR_EACH(txn_id, stats[PARTIALLY_COMPLETED_TXNS].GetArray()) { cout << txn_id.GetUint() << " "; }
+    TRUNCATED_FOR_EACH(txn_id, stats[PARTIALLY_COMPLETED_TXNS].GetArray()) { cout << txn_id.GetUint64() << " "; }
     cout << "\n";
   }
-  cout << endl;
 }
 
-void PrintForwarderStats(const rapidjson::Document& stats, uint32_t) {
+void PrintForwarderStats(const rapidjson::Document& stats, uint32_t level) {
   const auto& latencies_ns = stats[FORW_LATENCIES_NS].GetArray();
   cout << "Latencies (ns): ";
   for (size_t i = 0; i < latencies_ns.Size(); ++i) {
     cout << latencies_ns[i].GetFloat() << " ";
   }
-
-  const auto& batch_duration_ms_pctls = stats[FORW_BATCH_DURATION_MS_PCTLS].GetArray();
-  const auto& batch_size_pctls = stats[FORW_BATCH_SIZE_PCTLS].GetArray();
-  cout << "Batch duration percentiles (ms)\n";
-  if (batch_duration_ms_pctls.Empty()) {
-    cout << "\tNo data\n";
-  } else {
-    cout << fixed << setprecision(3);
-    for (size_t i = 0; i < kPctlLevels.size(); ++i) {
-      cout << setw(4) << kPctlLevels[i] << ": " << batch_duration_ms_pctls[i].GetFloat() << "\n";
-    }
-  }
-  cout << "\n";
-  cout << "Batch size percentiles\n";
-  if (batch_size_pctls.Empty()) {
-    cout << "\tNo data\n";
-  } else {
-    for (size_t i = 0; i < kPctlLevels.size(); ++i) {
-      cout << setw(4) << kPctlLevels[i] << ": " << batch_size_pctls[i].GetInt() << "\n";
-    }
+  cout << "Batch size: " << stats[FORW_BATCH_SIZE].GetInt() << "\n";
+  cout << "Num pending txns: " << stats[FORW_NUM_PENDING_TXNS].GetInt() << "\n";
+  if (level > 0) {
+    cout << "Pending txns:\n";
+    TRUNCATED_FOR_EACH(txn, stats[FORW_PENDING_TXNS].GetArray()) { cout << "\t" << txn.GetUint64() << "\n"; }
   }
 }
 
@@ -200,8 +184,31 @@ void PrintSequencerStats(const rapidjson::Document& stats, uint32_t level) {
   if (level > 0) {
     cout << "Future txns:\n";
     TRUNCATED_FOR_EACH(entry, stats[SEQ_FUTURE_TXNS].GetArray()) {
-      cout << "\t" << entry.GetArray()[0].GetInt() << " " << entry.GetArray()[1].GetUint() << "\n";
+      cout << "\t" << entry.GetArray()[0].GetInt64() << " " << entry.GetArray()[1].GetUint64() << "\n";
     }
+  }
+}
+
+void PrintInterleaverStats(const rapidjson::Document& stats, uint32_t) {
+  cout << "LOCAL LOG\n";
+  cout << "Buffered slots: " << stats[LOCAL_LOG_NUM_BUFFERED_SLOTS].GetUint() << "\n";
+  cout << "Buffered batches per queue:\n";
+  const auto& batches_per_queue = stats[LOCAL_LOG_NUM_BUFFERED_BATCHES_PER_QUEUE].GetArray();
+  for (size_t i = 0; i < batches_per_queue.Size(); i++) {
+    const auto& pair = batches_per_queue[i].GetArray();
+    cout << "\tQueue " << pair[0].GetUint() << ": " << pair[1].GetUint() << "\n";
+  }
+
+  cout << "\nGLOBAL LOG\n";
+  const auto& slots_per_region = stats[GLOBAL_LOG_NUM_BUFFERED_SLOTS_PER_REGION].GetArray();
+  const auto& batches_per_region = stats[GLOBAL_LOG_NUM_BUFFERED_BATCHES_PER_REGION].GetArray();
+  // The last "region" is the log for multi-home txns
+  cout << setw(12) << "Regions" << setw(20) << "# buffered slots" << setw(22) << "# buffered batches\n";
+  for (size_t i = 0; i < slots_per_region.Size(); i++) {
+    const auto& slots = slots_per_region[i].GetArray();
+    const auto& batches = batches_per_region[i].GetArray();
+    cout << setw(12) << slots[0].GetUint() << setw(20) << slots[1].GetUint() << setw(22) << batches[1].GetUint()
+         << "\n";
   }
 }
 
@@ -228,11 +235,11 @@ void PrintSchedulerStats(const rapidjson::Document& stats, uint32_t level) {
   cout << "\nACTIVE TRANSACTIONS\n";
 
   if (level == 0) {
-    TRUNCATED_FOR_EACH(txn_id, stats[ALL_TXNS].GetArray()) { cout << txn_id.GetUint() << " "; }
+    TRUNCATED_FOR_EACH(txn_id, stats[ALL_TXNS].GetArray()) { cout << txn_id.GetUint64() << " "; }
   } else if (level >= 1) {
     TRUNCATED_FOR_EACH(txn, stats[ALL_TXNS].GetArray()) {
       cout << "\t";
-      cout << TXN_ID << ": " << txn[TXN_ID].GetUint() << ", ";
+      cout << TXN_ID << ": " << txn[TXN_ID].GetUint64() << ", ";
       cout << TXN_DONE << ": " << txn[TXN_DONE].GetBool() << ", ";
       cout << TXN_ABORTING << ": " << txn[TXN_ABORTING].GetBool() << ", ";
       cout << TXN_NUM_LO << ": " << txn[TXN_NUM_LO].GetInt() << ", ";
@@ -254,7 +261,7 @@ void PrintSchedulerStats(const rapidjson::Document& stats, uint32_t level) {
            << "\n";
       TRUNCATED_FOR_EACH(it, stats[NUM_WAITING_FOR_PER_TXN].GetArray()) {
         const auto& entry = it.GetArray();
-        cout << setw(10) << entry[0].GetUint() << setw(18) << entry[1].GetInt() << "\n";
+        cout << setw(10) << entry[0].GetUint64() << setw(18) << entry[1].GetInt() << "\n";
       }
     } else {
       cout << setw(10) << "Txn"
@@ -262,8 +269,8 @@ void PrintSchedulerStats(const rapidjson::Document& stats, uint32_t level) {
            << "\n";
       TRUNCATED_FOR_EACH(it, stats[WAITED_BY_GRAPH].GetArray()) {
         const auto& entry = it.GetArray();
-        cout << setw(10) << entry[0].GetUint() << "\t";
-        TRUNCATED_FOR_EACH(e, entry[1].GetArray()) { cout << e.GetUint() << " "; }
+        cout << setw(10) << entry[0].GetUint64() << "\t";
+        TRUNCATED_FOR_EACH(e, entry[1].GetArray()) { cout << e.GetUint64() << " "; }
         cout << "\n";
       }
     }
@@ -285,7 +292,7 @@ void PrintSchedulerStats(const rapidjson::Document& stats, uint32_t level) {
         cout << "\tWaiters: ";
         TRUNCATED_FOR_EACH(waiter, entry[3].GetArray()) {
           auto txn_and_mode = waiter.GetArray();
-          cout << "(" << txn_and_mode[0].GetUint() << ", "
+          cout << "(" << txn_and_mode[0].GetUint64() << ", "
                << LockModeStr(static_cast<LockMode>(txn_and_mode[1].GetUint())) << ") ";
         }
       } else {
@@ -297,14 +304,15 @@ void PrintSchedulerStats(const rapidjson::Document& stats, uint32_t level) {
       cout << "\n";
     }
   }
-  cout << endl;
 }
 
-const unordered_map<string, StatsModule> STATS_MODULES = {{"server", {ModuleId::SERVER, PrintServerStats}},
-                                                          {"forwarder", {ModuleId::FORWARDER, PrintForwarderStats}},
-                                                          {"sequencer", {ModuleId::SEQUENCER, PrintSequencerStats}},
-                                                          {"mhorderer", {ModuleId::MHORDERER, PrintMHOrdererStats}},
-                                                          {"scheduler", {ModuleId::SCHEDULER, PrintSchedulerStats}}};
+const unordered_map<string, StatsModule> STATS_MODULES = {
+    {"server", {ModuleId::SERVER, PrintServerStats}},
+    {"forwarder", {ModuleId::FORWARDER, PrintForwarderStats}},
+    {"sequencer", {ModuleId::SEQUENCER, PrintSequencerStats}},
+    {"mhorderer", {ModuleId::MHORDERER, PrintMHOrdererStats}},
+    {"interleaver", {ModuleId::INTERLEAVER, PrintInterleaverStats}},
+    {"scheduler", {ModuleId::SCHEDULER, PrintSchedulerStats}}};
 
 void ExecuteStats(const char* module, uint32_t level) {
   auto stats_module_it = STATS_MODULES.find(string(module));

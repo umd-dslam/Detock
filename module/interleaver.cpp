@@ -4,6 +4,7 @@
 
 #include "common/configuration.h"
 #include "common/constants.h"
+#include "common/json_utils.h"
 #include "common/proto_utils.h"
 #include "proto/internal.pb.h"
 
@@ -118,10 +119,12 @@ void Interleaver::OnInternalRequestReceived(EnvelopePtr&& env) {
       single_home_logs_[local_replica].AckReplication(batch_id);
       break;
     }
-    case Request::kForwardBatch: {
+    case Request::kForwardBatch:
       ProcessForwardBatch(std::move(env));
       break;
-    }
+    case Request::kStats:
+      ProcessStatsRequest(request->stats());
+      break;
     default:
       LOG(ERROR) << "Unexpected request type received: \"" << CASE_NAME(request->type_case(), Request) << "\"";
   }
@@ -259,6 +262,41 @@ void Interleaver::EmitBatch(BatchPtr&& batch) {
     forward_txn->set_allocated_txn(txn);
     Send(move(env), kSchedulerChannel);
   }
+}
+
+void Interleaver::ProcessStatsRequest(const internal::StatsRequest& stats_request) {
+  using rapidjson::StringRef;
+
+  rapidjson::Document stats;
+  stats.SetObject();
+  auto& alloc = stats.GetAllocator();
+
+  // Add stats for local logs
+  stats.AddMember(StringRef(LOCAL_LOG_NUM_BUFFERED_SLOTS), local_log_.NumBufferedSlots(), alloc);
+  stats.AddMember(StringRef(LOCAL_LOG_NUM_BUFFERED_BATCHES_PER_QUEUE),
+                  ToJsonArrayOfKeyValue(local_log_.NumBufferedBatchesPerQueue(), alloc), alloc);
+
+  // Add stats for global logs
+  stats.AddMember(StringRef(GLOBAL_LOG_NUM_BUFFERED_SLOTS_PER_REGION),
+                  ToJsonArrayOfKeyValue(
+                      single_home_logs_, [](const BatchLog& batch_log) { return batch_log.NumBufferedSlots(); }, alloc),
+                  alloc);
+
+  stats.AddMember(
+      StringRef(GLOBAL_LOG_NUM_BUFFERED_BATCHES_PER_REGION),
+      ToJsonArrayOfKeyValue(
+          single_home_logs_, [](const BatchLog& batch_log) { return batch_log.NumBufferedBatches(); }, alloc),
+      alloc);
+
+  // Write JSON object to a buffer and send back to the server
+  rapidjson::StringBuffer buf;
+  rapidjson::Writer<rapidjson::StringBuffer> writer(buf);
+  stats.Accept(writer);
+
+  auto env = NewEnvelope();
+  env->mutable_response()->mutable_stats()->set_id(stats_request.id());
+  env->mutable_response()->mutable_stats()->set_stats_json(buf.GetString());
+  Send(move(env), kServerChannel);
 }
 
 }  // namespace slog

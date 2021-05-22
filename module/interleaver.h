@@ -61,8 +61,9 @@ class Interleaver : public NetworkedModule {
  private:
   void ProcessForwardBatch(EnvelopePtr&& env);
   void AdvanceLogs();
-
   void EmitBatch(BatchPtr&& batch);
+
+  void ProcessStatsRequest(const internal::StatsRequest& stats_request);
 
   std::unordered_map<uint32_t, BatchLog> single_home_logs_;
   LocalLog local_log_;

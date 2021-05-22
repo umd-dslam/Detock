@@ -37,8 +37,7 @@ Forwarder::Forwarder(const std::shared_ptr<zmq::context_t>& context, const Confi
       lookup_master_index_(lookup_master_index),
       partitioned_lookup_request_(config->num_partitions()),
       batch_size_(0),
-      rg_(std::random_device{}()),
-      collecting_stats_(false) {
+      rg_(std::random_device{}()) {
   for (uint32_t i = 0; i < config->num_replicas(); i++) {
     latencies_ns_.emplace_back(config->avg_latency_window_size());
   }
@@ -137,8 +136,6 @@ void Forwarder::ProcessForwardTxn(EnvelopePtr&& env) {
   // If this is the first txn in the batch, schedule to send the batch at a later time
   if (batch_size_ == 1) {
     NewTimedCallback(config()->forwarder_batch_duration(), [this]() { SendLookupMasterRequestBatch(); });
-
-    batch_starting_time_ = std::chrono::steady_clock::now();
   }
 
   // Batch size is larger than the maximum size, send the batch immediately
@@ -151,11 +148,6 @@ void Forwarder::ProcessForwardTxn(EnvelopePtr&& env) {
 }
 
 void Forwarder::SendLookupMasterRequestBatch() {
-  if (collecting_stats_) {
-    stat_batch_sizes_.push_back(batch_size_);
-    stat_batch_durations_ms_.push_back((std::chrono::steady_clock::now() - batch_starting_time_).count() / 1000000.0);
-  }
-
   auto local_rep = config()->local_replica();
   auto num_partitions = config()->num_partitions();
   for (uint32_t part = 0; part < num_partitions; part++) {
@@ -323,9 +315,9 @@ void Forwarder::Forward(EnvelopePtr&& env) {
 
 /**
  * {
- *    forw_batch_size_pctls:        [int],
- *    forw_batch_duration_ms_pctls: [float],
- *    forw_latencies_us:            [uint64],
+ *    forw_batch_size:    int,
+ *    forw_pending_txns:  [uint64],
+ *    forw_num_pending_txns: int
  * }
  */
 void Forwarder::ProcessStatsRequest(const internal::StatsRequest& stats_request) {
@@ -337,22 +329,19 @@ void Forwarder::ProcessStatsRequest(const internal::StatsRequest& stats_request)
   stats.SetObject();
   auto& alloc = stats.GetAllocator();
 
-  if (level == 0) {
-    collecting_stats_ = false;
-  } else if (level > 0) {
-    collecting_stats_ = true;
-  }
-
   stats.AddMember(StringRef(FORW_LATENCIES_NS),
                   ToJsonArray(
-                      latencies_ns_, [](const RollingWindow<int64_t>& w) { return w.avg(); }, alloc),
+                      pending_transactions_, [](const auto& item) { return item.first; }, alloc),
                   alloc);
 
-  stats.AddMember(StringRef(FORW_BATCH_SIZE_PCTLS), Percentiles(stat_batch_sizes_, alloc), alloc);
-  stat_batch_sizes_.clear();
-
-  stats.AddMember(StringRef(FORW_BATCH_DURATION_MS_PCTLS), Percentiles(stat_batch_durations_ms_, alloc), alloc);
-  stat_batch_durations_ms_.clear();
+  stats.AddMember(StringRef(FORW_BATCH_SIZE), batch_size_, alloc);
+  stats.AddMember(StringRef(FORW_NUM_PENDING_TXNS), pending_transactions_.size(), alloc);
+  if (level > 0) {
+    stats.AddMember(StringRef(FORW_PENDING_TXNS),
+                    ToJsonArray(
+                        pending_transactions_, [](const auto& item) { return item.first; }, alloc),
+                    alloc);
+  }
 
   // Write JSON object to a buffer and send back to the server
   rapidjson::StringBuffer buf;
@@ -363,6 +352,6 @@ void Forwarder::ProcessStatsRequest(const internal::StatsRequest& stats_request)
   env->mutable_response()->mutable_stats()->set_id(stats_request.id());
   env->mutable_response()->mutable_stats()->set_stats_json(buf.GetString());
   Send(move(env), kServerChannel);
-}
+}  // namespace slog
 
 }  // namespace slog

@@ -66,11 +66,6 @@ class Forwarder : public NetworkedModule {
   std::vector<RollingWindow<int64_t>> latencies_ns_;
 
   std::mt19937 rg_;
-
-  bool collecting_stats_;
-  std::chrono::steady_clock::time_point batch_starting_time_;
-  std::vector<int> stat_batch_sizes_;
-  std::vector<float> stat_batch_durations_ms_;
 };
 
 }  // namespace slog

@@ -229,11 +229,13 @@ EnvelopePtr Batcher::NewBatchRequest(internal::Batch* batch) {
   return env;
 }
 
-
 /**
  * {
- *    seq_batch_size_pctls:        [int],
- *    seq_batch_duration_ms_pctls: [float]
+ *    seq_num_future_txns: int,
+ *    seq_process_future_txn_callback_id: int,
+ *    seq_future_txns: [[int64, uint64]],
+ *    seq_batch_size: int,
+ *    seq_send_batch_callback_id: int
  * }
  */
 void Batcher::ProcessStatsRequest(const internal::StatsRequest& stats_request) {
@@ -252,11 +254,16 @@ void Batcher::ProcessStatsRequest(const internal::StatsRequest& stats_request) {
     std::lock_guard<SpinLatch> guard(future_txns_mut_);
     stats.AddMember(StringRef(SEQ_NUM_FUTURE_TXNS), future_txns_.size(), alloc);
     if (level > 0) {
-      stats.AddMember(StringRef(SEQ_FUTURE_TXNS), ToJsonArray(future_txns_, [&alloc](const std::pair<Timestamp, Transaction*>& item) {
-        rapidjson::Value entry(rapidjson::kArrayType);
-        entry.PushBack(item.first.first, alloc).PushBack(item.second->internal().id(), alloc);
-        return entry;
-      }, alloc), alloc);
+      stats.AddMember(StringRef(SEQ_FUTURE_TXNS),
+                      ToJsonArray(
+                          future_txns_,
+                          [&alloc](const std::pair<Timestamp, Transaction*>& item) {
+                            rapidjson::Value entry(rapidjson::kArrayType);
+                            entry.PushBack(item.first.first, alloc).PushBack(item.second->internal().id(), alloc);
+                            return entry;
+                          },
+                          alloc),
+                      alloc);
     }
   }
 

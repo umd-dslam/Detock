@@ -47,9 +47,10 @@ const char PENDING_RESPONSES[] = "pending_responses";
 const char PARTIALLY_COMPLETED_TXNS[] = "partially_completed_txns";
 
 /* Forwarder */
-const char FORW_BATCH_SIZE_PCTLS[] = "forw_batch_size_pctls";
-const char FORW_BATCH_DURATION_MS_PCTLS[] = "forw_batch_duration_ms_pctls";
 const char FORW_LATENCIES_NS[] = "forw_latencies_us";
+const char FORW_BATCH_SIZE[] = "forw_batch_size";
+const char FORW_NUM_PENDING_TXNS[] = "forw_num_pending_txns";
+const char FORW_PENDING_TXNS[] = "forw_pending_txns";
 
 /* Sequencer */
 const char SEQ_NUM_FUTURE_TXNS[] = "seq_num_future_txns";
@@ -61,6 +62,12 @@ const char SEQ_SEND_BATCH_CALLBACK_ID[] = "seq_send_batch_callback_id";
 /* Multi-home orderer */
 const char MHO_BATCH_SIZE_PCTLS[] = "mho_batch_size_pctls";
 const char MHO_BATCH_DURATION_MS_PCTLS[] = "mho_batch_duration_ms_pctls";
+
+/* Interleaver */
+const char LOCAL_LOG_NUM_BUFFERED_SLOTS[] = "local_log_num_buffered_slots";
+const char LOCAL_LOG_NUM_BUFFERED_BATCHES_PER_QUEUE[] = "local_log_num_buffered_batches_per_queue";
+const char GLOBAL_LOG_NUM_BUFFERED_SLOTS_PER_REGION[] = "global_log_num_buffered_slots_per_region";
+const char GLOBAL_LOG_NUM_BUFFERED_BATCHES_PER_REGION[] = "global_log_num_buffered_batches_per_region";
 
 /* Scheduler */
 const char ALL_TXNS[] = "all_txns";
