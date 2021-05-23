@@ -955,7 +955,6 @@ class BenchmarkCommand(AdminCommand):
                 mounts=[SLOG_DATA_MOUNT],
                 # Expose all ports from container to host
                 network_mode="host",
-                # Avoid hanging this tool after starting the server
                 detach=True,
                 environment=parse_envs(args.e),
             )
