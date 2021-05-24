@@ -69,7 +69,7 @@ class TransactionEventMetrics {
   list<Data>& data() { return txn_events_; }
 
   static void WriteToDisk(const std::string& dir, const list<Data>& data) {
-    CSVWriter txn_events_csv(dir + "/txn_events.csv", {"txn_id", "event", "time", "partition", "replica"});
+    CSVWriter txn_events_csv(dir + "/events.csv", {"txn_id", "event", "time", "partition", "replica"});
     for (const auto& d : data) {
       txn_events_csv << d.txn_id << ENUM_NAME(d.event, TransactionEvent) << d.time << d.partition << d.replica << csvendl;
     }
