@@ -5,14 +5,11 @@ import time
 
 from subprocess import Popen, PIPE
 
-from common import Command, initialize_and_run_commands
+from common import Command, LOG_HANDLER, initialize_and_run_commands
 from tabulate import tabulate
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(process)d - %(levelname)s: %(message)s'
-)
-LOG = logging.getLogger("spot_cluster")
+LOG = logging.getLogger("aws")
+
 MAX_RETRIES = 6
 
 INSTALL_DOCKER_COMMAND = (

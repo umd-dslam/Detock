@@ -1,4 +1,8 @@
 import argparse
+import logging
+
+LOG_FORMAT = "%(asctime)s %(name)10s %(levelname)s: %(message)s"
+logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 
 class Command:
     """Base class for a command"""
@@ -21,7 +25,7 @@ class Command:
         pass
 
 
-def initialize_and_run_commands(description, commands):
+def initialize_and_run_commands(description, commands, args=None):
     parser = argparse.ArgumentParser(description=description)
     subparsers = parser.add_subparsers(dest="command name")
     subparsers.required = True
@@ -29,5 +33,5 @@ def initialize_and_run_commands(description, commands):
     for command in commands:
         command().create_subparser(subparsers)
 
-    args = parser.parse_args()
-    args.run(args)
+    parsed_args = parser.parse_args(args)
+    parsed_args.run(parsed_args)

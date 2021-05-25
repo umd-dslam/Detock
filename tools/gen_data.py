@@ -37,10 +37,6 @@ KEY_SIZE = 12   # 8 bytes + overhead from base64 encoding
 MASTER_SIZE = 2
 FILE_EXTENSION = '.dat'
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(process)d - %(levelname)s: %(message)s'
-)
 LOG = logging.getLogger("gen_data")
 LOG_EVERY_SEC = 1
 

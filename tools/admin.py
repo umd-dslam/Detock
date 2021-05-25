@@ -26,10 +26,6 @@ from common import Command, initialize_and_run_commands
 from gen_data import add_exported_gen_data_arguments
 from proto.configuration_pb2 import Configuration
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(process)d - %(levelname)s: %(message)s'
-)
 LOG = logging.getLogger("admin")
 
 USER = "ubuntu"
@@ -1013,7 +1009,7 @@ class CollectServerCommand(AdminCommand):
     def add_arguments(self, parser):
         super().add_arguments(parser)
         parser.add_argument("--tag", default="test", help="Tag of the metrics data")
-        parser.add_argument("--out-dir", default='', help="Directory to put the collected data")
+        parser.add_argument("--out-dir", default="", help="Directory to put the collected data")
         group = parser.add_mutually_exclusive_group()
         group.add_argument("--flush-only", action="store_true", help="Only trigger flushing metrics to disk")
         group.add_argument("--download-only", action="store_true", help="Only download the data files")
@@ -1068,7 +1064,7 @@ class CollectServerCommand(AdminCommand):
         fetch_data(machines, args.user, args.tag, server_out_dir)
 
 
-if __name__ == "__main__":
+def main(args):
     start_time = time.time()
     initialize_and_run_commands(
         "Controls deployment and experiment of SLOG",
@@ -1082,6 +1078,12 @@ if __name__ == "__main__":
             StatusCommand,
             LogsCommand,
             LocalCommand,
-        ]
+        ],
+        args,
     )
     LOG.info("Elapsed time: %.1f sec", time.time() - start_time)
+
+
+if __name__ == "__main__":
+    import sys
+    main(sys.argv[1:])
