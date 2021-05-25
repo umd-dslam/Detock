@@ -6,6 +6,7 @@
 #include "common/proto_utils.h"
 #include "common/string_utils.h"
 #include "proto/internal.pb.h"
+#include "version.h"
 
 using std::list;
 using std::pair;
@@ -381,8 +382,9 @@ thread_local std::shared_ptr<MetricsRepository> per_thread_metrics_repo;
  *  MetricsRepositoryManager
  */
 
-MetricsRepositoryManager::MetricsRepositoryManager(const ConfigurationPtr& config) : config_(config) {}
-
+MetricsRepositoryManager::MetricsRepositoryManager(const std::string& config_name, const ConfigurationPtr& config)
+    : config_name_(config_name), config_(config) {}
+      
 void MetricsRepositoryManager::RegisterCurrentThread() {
   std::lock_guard<std::mutex> guard(mut_);
   const auto thread_id = std::this_thread::get_id();
@@ -418,6 +420,9 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
 
   // Write metrics to disk
   try {
+    CSVWriter metadata_csv(dir + "/metadata.csv", {"version", "config_name"});
+    metadata_csv << SLOG_VERSION << config_name_;
+
     TransactionEventMetrics::WriteToDisk(dir, txn_events_data);
     DeadlockResolverRunMetrics::WriteToDisk(dir, deadlock_resolver_run_data);
     DeadlockResolverDeadlockMetrics::WriteToDisk(dir, deadlock_resolver_deadlock_data,

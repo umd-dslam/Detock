@@ -53,11 +53,12 @@ extern thread_local std::shared_ptr<MetricsRepository> per_thread_metrics_repo;
  */
 class MetricsRepositoryManager {
  public:
-  MetricsRepositoryManager(const ConfigurationPtr& config);
+  MetricsRepositoryManager(const std::string& config_name, const ConfigurationPtr& config);
   void RegisterCurrentThread();
   void AggregateAndFlushToDisk(const std::string& dir);
 
  private:
+  const std::string config_name_;
   const ConfigurationPtr config_;
   std::unordered_map<std::thread::id, std::shared_ptr<MetricsRepository>> metrics_repos_;
   std::mutex mut_;
