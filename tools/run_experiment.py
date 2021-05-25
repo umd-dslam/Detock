@@ -108,7 +108,7 @@ def ycsb(args):
         tag_keys = [k for k in varying_keys if len(workload_setting[k]) > 1]
         for v in values:
             tag = config_name + '-' + ''.join([f"{k}{v[k]}" for k in tag_keys])
-            params = ''.join(f"{k}={v[k]}" for k in varying_params)
+            params = ','.join(f"{k}={v[k]}" for k in varying_params)
 
             LOG.info("Running benchmark...")
             admin.main([
