@@ -60,7 +60,7 @@ class Configuration {
   uint32_t replication_delay_pct() const;
   uint32_t replication_delay_amount_ms() const;
 
-  std::vector<TransactionEvent> disabled_events() const;
+  std::vector<TransactionEvent> enabled_events() const;
   bool bypass_mh_orderer() const;
   std::chrono::milliseconds ddr_interval() const;
   std::vector<int> cpu_pinnings(ModuleId module) const;

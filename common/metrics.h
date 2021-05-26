@@ -71,14 +71,14 @@ using MetricsRepositoryManagerPtr = std::shared_ptr<MetricsRepositoryManager>;
  */
 
 extern uint32_t gLocalMachineId;
-extern uint64_t gDisabledEvents;
+extern uint64_t gEnabledEvents;
 
 void InitializeRecording(const ConfigurationPtr& config);
 
 template <typename TxnOrBatchPtr>
 inline void RecordTxnEvent(TxnOrBatchPtr txn, TransactionEvent event) {
   auto now = std::chrono::system_clock::now().time_since_epoch().count();
-  if ((gDisabledEvents >> event) & 1) {
+  if (!((gEnabledEvents >> event) & 1)) {
     return;
   }
   TxnId txn_id = 0;
