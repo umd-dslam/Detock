@@ -21,12 +21,13 @@ def generate_config(template_path: str, settings: dict):
     with open(template_path, "r") as f:
         text_format.Parse(f.read(), config)
 
-    num_clients = settings['clients']
-    for r in settings['regions'].values():
-        all_addresses = [addr.encode() for addr in r]
+    regions = settings['servers'].keys()
+    for r in regions:
         replica = Replica()
-        replica.addresses.extend(all_addresses[:-num_clients])
-        replica.client_addresses.extend(all_addresses[-num_clients:])
+        servers = [addr.encode() for addr in settings['servers'][r]]
+        replica.addresses.extend(servers)
+        clients = [addr.encode() for addr in settings['clients'][r]]
+        replica.client_addresses.extend(clients)
         config.replicas.append(replica)
         config.num_partitions = len(replica.addresses)
     
