@@ -96,7 +96,7 @@ class DeadlockResolver : public NetworkedModule {
 
   struct Node {
     explicit Node(TxnId id, int num_partitions)
-        : id(id), num_partitions(num_partitions), num_complete(0), is_visited(false) {}
+        : id(id), num_partitions(num_partitions), num_complete(0), is_stable(false), is_visited(false) {}
 
     const TxnId id;
     int num_partitions;
@@ -122,7 +122,7 @@ class DeadlockResolver : public NetworkedModule {
   void UpdateGraphAndBroadcastChanges() {
     internal::Envelope graph_log_env;
     int log_index = 0;
-    // Switch the writer to the other log so that we can read from current log without conflict
+    // Make the other log active so that we can read from current log without conflict
     {
       std::lock_guard<SpinLatch> guard(lm_.log_latch_);
       log_index = lm_.log_index_;
@@ -143,14 +143,14 @@ class DeadlockResolver : public NetworkedModule {
     }
     log.clear();
 
-    vector<MachineId> destinations;
-    destinations.reserve(config_->num_partitions());
+    vector<MachineId> other_partitions;
+    other_partitions.reserve(config_->num_partitions());
     for (uint32_t p = 0; p < config_->num_partitions(); p++) {
       if (p != config_->local_partition()) {
-        destinations.push_back(config_->MakeMachineId(config_->local_replica(), p));
+        other_partitions.push_back(config_->MakeMachineId(config_->local_replica(), p));
       }
     }
-    Send(move(graph_log_env), destinations, kDeadlockResolverChannel);
+    Send(move(graph_log_env), other_partitions, kDeadlockResolverChannel);
 
     // Collect all unstable nodes
     queue<TxnId> unstables;
@@ -194,7 +194,7 @@ class DeadlockResolver : public NetworkedModule {
         it->second.waited_by.push_back(entry.txn_id());
       }
       // num_waiting_for field is used to store the number of other txns that a txn is waiting
-      // for. However, we don't update it here because we use this field to record the amount that
+      // for. However, we don't update this field here because it will be used to record the amount that
       // the original num_waiting_for would increase/decrease after resolving deadlocks. At the end,
       // of the deadlock resolving process, this value will be added to the current num_waiting_for
       // in the lock manager
@@ -203,10 +203,14 @@ class DeadlockResolver : public NetworkedModule {
 
   template <typename LogEntry>
   void UpdateGraph(const LogEntry& entry) {
+    // Create a new node if not exists
     auto ins = graph_.try_emplace(entry.txn_id(), entry.txn_id(), entry.num_partitions());
     auto& node = ins.first->second;
+    // If this entry is marked complete, increase the number of complete partitions
     node.num_complete += entry.is_complete();
+    // Update edges coming from other nodes to the current node
     node.incoming.insert(node.incoming.end(), entry.incoming_edges().begin(), entry.incoming_edges().end());
+    // Update edges coming from current node to other nodes
     for (auto v : entry.incoming_edges()) {
       auto it = graph_.find(v);
       if (it != graph_.end()) {
@@ -235,7 +239,7 @@ class DeadlockResolver : public NetworkedModule {
             st.emplace(cur, true);
             it->second.is_visited = true;
             for (auto next : it->second.outgoing) {
-              // Ignore unstable nodes
+              // Ignore unstable and visited nodes
               if (auto next_it = graph_.find(next);
                   next_it != graph_.end() && next_it->second.is_stable && !next_it->second.is_visited) {
                 st.emplace(next, false);

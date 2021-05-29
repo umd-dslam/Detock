@@ -35,7 +35,6 @@ def generate_config(template_path: str, settings: dict):
     with open(config_path, "w") as f:
         text_format.PrintMessage(config, f)
     
-    LOG.info('Generated config "%s"', config_path)
     return config_path
 
 
@@ -68,8 +67,9 @@ def collect_server_data(config, user, image, out_dir, tag):
         "--tag", tag,
         "--user", user,
         "--image", image,
+        "--out-dir", out_dir,
+        # The image has already been pulled when starting the servers
         "--no-pull",
-        "--out-dir", out_dir
     ])
 
 
@@ -90,17 +90,20 @@ def ycsb(args):
 
     for server in workload_setting["servers"]:
         config = generate_config(os.path.join(args.config_dir, server['config']), settings)
+
+        LOG.info('============ GENERATED CONFIG "%s" ============', config)
+
         config_name = os.path.splitext(os.path.basename(server['config']))[0]
         image = server['image']
         common_args = [config, "--user", user, "--image", image]
 
-        LOG.info("Cleaning up previous experiments...")
+        LOG.info("STOP ANY RUNNING EXPERIMENT")
         cleanup(config, user, image)
  
-        LOG.info("Starting servers...")
+        LOG.info("START SERVERS")
         admin.main(["start", *common_args])
   
-        LOG.info("Waiting for all servers to be online...")
+        LOG.info("WAIT FOR ALL SERVERS TO BE ONLINE")
         admin.main(["collect_server", *common_args, "--flush-only", "--no-pull"])
 
         # Compute the Cartesian product of all varying values
@@ -114,12 +117,20 @@ def ycsb(args):
         varying_values = itertools.product(*ordered_value_lists)
         values = [dict(zip(varying_keys, v)) for v in varying_values]
 
-        tag_keys = [k for k in varying_keys if len(workload_setting[k]) > 1]
+        if args.tag_keys:
+            tag_keys = args.tag_keys
+        else:
+            tag_keys = [k for k in varying_keys if len(workload_setting[k]) > 1]
+
         for v in values:
-            tag = config_name + '-' + ''.join([f"{k}{v[k]}" for k in tag_keys])
+            tag = config_name
+            tag_suffix = ''.join([f"{k}{v[k]}" for k in tag_keys])
+            if tag_suffix:
+                tag += "-" + tag_suffix
+
             params = ','.join(f"{k}={v[k]}" for k in varying_params)
 
-            LOG.info("Running benchmark...")
+            LOG.info("RUN BENCHMARK")
             admin.main([
                 "benchmark",
                 *common_args,
@@ -137,7 +148,7 @@ def ycsb(args):
 
             time.sleep(2)
 
-            LOG.info("Collecting data...")
+            LOG.info("COLLECT DATA")
             collectors = [
                 Process(target=collect_client_data, args=(config, user, ycsb_out_dir, tag)),
                 Process(target=collect_server_data, args=(config, user, image, ycsb_out_dir, tag)),
@@ -160,6 +171,7 @@ if __name__ == "__main__":
     parser.add_argument("--config-dir", "-c", default="config", help="Path to the configuration files")
     parser.add_argument("--out-dir", "-o", default=".", help="Path to the output directory")
     parser.add_argument("--name", "-n", help="Override name of the experiment directory")
+    parser.add_argument("--tag-keys", nargs="*", help="Keys to include in the tag. If empty, only include")
     parser.add_argument(
         "--dry-run",
         action='store_true',
