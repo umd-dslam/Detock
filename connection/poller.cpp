@@ -23,7 +23,7 @@ bool Poller::NextEvent(bool dont_wait) {
     auto shortest_timeout = poll_timeout_;
     auto now = steady_clock::now();
     if (!timed_callbacks_.empty()) {
-      const auto& next_ev_time = timed_callbacks_.begin()->second.when;
+      const auto& next_ev_time = timed_callbacks_.begin()->first.first;
       if (next_ev_time <= now) {
         shortest_timeout = 0us;
       } else if (!shortest_timeout.has_value() || next_ev_time - now < shortest_timeout.value()) {
@@ -50,10 +50,10 @@ bool Poller::NextEvent(bool dont_wait) {
     auto now = steady_clock::now();
     auto it = timed_callbacks_.begin();
     for (; it != timed_callbacks_.end(); it++) {
-      if (it->second.when > now) {
+      if (it->first.first > now) {
         break;
       }
-      it->second.callback();
+      it->second();
     }
     timed_callbacks_.erase(timed_callbacks_.begin(), it);
   }
@@ -63,13 +63,14 @@ bool Poller::NextEvent(bool dont_wait) {
 
 bool Poller::is_socket_ready(size_t i) const { return poll_items_[i].revents & ZMQ_POLLIN; }
 
-int Poller::AddTimedCallback(microseconds timeout, std::function<void()>&& cb) {
-  timed_callbacks_.emplace(timed_callback_counter_,
-                           TimedCallback{.when = steady_clock::now() + timeout, .callback = move(cb)});
-  return timed_callback_counter_++;
+Poller::Handle Poller::AddTimedCallback(microseconds timeout, std::function<void()>&& cb) {
+  auto id = Handle(steady_clock::now() + timeout, timed_callback_counter_);
+  timed_callbacks_.emplace(id, move(cb));
+  timed_callback_counter_++;
+  return id;
 }
 
-void Poller::RemoveTimedCallback(int id) { timed_callbacks_.erase(id); }
+void Poller::RemoveTimedCallback(const Poller::Handle& id) { timed_callbacks_.erase(id); }
 
 void Poller::ClearTimedCallbacks() { timed_callbacks_ = {}; }
 

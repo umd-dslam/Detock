@@ -37,8 +37,8 @@ void Batcher::OnInternalRequestReceived(EnvelopePtr&& env) {
       BatchTxn(env->mutable_request()->mutable_forward_txn()->release_txn());
       break;
     case Request::kSignal: {
-      if (process_future_txn_callback_id_.has_value()) {
-        RemoveTimedCallback(process_future_txn_callback_id_.value());
+      if (process_future_txn_callback_handle_.has_value()) {
+        RemoveTimedCallback(process_future_txn_callback_handle_.value());
       }
       ProcessReadyFutureTxns();
       break;
@@ -77,10 +77,10 @@ void Batcher::ProcessReadyFutureTxns() {
     BatchTxn(txn);
   }
 
-  process_future_txn_callback_id_.reset();
+  process_future_txn_callback_handle_.reset();
   if (earliest_timestamp.has_value()) {
     auto delay = duration_cast<microseconds>(nanoseconds(earliest_timestamp.value() - now)) + 1us;
-    process_future_txn_callback_id_ = NewTimedCallback(delay, [this]() { ProcessReadyFutureTxns(); });
+    process_future_txn_callback_handle_ = NewTimedCallback(delay, [this]() { ProcessReadyFutureTxns(); });
   }
 }
 
@@ -241,7 +241,12 @@ void Batcher::ProcessStatsRequest(const internal::StatsRequest& stats_request) {
   stats.SetObject();
   auto& alloc = stats.GetAllocator();
 
-  stats.AddMember(StringRef(SEQ_PROCESS_FUTURE_TXN_CALLBACK_ID), process_future_txn_callback_id_.value_or(-1), alloc);
+  if (process_future_txn_callback_handle_.has_value()) {
+    stats.AddMember(StringRef(SEQ_PROCESS_FUTURE_TXN_CALLBACK_ID), process_future_txn_callback_handle_.value().second,
+                    alloc);
+  } else {
+    stats.AddMember(StringRef(SEQ_PROCESS_FUTURE_TXN_CALLBACK_ID), -1, alloc);
+  }
   stats.AddMember(StringRef(SEQ_BATCH_SIZE), batch_size_, alloc);
   {
     std::lock_guard<SpinLatch> guard(future_txns_mut_);

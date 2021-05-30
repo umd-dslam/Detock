@@ -57,7 +57,6 @@ const char SEQ_NUM_FUTURE_TXNS[] = "seq_num_future_txns";
 const char SEQ_FUTURE_TXNS[] = "seq_future_txns";
 const char SEQ_PROCESS_FUTURE_TXN_CALLBACK_ID[] = "seq_process_future_txn_callback_id";
 const char SEQ_BATCH_SIZE[] = "seq_batch_size";
-const char SEQ_SEND_BATCH_CALLBACK_ID[] = "seq_send_batch_callback_id";
 
 /* Multi-home orderer */
 const char MHO_BATCH_SIZE_PCTLS[] = "mho_batch_size_pctls";

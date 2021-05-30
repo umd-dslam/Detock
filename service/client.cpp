@@ -157,7 +157,6 @@ void PrintForwarderStats(const rapidjson::Document& stats, uint32_t level) {
 
 void PrintSequencerStats(const rapidjson::Document& stats, uint32_t level) {
   cout << "Batch size: " << stats[SEQ_BATCH_SIZE].GetInt() << "\n";
-  cout << "Send batch callback id: " << stats[SEQ_SEND_BATCH_CALLBACK_ID].GetInt() << "\n";
   cout << "Num future txns: " << stats[SEQ_NUM_FUTURE_TXNS].GetInt() << "\n";
   cout << "Process future txn callback id: " << stats[SEQ_PROCESS_FUTURE_TXN_CALLBACK_ID].GetInt() << "\n";
   if (level > 0) {

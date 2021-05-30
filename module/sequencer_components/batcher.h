@@ -34,7 +34,7 @@ class Batcher : public NetworkedModule {
 
   SpinLatch future_txns_mut_;
   std::map<Timestamp, Transaction*> future_txns_;
-  std::optional<int> process_future_txn_callback_id_;
+  std::optional<Poller::Handle> process_future_txn_callback_handle_;
 
   std::vector<std::unique_ptr<internal::Batch>> partitioned_batch_;
   BatchId batch_id_counter_;
