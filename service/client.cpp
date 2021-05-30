@@ -155,29 +155,6 @@ void PrintForwarderStats(const rapidjson::Document& stats, uint32_t level) {
   }
 }
 
-void PrintMHOrdererStats(const rapidjson::Document& stats, uint32_t) {
-  const auto& batch_duration_ms_pctls = stats[MHO_BATCH_DURATION_MS_PCTLS].GetArray();
-  const auto& batch_size_pctls = stats[MHO_BATCH_SIZE_PCTLS].GetArray();
-  cout << "Batch duration percentiles (ms)\n";
-  if (batch_duration_ms_pctls.Empty()) {
-    cout << "\tNo data\n";
-  } else {
-    cout << fixed << setprecision(3);
-    for (size_t i = 0; i < kPctlLevels.size(); ++i) {
-      cout << setw(4) << kPctlLevels[i] << ": " << batch_duration_ms_pctls[i].GetFloat() << "\n";
-    }
-  }
-  cout << "\n";
-  cout << "Batch size percentiles\n";
-  if (batch_size_pctls.Empty()) {
-    cout << "\tNo data\n";
-  } else {
-    for (size_t i = 0; i < kPctlLevels.size(); ++i) {
-      cout << setw(4) << kPctlLevels[i] << ": " << batch_size_pctls[i].GetInt() << "\n";
-    }
-  }
-}
-
 void PrintSequencerStats(const rapidjson::Document& stats, uint32_t level) {
   cout << "Batch size: " << stats[SEQ_BATCH_SIZE].GetInt() << "\n";
   cout << "Send batch callback id: " << stats[SEQ_SEND_BATCH_CALLBACK_ID].GetInt() << "\n";
@@ -312,7 +289,6 @@ const unordered_map<string, StatsModule> STATS_MODULES = {
     {"server", {ModuleId::SERVER, PrintServerStats}},
     {"forwarder", {ModuleId::FORWARDER, PrintForwarderStats}},
     {"sequencer", {ModuleId::SEQUENCER, PrintSequencerStats}},
-    {"mhorderer", {ModuleId::MHORDERER, PrintMHOrdererStats}},
     {"interleaver", {ModuleId::INTERLEAVER, PrintInterleaverStats}},
     {"scheduler", {ModuleId::SCHEDULER, PrintSchedulerStats}}};
 

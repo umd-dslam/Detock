@@ -136,6 +136,7 @@ void Forwarder::ProcessForwardTxn(EnvelopePtr&& env) {
   // If this is the first txn in the batch, schedule to send the batch at a later time
   if (batch_size_ == 1) {
     NewTimedCallback(config()->forwarder_batch_duration(), [this]() { SendLookupMasterRequestBatch(); });
+    batch_starting_time_ = std::chrono::steady_clock::now();
   }
 
   // Batch size is larger than the maximum size, send the batch immediately
@@ -148,6 +149,11 @@ void Forwarder::ProcessForwardTxn(EnvelopePtr&& env) {
 }
 
 void Forwarder::SendLookupMasterRequestBatch() {
+  if (per_thread_metrics_repo != nullptr) {
+    per_thread_metrics_repo->RecordForwarderBatch(batch_size_,
+                                                  (std::chrono::steady_clock::now() - batch_starting_time_).count());
+  }
+
   auto local_rep = config()->local_replica();
   auto num_partitions = config()->num_partitions();
   for (uint32_t part = 0; part < num_partitions; part++) {

@@ -36,6 +36,9 @@ class MetricsRepository {
   void RecordForwSequLatency(uint32_t replica, int64_t send_time, int64_t recv_time, int64_t avg_latency);
   void RecordClockSync(uint32_t dst, int64_t src_send_time, int64_t dst_send_time, int64_t src_recv_time,
                        int64_t local_slog_time, int64_t avg_latency, int64_t new_offset);
+  void RecordForwarderBatch(size_t batch_size, int64_t batch_duration);
+  void RecordSequencerBatch(BatchId batch_id, size_t batch_size, int64_t batch_duration);
+  void RecordMHOrdererBatch(BatchId batch_id, size_t batch_size, int64_t batch_duration);
 
   std::unique_ptr<AllMetrics> Reset();
 

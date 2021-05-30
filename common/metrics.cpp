@@ -72,7 +72,8 @@ class TransactionEventMetrics {
   static void WriteToDisk(const std::string& dir, const list<Data>& data) {
     CSVWriter txn_events_csv(dir + "/events.csv", {"txn_id", "event", "time", "partition", "replica"});
     for (const auto& d : data) {
-      txn_events_csv << d.txn_id << ENUM_NAME(d.event, TransactionEvent) << d.time << d.partition << d.replica << csvendl;
+      txn_events_csv << d.txn_id << ENUM_NAME(d.event, TransactionEvent) << d.time << d.partition << d.replica
+                     << csvendl;
     }
   }
 
@@ -295,6 +296,35 @@ class ClockSyncMetrics {
   list<Data> data_;
 };
 
+class BatchMetrics {
+ public:
+  BatchMetrics(int sample_rate) : sampler_(sample_rate, 1) {}
+
+  void Record(BatchId batch_id, size_t batch_size, int64_t batch_duration) {
+    if (sampler_.IsChosen(0)) {
+      data_.push_back({.batch_id = batch_id, .batch_size = batch_size, .batch_duration = batch_duration});
+    }
+  }
+
+  struct Data {
+    BatchId batch_id;
+    size_t batch_size;
+    int64_t batch_duration;
+  };
+  list<Data>& data() { return data_; }
+
+  static void WriteToDisk(const std::string& file_path, const list<Data>& data) {
+    CSVWriter batch_csv(file_path, {"batch_id", "batch_size", "batch_duration"});
+    for (const auto& d : data) {
+      batch_csv << d.batch_id << d.batch_size << d.batch_duration << csvendl;
+    }
+  }
+
+ private:
+  Sampler sampler_;
+  list<Data> data_;
+};
+
 struct AllMetrics {
   TransactionEventMetrics txn_event_metrics;
   DeadlockResolverRunMetrics deadlock_resolver_run_metrics;
@@ -302,6 +332,9 @@ struct AllMetrics {
   InterleaverLogs interleaver_logs;
   ForwSequLatencyMetrics forw_sequ_latency_metrics;
   ClockSyncMetrics clock_sync_metrics;
+  BatchMetrics forwarder_batch_metrics;
+  BatchMetrics sequencer_batch_metrics;
+  BatchMetrics mhorderer_batch_metrics;
 };
 
 /**
@@ -355,6 +388,21 @@ void MetricsRepository::RecordClockSync(uint32_t dst, int64_t src_send_time, int
                                              avg_latency, new_offset);
 }
 
+void MetricsRepository::RecordForwarderBatch(size_t batch_size, int64_t batch_duration) {
+  std::lock_guard<SpinLatch> guard(latch_);
+  return metrics_->forwarder_batch_metrics.Record(0, batch_size, batch_duration);
+}
+
+void MetricsRepository::RecordSequencerBatch(BatchId batch_id, size_t batch_size, int64_t batch_duration) {
+  std::lock_guard<SpinLatch> guard(latch_);
+  return metrics_->sequencer_batch_metrics.Record(batch_id, batch_size, batch_duration);
+}
+
+void MetricsRepository::RecordMHOrdererBatch(BatchId batch_id, size_t batch_size, int64_t batch_duration) {
+  std::lock_guard<SpinLatch> guard(latch_);
+  return metrics_->mhorderer_batch_metrics.Record(batch_id, batch_size, batch_duration);
+}
+
 std::unique_ptr<AllMetrics> MetricsRepository::Reset() {
   std::unique_ptr<AllMetrics> new_metrics(new AllMetrics(
       {.txn_event_metrics = TransactionEventMetrics(config_->metric_options().txn_events_sample(),
@@ -368,7 +416,10 @@ std::unique_ptr<AllMetrics> MetricsRepository::Reset() {
                                            config_->local_replica(), config_->local_partition()),
        .interleaver_logs = InterleaverLogs(),
        .forw_sequ_latency_metrics = ForwSequLatencyMetrics(config_->metric_options().forw_sequ_latency_sample()),
-       .clock_sync_metrics = ClockSyncMetrics(config_->metric_options().clock_sync_sample())}));
+       .clock_sync_metrics = ClockSyncMetrics(config_->metric_options().clock_sync_sample()),
+       .forwarder_batch_metrics = BatchMetrics(config_->metric_options().forwarder_batch_sample()),
+       .sequencer_batch_metrics = BatchMetrics(config_->metric_options().sequencer_batch_sample()),
+       .mhorderer_batch_metrics = BatchMetrics(config_->metric_options().mhorderer_batch_sample())}));
 
   std::lock_guard<SpinLatch> guard(latch_);
   metrics_.swap(new_metrics);
@@ -384,7 +435,7 @@ thread_local std::shared_ptr<MetricsRepository> per_thread_metrics_repo;
 
 MetricsRepositoryManager::MetricsRepositoryManager(const std::string& config_name, const ConfigurationPtr& config)
     : config_name_(config_name), config_(config) {}
-      
+
 void MetricsRepositoryManager::RegisterCurrentThread() {
   std::lock_guard<std::mutex> guard(mut_);
   const auto thread_id = std::this_thread::get_id();
@@ -400,6 +451,7 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
   vector<InterleaverLogs::Data> global_log;
   list<ForwSequLatencyMetrics::Data> forw_sequ_latency_data;
   list<ClockSyncMetrics::Data> clock_sync_data;
+  list<BatchMetrics::Data> forwarder_batch_data, sequencer_batch_data, mhorderer_batch_data;
   {
     std::lock_guard<std::mutex> guard(mut_);
     for (auto& kv : metrics_repos_) {
@@ -415,6 +467,9 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
       }
       forw_sequ_latency_data.splice(forw_sequ_latency_data.end(), metrics->forw_sequ_latency_metrics.data());
       clock_sync_data.splice(clock_sync_data.end(), metrics->clock_sync_metrics.data());
+      forwarder_batch_data.splice(forwarder_batch_data.end(), metrics->forwarder_batch_metrics.data());
+      sequencer_batch_data.splice(sequencer_batch_data.end(), metrics->sequencer_batch_metrics.data());
+      mhorderer_batch_data.splice(mhorderer_batch_data.end(), metrics->mhorderer_batch_metrics.data());
     }
   }
 
@@ -430,6 +485,9 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
     InterleaverLogs::WriteToDisk(dir, global_log);
     ForwSequLatencyMetrics::WriteToDisk(dir, forw_sequ_latency_data);
     ClockSyncMetrics::WriteToDisk(dir, clock_sync_data);
+    BatchMetrics::WriteToDisk(dir + "/forwarder_batch.csv", forwarder_batch_data);
+    BatchMetrics::WriteToDisk(dir + "/sequencer_batch.csv", sequencer_batch_data);
+    BatchMetrics::WriteToDisk(dir + "/mhorderer_batch.csv", mhorderer_batch_data);
     LOG(INFO) << "Metrics written to: \"" << dir << "/\"";
   } catch (std::runtime_error& e) {
     LOG(ERROR) << e.what();

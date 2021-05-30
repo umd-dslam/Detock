@@ -64,6 +64,7 @@ class Forwarder : public NetworkedModule {
   std::vector<internal::Envelope> partitioned_lookup_request_;
   int batch_size_;
   std::vector<RollingWindow<int64_t>> latencies_ns_;
+  std::chrono::steady_clock::time_point batch_starting_time_;
 
   std::mt19937 rg_;
 };

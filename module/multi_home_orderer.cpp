@@ -18,8 +18,7 @@ using internal::Request;
 MultiHomeOrderer::MultiHomeOrderer(const shared_ptr<Broker>& broker, const MetricsRepositoryManagerPtr& metrics_manager,
                                    std::chrono::milliseconds poll_timeout)
     : NetworkedModule("MultiHomeOrderer", broker, kMultiHomeOrdererChannel, metrics_manager, poll_timeout),
-      batch_id_counter_(0),
-      collecting_stats_(false) {
+      batch_id_counter_(0) {
   batch_per_rep_.resize(config()->num_replicas());
   NewBatch();
 }
@@ -52,9 +51,6 @@ void MultiHomeOrderer::OnInternalRequestReceived(EnvelopePtr&& env) {
     case Request::kForwardBatch:
       // Received a batch of multi-home txn replicated from another region
       ProcessForwardBatch(move(env));
-      break;
-    case Request::kStats:
-      ProcessStatsRequest(env->request().stats());
       break;
     default:
       LOG(ERROR) << "Unexpected request type received: \"" << CASE_NAME(request->type_case(), Request) << "\"";
@@ -143,9 +139,9 @@ void MultiHomeOrderer::AddToBatch(Transaction* txn) {
 void MultiHomeOrderer::SendBatch() {
   VLOG(3) << "Finished multi-home batch " << batch_id() << " of size " << batch_size_;
 
-  if (collecting_stats_) {
-    stat_batch_sizes_.push_back(batch_size_);
-    stat_batch_durations_ms_.push_back((std::chrono::steady_clock::now() - batch_starting_time_).count() / 1000000.0);
+  if (per_thread_metrics_repo != nullptr) {
+    per_thread_metrics_repo->RecordMHOrdererBatch(batch_id(), batch_size_,
+                                                  (std::chrono::steady_clock::now() - batch_starting_time_).count());
   }
 
   auto paxos_env = NewEnvelope();
@@ -161,44 +157,6 @@ void MultiHomeOrderer::SendBatch() {
     forward_batch->set_allocated_batch_data(batch_per_rep_[rep].release());
     Send(move(env), config()->MakeMachineId(rep, part), kMultiHomeOrdererChannel);
   }
-}
-
-/**
- * {
- *    mho_batch_size_pctls:        [int],
- *    mho_batch_duration_ms_pctls: [float]
- * }
- */
-void MultiHomeOrderer::ProcessStatsRequest(const internal::StatsRequest& stats_request) {
-  using rapidjson::StringRef;
-
-  int level = stats_request.level();
-
-  rapidjson::Document stats;
-  stats.SetObject();
-  auto& alloc = stats.GetAllocator();
-
-  if (level == 0) {
-    collecting_stats_ = false;
-  } else if (level > 0) {
-    collecting_stats_ = true;
-  }
-
-  stats.AddMember(StringRef(MHO_BATCH_SIZE_PCTLS), Percentiles(stat_batch_sizes_, alloc), alloc);
-  stat_batch_sizes_.clear();
-
-  stats.AddMember(StringRef(MHO_BATCH_DURATION_MS_PCTLS), Percentiles(stat_batch_durations_ms_, alloc), alloc);
-  stat_batch_durations_ms_.clear();
-
-  // Write JSON object to a buffer and send back to the server
-  rapidjson::StringBuffer buf;
-  rapidjson::Writer<rapidjson::StringBuffer> writer(buf);
-  stats.Accept(writer);
-
-  auto env = NewEnvelope();
-  env->mutable_response()->mutable_stats()->set_id(stats_request.id());
-  env->mutable_response()->mutable_stats()->set_stats_json(buf.GetString());
-  Send(move(env), kServerChannel);
 }
 
 }  // namespace slog

@@ -125,6 +125,7 @@ void Batcher::BatchTxn(Transaction* txn) {
       NewBatch();
       send_batch_callback_id_.reset();
     });
+    batch_starting_time_ = std::chrono::steady_clock::now();
   }
 
   // Batch size is larger than the maximum size, send the batch immediately
@@ -141,6 +142,11 @@ void Batcher::BatchTxn(Transaction* txn) {
 void Batcher::SendBatch() {
   VLOG(3) << "Finished batch " << batch_id() << " of size " << batch_size_
           << ". Sending out for ordering and replicating";
+
+  if (per_thread_metrics_repo != nullptr) {
+    per_thread_metrics_repo->RecordSequencerBatch(batch_id(), batch_size_,
+                                                  (std::chrono::steady_clock::now() - batch_starting_time_).count());
+  }
 
   auto local_replica = config()->local_replica();
   auto local_partition = config()->local_partition();

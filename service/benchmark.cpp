@@ -34,11 +34,11 @@ DEFINE_bool(txn_profiles, false, "Output transaction profiles");
 
 using namespace slog;
 
-using std::chrono::duration_cast;
 using std::count_if;
 using std::make_unique;
 using std::setw;
 using std::unique_ptr;
+using std::chrono::duration_cast;
 
 uint32_t seed = std::random_device{}();
 zmq::context_t context;
@@ -345,6 +345,7 @@ int main(int argc, char* argv[]) {
     }
     auto elapsed_time = static_cast<float>(generator->elapsed_time().count()) / 1000000000;
     avg_tps += (summary.committed - prev_committed) / elapsed_time;
+    LOG(INFO) << elapsed_time;
   }
 
   LOG(INFO) << "Summary:\n"

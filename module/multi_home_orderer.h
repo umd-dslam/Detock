@@ -32,7 +32,6 @@ class MultiHomeOrderer : public NetworkedModule {
 
  private:
   void ProcessForwardBatch(EnvelopePtr&& env);
-  void ProcessStatsRequest(const internal::StatsRequest& stats_request);
 
   void NewBatch();
   BatchId batch_id() const { return batch_id_counter_ * kMaxNumMachines + config()->local_machine_id(); }
@@ -45,10 +44,7 @@ class MultiHomeOrderer : public NetworkedModule {
 
   BatchLog multi_home_batch_log_;
 
-  bool collecting_stats_;
   std::chrono::steady_clock::time_point batch_starting_time_;
-  std::vector<int> stat_batch_sizes_;
-  std::vector<float> stat_batch_durations_ms_;
 };
 
 }  // namespace slog
