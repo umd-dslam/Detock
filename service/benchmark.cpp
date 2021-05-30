@@ -221,7 +221,7 @@ void WriteMetadata(const Workload& workload) {
   }
 
   CSVWriter metadata_json(FLAGS_out_dir + "/metadata.csv", columns);
-  metadata_json << FLAGS_duration << FLAGS_txns << FLAGS_rate << FLAGS_clients << FLAGS_sample << workload.name();
+  metadata_json << FLAGS_duration << FLAGS_txns << FLAGS_clients << FLAGS_rate << FLAGS_sample << workload.name();
   for (const auto& k : param_keys) {
     metadata_json << workload.params().GetString(k);
   }
@@ -345,7 +345,6 @@ int main(int argc, char* argv[]) {
     }
     auto elapsed_time = static_cast<float>(generator->elapsed_time().count()) / 1000000000;
     avg_tps += (summary.committed - prev_committed) / elapsed_time;
-    LOG(INFO) << elapsed_time;
   }
 
   LOG(INFO) << "Summary:\n"
