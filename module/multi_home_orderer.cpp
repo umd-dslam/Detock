@@ -125,15 +125,6 @@ void MultiHomeOrderer::AddToBatch(Transaction* txn) {
 
     batch_starting_time_ = std::chrono::steady_clock::now();
   }
-
-  // Batch size is larger than the maximum size, send the batch immediately
-  auto max_batch_size = config()->sequencer_max_batch_size();
-  if (max_batch_size > 0 && batch_size_ >= max_batch_size) {
-    // Assumption: there is at most one timed callback at all time
-    ClearTimedCallbacks();
-    SendBatch();
-    NewBatch();
-  }
 }
 
 void MultiHomeOrderer::SendBatch() {

@@ -138,14 +138,6 @@ void Forwarder::ProcessForwardTxn(EnvelopePtr&& env) {
     NewTimedCallback(config()->forwarder_batch_duration(), [this]() { SendLookupMasterRequestBatch(); });
     batch_starting_time_ = std::chrono::steady_clock::now();
   }
-
-  // Batch size is larger than the maximum size, send the batch immediately
-  auto max_batch_size = config()->forwarder_max_batch_size();
-  if (max_batch_size > 0 && batch_size_ >= max_batch_size) {
-    // Assumption: there is at most one timed callback at all time
-    ClearTimedCallbacks();
-    SendLookupMasterRequestBatch();
-  }
 }
 
 void Forwarder::SendLookupMasterRequestBatch() {

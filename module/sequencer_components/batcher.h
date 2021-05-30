@@ -39,7 +39,6 @@ class Batcher : public NetworkedModule {
   std::vector<std::unique_ptr<internal::Batch>> partitioned_batch_;
   BatchId batch_id_counter_;
   int batch_size_;
-  std::optional<int> send_batch_callback_id_;
   std::chrono::steady_clock::time_point batch_starting_time_;
 
   std::mt19937 rg_;

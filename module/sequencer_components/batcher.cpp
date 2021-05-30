@@ -120,22 +120,11 @@ void Batcher::BatchTxn(Transaction* txn) {
 
   // If this is the first txn in the batch, schedule to send the batch at a later time
   if (batch_size_ == 1) {
-    send_batch_callback_id_ = NewTimedCallback(config()->sequencer_batch_duration(), [this]() {
+    NewTimedCallback(config()->sequencer_batch_duration(), [this]() {
       SendBatch();
       NewBatch();
-      send_batch_callback_id_.reset();
     });
     batch_starting_time_ = std::chrono::steady_clock::now();
-  }
-
-  // Batch size is larger than the maximum size, send the batch immediately
-  auto max_batch_size = config()->sequencer_max_batch_size();
-  if (max_batch_size > 0 && batch_size_ >= max_batch_size) {
-    RemoveTimedCallback(send_batch_callback_id_.value());
-    send_batch_callback_id_.reset();
-
-    SendBatch();
-    NewBatch();
   }
 }
 
@@ -241,7 +230,6 @@ EnvelopePtr Batcher::NewBatchRequest(internal::Batch* batch) {
  *    seq_process_future_txn_callback_id: int,
  *    seq_future_txns: [[int64, uint64]],
  *    seq_batch_size: int,
- *    seq_send_batch_callback_id: int
  * }
  */
 void Batcher::ProcessStatsRequest(const internal::StatsRequest& stats_request) {
@@ -255,7 +243,6 @@ void Batcher::ProcessStatsRequest(const internal::StatsRequest& stats_request) {
 
   stats.AddMember(StringRef(SEQ_PROCESS_FUTURE_TXN_CALLBACK_ID), process_future_txn_callback_id_.value_or(-1), alloc);
   stats.AddMember(StringRef(SEQ_BATCH_SIZE), batch_size_, alloc);
-  stats.AddMember(StringRef(SEQ_SEND_BATCH_CALLBACK_ID), send_batch_callback_id_.value_or(-1), alloc);
   {
     std::lock_guard<SpinLatch> guard(future_txns_mut_);
     stats.AddMember(StringRef(SEQ_NUM_FUTURE_TXNS), future_txns_.size(), alloc);
