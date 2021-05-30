@@ -72,6 +72,4 @@ Poller::Handle Poller::AddTimedCallback(microseconds timeout, std::function<void
 
 void Poller::RemoveTimedCallback(const Poller::Handle& id) { timed_callbacks_.erase(id); }
 
-void Poller::ClearTimedCallbacks() { timed_callbacks_ = {}; }
-
 }  // namespace slog

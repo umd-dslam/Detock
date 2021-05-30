@@ -75,7 +75,6 @@ class NetworkedModule : public Module {
   // Returns the callback's id
   Poller::Handle NewTimedCallback(std::chrono::microseconds timeout, std::function<void()>&& cb);
   void RemoveTimedCallback(const Poller::Handle& handle);
-  void ClearTimedCallbacks();
 
   const std::shared_ptr<zmq::context_t> context() const { return context_; }
   const ConfigurationPtr& config() const { return config_; }

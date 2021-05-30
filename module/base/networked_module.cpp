@@ -182,6 +182,4 @@ Poller::Handle NetworkedModule::NewTimedCallback(std::chrono::microseconds timeo
 
 void NetworkedModule::RemoveTimedCallback(const Poller::Handle& id) { poller_.RemoveTimedCallback(id); }
 
-void NetworkedModule::ClearTimedCallbacks() { poller_.ClearTimedCallbacks(); }
-
 }  // namespace slog

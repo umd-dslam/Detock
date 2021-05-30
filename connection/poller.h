@@ -26,8 +26,6 @@ class Poller {
   Handle AddTimedCallback(std::chrono::microseconds timeout, std::function<void()>&& cb);
   void RemoveTimedCallback(const Handle& id);
 
-  void ClearTimedCallbacks();
-
  private:
   std::optional<std::chrono::microseconds> poll_timeout_;
   std::vector<zmq::pollitem_t> poll_items_;
