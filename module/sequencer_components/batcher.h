@@ -20,7 +20,7 @@ class Batcher : public NetworkedModule {
   void OnInternalRequestReceived(EnvelopePtr&& env) final;
 
  private:
-  using Timestamp = std::pair<int64_t, uint32_t>;
+  using Timestamp = std::pair<int64_t, TxnId>;
 
   void ProcessReadyFutureTxns();
   void NewBatch();
