@@ -59,22 +59,28 @@ def install_docker(instance_ips):
         LOG.info(message)
 
 
-def print_instance_ips(instance_ips):
-    print("\n================== IP ADDRESSES ==================\n")
+def print_instance_ips(instance_ips, label="IP ADDRESSES"):
+    print(f"\n================== {label} ==================\n")
     print(json.dumps(instance_ips, indent=2))
 
 
-def print_slog_config_fragment(instance_ips, num_clients):
+def print_slog_config_fragment(instance_public_ips, instance_private_ips, num_clients):
     print("\n================== SLOG CONFIG FRAGMENT ==================\n")
-    ip_groups = instance_ips.values()
     slog_configs = []
-    for _, ips in enumerate(ip_groups):
-        client_ips, server_ips = ips[:num_clients], ips[num_clients:]
-        servers = [f'  addresses: "{ip}"' for ip in server_ips]
+    for region in instance_public_ips:
+        public_ips = instance_public_ips[region]
+        private_ips = instance_private_ips[region]
+        private_server_ips = private_ips[num_clients:]
+        client_ips, public_server_ips = public_ips[:num_clients], public_ips[num_clients:]
+
+        private_server_ips_str = [f'  addresses: "{ip}"' for ip in private_server_ips]
+        public_server_ips_str = [f'  public_addresses: "{ip}"' for ip in public_server_ips]
         clients = [f'  client_addresses: "{ip}"' for ip in client_ips]
         slog_configs.append(
             'replicas: {\n' + 
-                '\n'.join(servers) +
+                '\n'.join(private_server_ips_str) +
+                '\n' +
+                '\n'.join(public_server_ips_str) +
                 '\n' +
                 '\n'.join(clients) +
             '\n}'
@@ -201,7 +207,8 @@ class CreateSpotClusterCommand(AWSCommand):
                 LOG.error('%s: Fleet failed to start', region)
 
         # Wait until status check is OK then collect IP addresses
-        instance_ips = {}
+        instance_public_ips = {}
+        instance_private_ips = {}
         for region in regions:
             if region not in instance_ids:
                 LOG.warn('%s: Skip fetching IP addresses', region)
@@ -217,17 +224,50 @@ class CreateSpotClusterCommand(AWSCommand):
 
                 LOG.info("%s: Collecting IP addresses", region)
                 response = ec2.describe_instances(InstanceIds=ids)
-                instance_ips[region] = []
+                instance_public_ips[region] = []
+                instance_private_ips[region] = []
                 for r in response['Reservations']:
-                    instance_ips[region] += [
+                    instance_public_ips[region] += [
                         i['PublicIpAddress'].strip() for i in r['Instances']
+                    ]
+                    instance_private_ips[region] += [
+                        i["PrivateIpAddress"].strip() for i in r["Instances"]
                     ]
             except Exception as e:
                 LOG.exception(region, e)
-        
-        install_docker(instance_ips)
-        print_instance_ips(instance_ips)
-        print_slog_config_fragment(instance_ips, args.clients)
+
+        install_docker(instance_public_ips)
+        print_instance_ips(instance_public_ips, "PUBLIC IP ADDRESSES")
+        print_instance_ips(instance_private_ips, "PRIVATE IP ADDRESSES")
+        print_slog_config_fragment(instance_public_ips, instance_private_ips, args.clients)
+
+
+class DestroySpotClusterCommand(AWSCommand):
+
+    NAME = "stop"
+    HELP = "Destroy a spot clusters from given configurations"
+
+    def add_arguments(self, parser):
+        super().add_arguments(parser)
+        parser.add_argument(
+            "--dry-run", action="store_true", help="Run the command without actually destroying the clusters"
+        )
+
+    def initialize_and_do_command(self, args):
+        for region in args.regions:
+            ec2 = boto3.client('ec2', region_name=region)
+            response = ec2.describe_spot_fleet_requests()
+            spot_fleet_requests_ids = [
+                config['SpotFleetRequestId'] for config in
+                response['SpotFleetRequestConfigs']
+                if config['SpotFleetRequestState'] in ['submitted', 'active', 'modifying']
+            ]
+            LOG.info("%s: Cancelling request IDs: %s", region, spot_fleet_requests_ids)
+            if not args.dry_run:
+                if len(spot_fleet_requests_ids) > 0:
+                    ec2.cancel_spot_fleet_requests(
+                        SpotFleetRequestIds=spot_fleet_requests_ids, TerminateInstances=True
+                    )
 
 
 class DestroySpotClusterCommand(AWSCommand):
@@ -276,7 +316,8 @@ class InstallDockerCommand(AWSCommand):
             LOG.error("Must provide at least one region with --regions")
             return
 
-        instance_ips = {}
+        instance_public_ips = {}
+        instance_private_ips = {}
         for region in args.regions:
             ec2 = boto3.client('ec2', region_name=region)
             try:
@@ -284,19 +325,24 @@ class InstallDockerCommand(AWSCommand):
                     Filters=[{'Name': 'instance-state-name', 'Values': ['running']}]
                 )
                 LOG.info("%s: Collecting IP addresses", region)
-                instance_ips[region] = []
+                instance_public_ips[region] = []
+                instance_private_ips[region] = []
                 for r in running_instances['Reservations']:
-                    instance_ips[region] += [
+                    instance_public_ips[region] += [
                         i['PublicIpAddress'].strip() for i in r['Instances']
+                    ]
+                    instance_private_ips[region] += [
+                        i["PrivateIpAddress"].strip() for i in r["Instances"]
                     ]
             except Exception as e:
                 LOG.exception(region, e)
         
         if not args.dry_run:
-            install_docker(instance_ips)
+            install_docker(instance_public_ips)
 
-        print_instance_ips(instance_ips)
-        print_slog_config_fragment(instance_ips, args.clients)
+        print_instance_ips(instance_public_ips, "PUBLIC IP ADDRESSES")
+        print_instance_ips(instance_private_ips, "PRIVATE IP ADDRESSES")
+        print_slog_config_fragment(instance_public_ips, instance_private_ips, args.clients)
 
 
 class ListInstancesCommand(AWSCommand):
@@ -335,6 +381,7 @@ class ListInstancesCommand(AWSCommand):
                         for i in r['Instances']:
                             info.append([
                                 i.get('PublicIpAddress', ''),
+                                i.get('PrivateIpAddress', ''),
                                 i['State']['Name'],
                                 i['Placement']['AvailabilityZone'],
                                 i['InstanceType'],
@@ -345,7 +392,7 @@ class ListInstancesCommand(AWSCommand):
                     LOG.exception(region, e)
 
             print(tabulate(info, headers=[
-                "Public IP", "State", "Availability Zone", "Type", "Security group", "Key"
+                "Public IP", "Private IP", "State", "Availability Zone", "Type", "Security group", "Key"
             ]))
         else:
             instance_ips = {}
