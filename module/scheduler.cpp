@@ -246,6 +246,8 @@ void Scheduler::Dispatch(TxnId txn_id, bool deadlocked, bool is_fast) {
     txn_holder.SetUndispatchable();
   }
 
+  txn_holder.IncNumDispatches();
+
   if (is_fast) {
     RECORD(txn_holder.txn().mutable_internal(), TransactionEvent::DISPATCHED_FAST);
   } else {
@@ -349,7 +351,8 @@ void Scheduler::ProcessStatsRequest(const internal::StatsRequest& stats_request)
           .AddMember(StringRef(TXN_DONE), txn_holder.is_done(), alloc)
           .AddMember(StringRef(TXN_ABORTING), txn_holder.is_aborting(), alloc)
           .AddMember(StringRef(TXN_NUM_LO), txn_holder.num_lock_only_txns(), alloc)
-          .AddMember(StringRef(TXN_EXPECTED_NUM_LO), txn_holder.expected_num_lock_only_txns(), alloc);
+          .AddMember(StringRef(TXN_EXPECTED_NUM_LO), txn_holder.expected_num_lock_only_txns(), alloc)
+          .AddMember(StringRef(TXN_NUM_DISPATCHES), txn_holder.num_dispatches(), alloc);
       txns.PushBack(txn_obj, alloc);
     }
     stats.AddMember(StringRef(ALL_TXNS), txns, alloc);
