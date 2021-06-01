@@ -21,11 +21,13 @@ def generate_config(template_path: str, settings: dict):
     with open(template_path, "r") as f:
         text_format.Parse(f.read(), config)
 
-    regions = settings['servers'].keys()
+    regions = settings['servers_private'].keys()
     for r in regions:
         replica = Replica()
-        servers = [addr.encode() for addr in settings['servers'][r]]
-        replica.addresses.extend(servers)
+        servers_private = [addr.encode() for addr in settings['servers_private'][r]]
+        replica.addresses.extend(servers_private)
+        servers_public = [addr.encode() for addr in settings['servers_public'][r]]
+        replica.public_addresses.extend(servers_public)
         clients = [addr.encode() for addr in settings['clients'][r]]
         replica.client_addresses.extend(clients)
         config.replicas.append(replica)
