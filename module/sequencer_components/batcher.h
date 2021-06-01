@@ -27,8 +27,7 @@ class Batcher : public NetworkedModule {
   void BatchTxn(Transaction* txn);
   BatchId batch_id() const;
   void SendBatch();
-  bool SendBatchDelayed();
-  EnvelopePtr NewBatchRequest(internal::Batch* batch);
+  EnvelopePtr NewBatchForwardingMessage(std::vector<internal::Batch*>&& batch);
 
   void ProcessStatsRequest(const internal::StatsRequest& stats_request);
 
