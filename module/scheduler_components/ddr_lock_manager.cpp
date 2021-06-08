@@ -518,7 +518,7 @@ vector<TxnId> DDRLockManager::GetReadyTxns() {
 AcquireLocksResult DDRLockManager::AcquireLocks(const Transaction& txn) {
   auto txn_id = txn.internal().id();
   auto home = txn.internal().home();
-  auto is_remaster = txn.procedure_case() == Transaction::kRemaster;
+  auto is_remaster = txn.program_case() == Transaction::kRemaster;
   // The txn may contain keys that are homed in a remote replica. This variable
   // counts the keys homed in the current replica.
   int num_relevant_locks = 0;

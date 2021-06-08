@@ -101,9 +101,7 @@ class SchedulerTest : public ::testing::Test {
 TEST_F(SchedulerTest, SinglePartitionTransaction) {
   auto txn = MakeTestTransaction(test_slogs[0]->config(), 1000,
                                  {{"A", KeyType::READ, {{0, 1}}}, {"D", KeyType::WRITE, {{0, 1}}}},
-                                 "GET A     \n"
-                                 "SET D newD\n",
-                                 MakeMachineId(0, 1));
+                                 {{"GET", "A"}, {"SET", "D", "newD"}}, {}, MakeMachineId(0, 1));
 
   SendTransaction(txn);
 
@@ -119,8 +117,9 @@ TEST_F(SchedulerTest, SinglePartitionTransaction) {
 }
 
 TEST_F(SchedulerTest, MultiPartitionTransaction1Active1Passive) {
-  auto txn = MakeTestTransaction(test_slogs[0]->config(), 1000,
-                                 {{"A", KeyType::READ, {{0, 1}}}, {"C", KeyType::WRITE, {{0, 1}}}}, "COPY A C");
+  auto txn =
+      MakeTestTransaction(test_slogs[0]->config(), 1000,
+                          {{"A", KeyType::READ, {{0, 1}}}, {"C", KeyType::WRITE, {{0, 1}}}}, {{"COPY", "A", "C"}});
 
   SendTransaction(txn);
 
@@ -138,8 +137,7 @@ TEST_F(SchedulerTest, MultiPartitionTransaction1Active1Passive) {
 TEST_F(SchedulerTest, MultiPartitionTransactionMutualWait2Partitions) {
   auto txn = MakeTestTransaction(test_slogs[0]->config(), 1000,
                                  {{"B", KeyType::WRITE, {{0, 1}}}, {"C", KeyType::WRITE, {{0, 1}}}},
-                                 "COPY C B\n"
-                                 "COPY B C\n");
+                                 {{"COPY", "C", "B"}, {"COPY", "B", "C"}});
 
   SendTransaction(txn);
 
@@ -159,9 +157,7 @@ TEST_F(SchedulerTest, MultiPartitionTransactionWriteOnly) {
   auto txn = MakeTestTransaction(
       test_slogs[0]->config(), 1000,
       {{"A", KeyType::WRITE, {{0, 1}}}, {"B", KeyType::WRITE, {{0, 1}}}, {"C", KeyType::WRITE, {{0, 1}}}},
-      "SET A newA\n"
-      "SET B newB\n"
-      "SET C newC\n");
+      {{"SET", "A", "newA"}, {"SET", "B", "newB"}, {"SET", "C", "newC"}});
 
   SendTransaction(txn);
 
@@ -184,9 +180,7 @@ TEST_F(SchedulerTest, MultiPartitionTransactionReadOnly) {
   auto txn = MakeTestTransaction(
       test_slogs[0]->config(), 1000,
       {{"D", KeyType::READ, {{0, 1}}}, {"E", KeyType::READ, {{0, 1}}}, {"F", KeyType::READ, {{0, 1}}}},
-      "GET D\n"
-      "GET E\n"
-      "GET F\n");
+      {{"GET", "D"}, {"GET", "E"}, {"GET", "F"}});
 
   SendTransaction(txn);
 
@@ -203,19 +197,15 @@ TEST_F(SchedulerTest, MultiPartitionTransactionReadOnly) {
 }
 
 TEST_F(SchedulerTest, SimpleMultiHomeBatch) {
-  auto txn = MakeTestTransaction(test_slogs[0]->config(), 1000,
-                                 {{"A", KeyType::READ, {{0, 1}}},
-                                  {"X", KeyType::READ, {{1, 1}}},
-                                  {"C", KeyType::READ, {{0, 1}}},
-                                  {"B", KeyType::WRITE, {{0, 1}}},
-                                  {"Y", KeyType::WRITE, {{1, 1}}},
-                                  {"Z", KeyType::WRITE, {{1, 1}}}},
-                                 "GET A\n"
-                                 "GET X\n"
-                                 "GET C\n"
-                                 "SET B newB\n"
-                                 "SET Y newY\n"
-                                 "SET Z newZ\n");
+  auto txn = MakeTestTransaction(
+      test_slogs[0]->config(), 1000,
+      {{"A", KeyType::READ, {{0, 1}}},
+       {"X", KeyType::READ, {{1, 1}}},
+       {"C", KeyType::READ, {{0, 1}}},
+       {"B", KeyType::WRITE, {{0, 1}}},
+       {"Y", KeyType::WRITE, {{1, 1}}},
+       {"Z", KeyType::WRITE, {{1, 1}}}},
+      {{"GET", "A"}, {"GET", "X"}, {"GET", "C"}, {"SET", "B", "newB"}, {"SET", "Y", "newY"}, {"SET", "Z", "newZ"}});
 
   auto lo_txn_0 = GenerateLockOnlyTxn(txn, 0);
   auto lo_txn_1 = GenerateLockOnlyTxn(txn, 1);
@@ -249,9 +239,7 @@ TEST_F(SchedulerTest, SimpleMultiHomeBatch) {
 TEST_F(SchedulerTest, SinglePartitionTransactionValidateMasters) {
   auto txn = MakeTestTransaction(test_slogs[0]->config(), 1000,
                                  {{"A", KeyType::READ, {{0, 1}}}, {"D", KeyType::WRITE, {{0, 1}}}},
-                                 "GET A     \n"
-                                 "SET D newD\n",
-                                 MakeMachineId(0, 1));
+                                 {{"GET", "A"}, {"SET", "D", "newD"}}, {}, MakeMachineId(0, 1));
 
   SendTransaction(txn);
 
@@ -270,7 +258,7 @@ TEST_F(SchedulerTest, SinglePartitionTransactionValidateMasters) {
 TEST_F(SchedulerTest, SinglePartitionTransactionProcessRemaster) {
   auto remaster_txn = MakeTestTransaction(test_slogs[0]->config(), 2000, {{"A", KeyType::WRITE, {{0, 1}}}},
                                           1 /* remaster */, MakeMachineId(0, 1));
-  auto txn = MakeTestTransaction(test_slogs[0]->config(), 1000, {{"A", KeyType::READ, {{1, 2}}}}, "GET A",
+  auto txn = MakeTestTransaction(test_slogs[0]->config(), 1000, {{"A", KeyType::READ, {{1, 2}}}}, {{"GET", "A"}}, {},
                                  MakeMachineId(0, 0));
 
   SendTransaction(txn);
@@ -294,16 +282,17 @@ TEST_F(SchedulerTest, SinglePartitionTransactionProcessRemaster) {
 
 #ifdef REMASTER_PROTOCOL_COUNTERLESS
 TEST_F(SchedulerTest, SinglePartitionTransactionProcessRemaster) {
-  auto remaster_txn = MakeTestTransaction(test_slogs[0]->config(), 1000, {{"A", KeyType::WRITE, 0}}, 1, /* new master */
-                                          MakeMachineId(0, 1));
+  auto remaster_txn =
+      MakeTestTransaction(test_slogs[0]->config(), 1000, {{"A", KeyType::WRITE, 0}}, {}, 1, /* new master */
+                          MakeMachineId(0, 1));
 
   auto remaster_txn_lo_0 = GenerateLockOnlyTxn(remaster_txn, 0);
   auto remaster_txn_lo_1 = GenerateLockOnlyTxn(remaster_txn, 1);
 
   delete remaster_txn;
 
-  auto txn =
-      MakeTestTransaction(test_slogs[0]->config(), 2000, {{"A", KeyType::READ, 1}}, "GET A", MakeMachineId(0, 0));
+  auto txn = MakeTestTransaction(test_slogs[0]->config(), 2000, {{"A", KeyType::READ, 1}}, {{"GET A"}}, {},
+                                 MakeMachineId(0, 0));
 
   SendTransaction(remaster_txn_lo_1);
   SendTransaction(remaster_txn_lo_0);
@@ -325,7 +314,7 @@ TEST_F(SchedulerTest, SinglePartitionTransactionProcessRemaster) {
 #endif /* REMASTERING_PROTOCOL_COUNTERLESS */
 
 TEST_F(SchedulerTest, AbortSingleHomeSinglePartition) {
-  auto txn = MakeTestTransaction(test_slogs[0]->config(), 1000, {{"A", KeyType::READ, {{1, 0}}}}, "GET A",
+  auto txn = MakeTestTransaction(test_slogs[0]->config(), 1000, {{"A", KeyType::READ, {{1, 0}}}}, {{"GET", "A"}}, {},
                                  MakeMachineId(0, 1));
 
   SendTransaction(txn);
@@ -356,9 +345,7 @@ TEST_F(SchedulerTest, AbortMultiHomeSinglePartition) {
 TEST_F(SchedulerTest, AbortSingleHomeMultiPartition) {
   auto txn = MakeTestTransaction(test_slogs[0]->config(), 1000,
                                  {{"A", KeyType::READ, {{1, 0}}}, {"X", KeyType::WRITE, {{1, 1}}}},
-                                 "GET A     \n"
-                                 "SET X newC    \n",
-                                 MakeMachineId(0, 1));
+                                 {{"GET", "A"}, {"SET", "X", "newC"}}, {}, MakeMachineId(0, 1));
 
   SendTransaction(txn);
 
@@ -371,10 +358,7 @@ TEST_F(SchedulerTest, AbortSingleHomeMultiPartition2Active) {
   auto txn = MakeTestTransaction(
       test_slogs[0]->config(), 1000,
       {{"Y", KeyType::READ, {{1, 1}}}, {"C", KeyType::WRITE, {{1, 0}}}, {"B", KeyType::WRITE, {{1, 0}}}},
-      "GET Y     \n"
-      "SET C newC    \n"
-      "SET B newB    \n",
-      MakeMachineId(0, 1));
+      {{"GET", "Y"}, {"SET", "C", "newC"}, {"SET", "B", "newB"}}, {}, MakeMachineId(0, 1));
 
   SendTransaction(txn);
 
@@ -419,15 +403,16 @@ class SchedulerTestWithDeadlockResolver : public SchedulerTest {
 };
 
 TEST_F(SchedulerTestWithDeadlockResolver, PartitionedDeadlock) {
-  auto txn1 =
-      MakeTestTransaction(test_slogs[0]->config(), 1000,
-                          {{"A", KeyType::READ, {{0, 1}}}, {"X", KeyType::WRITE, {{1, 1}}}}, "GET A SET X test", 0);
+  auto txn1 = MakeTestTransaction(test_slogs[0]->config(), 1000,
+                                  {{"A", KeyType::READ, {{0, 1}}}, {"X", KeyType::WRITE, {{1, 1}}}},
+                                  {{"GET", "A"}, {"SET", "X", "test"}}, {}, 0);
   auto lo_txn_1_0 = GenerateLockOnlyTxn(txn1, 0);
   auto lo_txn_1_1 = GenerateLockOnlyTxn(txn1, 1);
   delete txn1;
 
   auto txn2 = MakeTestTransaction(test_slogs[0]->config(), 2000,
-                                  {{"A", KeyType::WRITE, {{0, 1}}}, {"X", KeyType::READ, {{1, 1}}}}, "COPY X A", 1);
+                                  {{"A", KeyType::WRITE, {{0, 1}}}, {"X", KeyType::READ, {{1, 1}}}},
+                                  {{"COPY", "X", "A"}}, {}, 1);
   auto lo_txn_2_0 = GenerateLockOnlyTxn(txn2, 0);
   auto lo_txn_2_1 = GenerateLockOnlyTxn(txn2, 1);
   delete txn2;

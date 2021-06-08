@@ -64,7 +64,7 @@ class Configuration {
   std::vector<int> cpu_pinnings(ModuleId module) const;
   bool return_dummy_txn() const;
   int recv_retries() const;
-  internal::Commands commands() const;
+  internal::ExecutionType execution_type() const;
   const std::vector<uint32_t> replication_order() const;
   bool synchronized_batching() const;
   const internal::MetricOptions& metric_options() const;
