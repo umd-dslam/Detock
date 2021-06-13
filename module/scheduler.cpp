@@ -153,6 +153,10 @@ void Scheduler::ProcessTransaction(EnvelopePtr&& env) {
             << txn->internal().home() << ")";
   }
 
+  if (txn->status() == TransactionStatus::ABORTED || txn->status() == TransactionStatus::RESTARTED) {
+    TriggerPreDispatchAbort(txn_id, txn->status() == TransactionStatus::RESTARTED);
+  }
+
   if (holder.is_aborting()) {
     if (holder.is_ready_for_gc()) {
       active_txns_.erase(holder_it);
@@ -269,14 +273,16 @@ void Scheduler::Dispatch(TxnId txn_id, bool deadlocked, bool is_fast) {
 // Disable pre-dispatch abort when DDR is used. Removing this method is sufficient to disable the
 // whole mechanism
 #ifdef LOCK_MANAGER_DDR
-void Scheduler::TriggerPreDispatchAbort(TxnId) {}
+void Scheduler::TriggerPreDispatchAbort(TxnId, bool) {}
 #else
-void Scheduler::TriggerPreDispatchAbort(TxnId txn_id) {
+void Scheduler::TriggerPreDispatchAbort(TxnId txn_id, bool restarted) {
   auto active_txn_it = active_txns_.find(txn_id);
   CHECK(active_txn_it != active_txns_.end());
   auto& txn_holder = active_txn_it->second;
 
-  CHECK(!txn_holder.is_aborting()) << "Abort was triggered twice: " << txn_id;
+  if (txn_holder.is_aborting()) {
+    return;
+  }
 
   VLOG(2) << "Triggering pre-dispatch abort of txn " << txn_id;
 
@@ -303,7 +309,7 @@ void Scheduler::TriggerPreDispatchAbort(TxnId txn_id) {
   }
 
   // Let a worker handle notifying other partitions and send back to the server.
-  txn.set_status(TransactionStatus::ABORTED);
+  txn.set_status(restarted ? TransactionStatus::RESTARTED : TransactionStatus::ABORTED);
   Dispatch(txn_id, false, false);
 }
 #endif /* LOCK_MANAGER_DDR */

@@ -194,11 +194,12 @@ void Server::OnInternalRequestReceived(EnvelopePtr&& env) {
 
 void Server::ProcessCompletedSubtxn(EnvelopePtr&& env) {
   auto completed_subtxn = env->mutable_request()->mutable_completed_subtxn();
-  auto txn_internal = completed_subtxn->mutable_txn()->mutable_internal();
+  auto txn = completed_subtxn->mutable_txn();
+  auto txn_internal = txn->mutable_internal();
 
   RECORD(txn_internal, TransactionEvent::RETURN_TO_SERVER);
 
-  auto txn_id = completed_subtxn->txn().internal().id();
+  auto txn_id = txn_internal->id();
   if (pending_responses_.count(txn_id) == 0) {
     return;
   }

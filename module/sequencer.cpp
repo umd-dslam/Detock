@@ -53,25 +53,36 @@ void Sequencer::ProcessForwardRequest(EnvelopePtr&& env) {
 
   txn_internal->set_mh_arrive_at_home_time(now);
 
-  if (txn_internal->timestamp() <= now) {
-    VLOG(3) << "Txn " << txn_internal->id() << " has expired or up-to-date timestamp";
+  if (config()->bypass_mh_orderer() && config()->synchronized_batching()) {
+    if (txn_internal->timestamp() <= now) {
+      VLOG(3) << "Txn " << txn_internal->id() << " has expired or up-to-date timestamp";
 
+#if !defined(LOCK_MANAGER_DDR)
+      // If not using DDR, restart the transaction
+      txn->set_status(TransactionStatus::RESTARTED);
+#endif
+
+      // Put to batch immediately
+      txn_internal->set_mh_enter_local_batch_time(now);
+      Send(move(env), kBatcherChannel);
+    } else {
+      VLOG(3) << "Txn " << txn_internal->id() << " has a timestamp " << (txn_internal->timestamp() - now) / 1000
+              << " us into the future";
+
+      // Put into a sorted buffer and wait until local clock reaches the txn's timestamp.
+      // Send a signal to the batcher if the earliest time in the buffer has changed, so that
+      // the batcher is rescheduled to wake up at this ealier time
+      bool signal_needed = batcher_->BufferFutureTxn(env->mutable_request()->mutable_forward_txn()->release_txn());
+      if (signal_needed) {
+        auto env = NewEnvelope();
+        env->mutable_request()->mutable_signal();
+        Send(move(env), kBatcherChannel);
+      }
+    }
+  } else {
     // Put to batch immediately
     txn_internal->set_mh_enter_local_batch_time(now);
     Send(move(env), kBatcherChannel);
-  } else {
-    VLOG(3) << "Txn " << txn_internal->id() << " has a timestamp " << (txn_internal->timestamp() - now) / 1000
-            << " us into the future";
-
-    // Put into a sorted buffer and wait until local clock reaches the txn's timestamp.
-    // Send a signal to the batcher if the earliest time in the buffer has changed, so that
-    // the batcher is rescheduled to wake up at this ealier time
-    bool signal_needed = batcher_->BufferFutureTxn(env->mutable_request()->mutable_forward_txn()->release_txn());
-    if (signal_needed) {
-      auto env = NewEnvelope();
-      env->mutable_request()->mutable_signal();
-      Send(move(env), kBatcherChannel);
-    }
   }
 }
 

@@ -11,6 +11,7 @@ enum TransactionStatus {
     NOT_STARTED = 0;
     COMMITTED = 1;
     ABORTED = 2;
+    RESTARTED = 3;
 }
 
 enum KeyType {

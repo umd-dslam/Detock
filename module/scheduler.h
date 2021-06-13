@@ -86,7 +86,7 @@ class Scheduler : public NetworkedModule {
    *
    * Before the transaction data is erased, we wait to collect all lock-onlys of a multi-home txn
    */
-  void TriggerPreDispatchAbort(TxnId txn_id);
+  void TriggerPreDispatchAbort(TxnId txn_id, bool restarted = false);
 
   void MaybeCleanUpTxn(TxnId txn_id);
 
