@@ -62,6 +62,14 @@ Configuration::Configuration(const internal::Configuration& config, const string
   CHECK_NE(config_.forwarder_port(), 0) << "Forwarder port must be set";
   CHECK_NE(config_.sequencer_port(), 0) << "Sequencer port must be set";
 
+#ifdef LOCK_MANAGER_DDR
+  CHECK(!config_.bypass_mh_orderer() || config_.ddr_interval() > 0)
+      << "Deadlock resolver must be enabled in orderer-bypassing mode";
+#else
+  CHECK(!config_.bypass_mh_orderer() || config_.synchronized_batching())
+      << "Batching by timestamp must be enabled in orderer-bypassing mode";
+#endif
+
   bool local_address_is_valid = local_address_.empty();
   for (int r = 0; r < config_.replicas_size(); r++) {
     auto& replica = config_.replicas(r);

@@ -192,6 +192,7 @@ class E2ETestBypassMHOrderer : public E2ETest {
   internal::Configuration CustomConfig() final {
     internal::Configuration config;
     config.set_bypass_mh_orderer(true);
+    config.set_ddr_interval(10);
     return config;
   }
 };
