@@ -192,7 +192,11 @@ class E2ETestBypassMHOrderer : public E2ETest {
   internal::Configuration CustomConfig() final {
     internal::Configuration config;
     config.set_bypass_mh_orderer(true);
+#ifdef LOCK_MANAGER_DDR
     config.set_ddr_interval(10);
+#else
+    config.set_synchronized_batching(true);
+#endif
     return config;
   }
 };
