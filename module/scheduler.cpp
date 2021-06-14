@@ -153,8 +153,8 @@ void Scheduler::ProcessTransaction(EnvelopePtr&& env) {
             << txn->internal().home() << ")";
   }
 
-  if (txn->status() == TransactionStatus::ABORTED || txn->status() == TransactionStatus::RESTARTED) {
-    TriggerPreDispatchAbort(txn_id, txn->status() == TransactionStatus::RESTARTED);
+  if (txn->status() == TransactionStatus::ABORTED) {
+    TriggerPreDispatchAbort(txn_id, txn->abort_reason());
   }
 
   if (holder.is_aborting()) {
@@ -179,7 +179,7 @@ void Scheduler::SendToRemasterManager(Transaction& txn) {
       break;
     }
     case VerifyMasterResult::ABORT: {
-      TriggerPreDispatchAbort(txn.internal().id());
+      TriggerPreDispatchAbort(txn.internal().id(), "failed remaster validation");
       break;
     }
     case VerifyMasterResult::WAITING: {
@@ -273,9 +273,9 @@ void Scheduler::Dispatch(TxnId txn_id, bool deadlocked, bool is_fast) {
 // Disable pre-dispatch abort when DDR is used. Removing this method is sufficient to disable the
 // whole mechanism
 #ifdef LOCK_MANAGER_DDR
-void Scheduler::TriggerPreDispatchAbort(TxnId, bool) {}
+void Scheduler::TriggerPreDispatchAbort(TxnId, const std::string&) {}
 #else
-void Scheduler::TriggerPreDispatchAbort(TxnId txn_id, bool restarted) {
+void Scheduler::TriggerPreDispatchAbort(TxnId txn_id, const std::string& abort_reason) {
   auto active_txn_it = active_txns_.find(txn_id);
   CHECK(active_txn_it != active_txns_.end());
   auto& txn_holder = active_txn_it->second;
@@ -309,7 +309,8 @@ void Scheduler::TriggerPreDispatchAbort(TxnId txn_id, bool restarted) {
   }
 
   // Let a worker handle notifying other partitions and send back to the server.
-  txn.set_status(restarted ? TransactionStatus::RESTARTED : TransactionStatus::ABORTED);
+  txn.set_status(TransactionStatus::ABORTED);
+  txn.set_abort_reason(abort_reason);
   Dispatch(txn_id, false, false);
 }
 #endif /* LOCK_MANAGER_DDR */

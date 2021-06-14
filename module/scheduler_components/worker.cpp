@@ -180,7 +180,7 @@ void Worker::ReadLocalStorage(const RunId& run_id) {
       }
       case VerifyMasterResult::ABORT: {
         txn.set_status(TransactionStatus::ABORTED);
-        txn.set_abort_reason("Outdated counter");
+        txn.set_abort_reason("outdated counter");
         break;
       }
       case VerifyMasterResult::WAITING: {
@@ -201,13 +201,13 @@ void Worker::ReadLocalStorage(const RunId& run_id) {
         // stored in the transaction
         if (value.metadata().master() != record->metadata.master) {
           txn.set_status(TransactionStatus::ABORTED);
-          txn.set_abort_reason("Outdated master");
+          txn.set_abort_reason("outdated master");
           break;
         }
         value.set_value(record->to_string());
       } else if (txn.program_case() == Transaction::kRemaster) {
         txn.set_status(TransactionStatus::ABORTED);
-        txn.set_abort_reason("Remaster non-existent key " + key);
+        txn.set_abort_reason("remaster non-existent key " + key);
         break;
       }
     }

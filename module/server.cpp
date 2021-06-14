@@ -13,7 +13,7 @@ namespace {
 void ValidateTransaction(Transaction* txn) {
   txn->set_status(TransactionStatus::ABORTED);
   if (txn->keys().empty()) {
-    txn->set_abort_reason("Txn accesses no key");
+    txn->set_abort_reason("txn accesses no key");
     return;
   }
   txn->set_status(TransactionStatus::NOT_STARTED);
