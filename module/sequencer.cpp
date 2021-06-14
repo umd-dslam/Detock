@@ -55,7 +55,8 @@ void Sequencer::ProcessForwardRequest(EnvelopePtr&& env) {
 
   if (config()->bypass_mh_orderer() && config()->synchronized_batching()) {
     if (txn_internal->timestamp() <= now) {
-      VLOG(3) << "Txn " << txn_internal->id() << " has a timestamp " << (now - txn_internal->timestamp()) / 1000 << " us in the past";
+      VLOG(3) << "Txn " << txn_internal->id() << " has a timestamp " << (now - txn_internal->timestamp()) / 1000
+              << " us in the past";
 
 #if !defined(LOCK_MANAGER_DDR)
       // If not using DDR, restart the transaction

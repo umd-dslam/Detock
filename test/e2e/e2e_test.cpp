@@ -196,6 +196,8 @@ class E2ETestBypassMHOrderer : public E2ETest {
     config.set_ddr_interval(10);
 #else
     config.set_synchronized_batching(true);
+    // Artificially offset the txn timestamp far into the future to avoid abort
+    config.set_timestamp_buffer_us(500000);
 #endif
     return config;
   }

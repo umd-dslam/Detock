@@ -149,12 +149,12 @@ void RunBenchmark(vector<unique_ptr<ModuleRunner>>& generators) {
 }
 
 struct ResultWriters {
-  const vector<string> kTxnColumns = {"txn_id",    "coordinator", "replicas",   "partitions",
-                                      "generator", "sent_at",     "received_at"};
+  const vector<string> kTxnColumns = {"txn_id",    "coordinator", "replicas", "partitions",
+                                      "generator", "restarts",    "sent_at",  "received_at"};
   const vector<string> kEventsColumns = {"txn_id", "event", "time", "machine"};
-  const vector<string> kSummaryColumns = {"committed",       "aborted",    "not_started",
-                                          "single_home",     "multi_home", "single_partition",
-                                          "multi_partition", "remaster",   "elapsed_time"};
+  const vector<string> kSummaryColumns = {"committed",   "aborted",     "not_started",      "restarted",
+                                          "single_home", "multi_home",  "single_partition", "multi_partition",
+                                          "remaster",    "elapsed_time"};
 
   ResultWriters()
       : txns(FLAGS_out_dir + "/transactions.csv", kTxnColumns),
@@ -171,6 +171,7 @@ struct GeneratorSummary {
   int committed = 0;
   int aborted = 0;
   int not_started = 0;
+  int restarted = 0;
   int single_home = 0;
   int multi_home = 0;
   int single_partition = 0;
@@ -181,6 +182,7 @@ struct GeneratorSummary {
     committed += other.committed;
     aborted += other.aborted;
     not_started += other.not_started;
+    restarted += other.restarted;
     single_home += other.single_home;
     multi_home += other.multi_home;
     single_partition += other.single_partition;
@@ -193,6 +195,7 @@ struct GeneratorSummary {
     committed += info.txn->status() == TransactionStatus::COMMITTED;
     aborted += info.txn->status() == TransactionStatus::ABORTED;
     not_started += info.txn->status() == TransactionStatus::NOT_STARTED;
+    restarted += info.restarts > 0;
     single_home += info.txn->internal().type() == TransactionType::SINGLE_HOME;
     multi_home += info.txn->internal().type() == TransactionType::MULTI_HOME_OR_LOCK_ONLY;
     single_partition += info.txn->internal().involved_partitions_size() == 1;
@@ -208,7 +211,7 @@ struct GeneratorSummary {
 };
 
 CSVWriter& operator<<(CSVWriter& csv, const GeneratorSummary& s) {
-  csv << s.committed << s.aborted << s.not_started << s.single_home << s.multi_home << s.single_partition
+  csv << s.committed << s.aborted << s.not_started << s.restarted << s.single_home << s.multi_home << s.single_partition
       << s.multi_partition << s.remaster;
   return csv;
 }
@@ -264,7 +267,7 @@ void WriteResults(const vector<unique_ptr<ModuleRunner>>& generators) {
     CHECK(info.txn != nullptr);
     auto& txn_internal = info.txn->internal();
     writers->txns << txn_internal.id() << txn_internal.coordinating_server() << Join(txn_internal.involved_replicas())
-                  << Join(txn_internal.involved_partitions()) << info.generator_id
+                  << Join(txn_internal.involved_partitions()) << info.generator_id << info.restarts
                   << info.sent_at.time_since_epoch().count() << info.recv_at.time_since_epoch().count() << csvendl;
 
     for (int i = 0; i < txn_internal.events_size(); i++) {
@@ -350,9 +353,9 @@ int main(int argc, char* argv[]) {
   LOG(INFO) << "Summary:\n"
             << "Avg. TPS: " << std::floor(avg_tps) << "\nAborted: " << summary.aborted
             << "\nCommitted: " << summary.committed << "\nNot started: " << summary.not_started
-            << "\nSingle-home: " << summary.single_home << "\nMulti-home: " << summary.multi_home
-            << "\nSingle-partition: " << summary.single_partition << "\nMulti-partition: " << summary.multi_partition
-            << "\nRemaster: " << summary.remaster;
+            << "\nRestarted: " << summary.restarted << "\nSingle-home: " << summary.single_home
+            << "\nMulti-home: " << summary.multi_home << "\nSingle-partition: " << summary.single_partition
+            << "\nMulti-partition: " << summary.multi_partition << "\nRemaster: " << summary.remaster;
 
   return 0;
 }

@@ -147,6 +147,13 @@ void Scheduler::ProcessTransaction(EnvelopePtr&& env) {
       return;
     }
 
+    if (holder.is_aborting()) {
+      if (holder.is_ready_for_gc()) {
+        active_txns_.erase(holder_it);
+      }
+      return;
+    }
+
     RECORD(holder.txn().mutable_internal(), TransactionEvent::ENTER_SCHEDULER_LO);
 
     VLOG(2) << "Added " << ENUM_NAME(txn->internal().type(), TransactionType) << " transaction (" << txn_id << ", "
@@ -155,12 +162,6 @@ void Scheduler::ProcessTransaction(EnvelopePtr&& env) {
 
   if (txn->status() == TransactionStatus::ABORTED) {
     TriggerPreDispatchAbort(txn_id, txn->abort_reason());
-  }
-
-  if (holder.is_aborting()) {
-    if (holder.is_ready_for_gc()) {
-      active_txns_.erase(holder_it);
-    }
     return;
   }
 

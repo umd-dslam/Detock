@@ -21,6 +21,7 @@ class TxnGenerator {
     std::chrono::system_clock::time_point recv_at;
     bool finished = false;
     int generator_id;
+    int restarts = 0;
   };
 
   TxnGenerator(std::unique_ptr<Workload>&& workload);

@@ -10,13 +10,23 @@ using std::move;
 namespace slog {
 
 namespace {
-void ValidateTransaction(Transaction* txn) {
-  txn->set_status(TransactionStatus::ABORTED);
+void PreprocessTxn(Transaction* txn) {
   if (txn->keys().empty()) {
+    txn->set_status(TransactionStatus::ABORTED);
     txn->set_abort_reason("txn accesses no key");
     return;
   }
   txn->set_status(TransactionStatus::NOT_STARTED);
+  txn->set_abort_reason("");
+  for (auto& kv : *(txn->mutable_keys())) {
+    kv.second.clear_metadata();
+  }
+  auto txn_internal = txn->mutable_internal();
+  txn_internal->set_type(TransactionType::UNKNOWN);
+  txn_internal->clear_involved_replicas();
+  txn_internal->clear_involved_partitions();
+  txn_internal->clear_active_partitions();
+  txn_internal->set_timestamp(0);
 }
 }  // namespace
 
@@ -110,7 +120,7 @@ bool Server::OnCustomSocket() {
 
       RECORD(txn_internal, TransactionEvent::ENTER_SERVER);
 
-      ValidateTransaction(txn);
+      PreprocessTxn(txn);
       if (txn->status() == TransactionStatus::ABORTED) {
         SendTxnToClient(txn);
         break;

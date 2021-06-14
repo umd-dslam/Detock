@@ -148,10 +148,21 @@ bool SynchronousTxnGenerator::Loop() {
   if (poller_.NextEvent()) {
     if (api::Response res; RecvDeserializedProtoWithEmptyDelim(socket_, res)) {
       auto& info = txns_[res.stream_id()];
-      if (RecordFinishedTxn(info, id_, res.mutable_txn()->release_txn(), config_->return_dummy_txn())) {
-        num_recv_txns_++;
-        if (!duration_reached) {
-          SendNextTxn();
+
+      auto txn = res.mutable_txn()->release_txn();
+      if (txn->status() == TransactionStatus::ABORTED && txn->abort_reason() == "restarted") {
+        info.restarts++;
+        // Restart the txn
+        api::Request req;
+        req.mutable_txn()->set_allocated_txn(txn);
+        req.set_stream_id(res.stream_id());
+        SendSerializedProtoWithEmptyDelim(socket_, req);
+      } else {
+        if (RecordFinishedTxn(info, id_, txn, config_->return_dummy_txn())) {
+          num_recv_txns_++;
+          if (!duration_reached) {
+            SendNextTxn();
+          }
         }
       }
     }
@@ -269,8 +280,18 @@ bool ConstantRateTxnGenerator::Loop() {
         StartTimer();
       }
 
+      auto txn = res.mutable_txn()->release_txn();
       auto& info = txns_[res.stream_id()];
-      num_recv_txns_ += RecordFinishedTxn(info, id_, res.mutable_txn()->release_txn(), config_->return_dummy_txn());
+      if (txn->status() == TransactionStatus::ABORTED && txn->abort_reason() == "restarted") {
+        info.restarts++;
+        // Restart the txn
+        api::Request req;
+        req.mutable_txn()->set_allocated_txn(txn);
+        req.set_stream_id(res.stream_id());
+        SendSerializedProtoWithEmptyDelim(socket_, req);
+      } else {
+        num_recv_txns_ += RecordFinishedTxn(info, id_, txn, config_->return_dummy_txn());
+      }
     }
   }
 
