@@ -73,6 +73,7 @@ class Configuration {
   std::chrono::milliseconds clock_sync_interval() const;
   int64_t timestamp_buffer_us() const;
   uint32_t avg_latency_window_size() const;
+  std::vector<int> distance_ranking_from(int replica_id) const;
 
  private:
   internal::Configuration config_;

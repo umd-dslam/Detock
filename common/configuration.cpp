@@ -256,4 +256,13 @@ int64_t Configuration::timestamp_buffer_us() const { return config_.timestamp_bu
 
 uint32_t Configuration::avg_latency_window_size() const { return std::max(config_.avg_latency_window_size(), 1U); }
 
+std::vector<int> Configuration::distance_ranking_from(int replica_id) const {
+  auto ranking_str = Split(config_.replicas(replica_id).distance_ranking(), ",");
+  std::vector<int> ranking;
+  for (auto s : ranking_str) {
+    ranking.push_back(std::stoi(s));
+  }
+  return ranking;
+}
+
 }  // namespace slog
