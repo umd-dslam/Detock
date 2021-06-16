@@ -21,7 +21,9 @@ def generate_config(template_path: str, settings: dict):
     with open(template_path, "r") as f:
         text_format.Parse(f.read(), config)
 
-    regions = settings['servers_private'].keys()
+    regions = {
+        name : id for id, name in enumerate(settings['servers_private'])
+    }
     for r in regions:
         replica = Replica()
         servers_private = [addr.encode() for addr in settings['servers_private'][r]]
@@ -30,6 +32,8 @@ def generate_config(template_path: str, settings: dict):
         replica.public_addresses.extend(servers_public)
         clients = [addr.encode() for addr in settings['clients'][r]]
         replica.client_addresses.extend(clients)
+        distance_ranking = [str(regions[other_r]) for other_r in settings['distance_ranking'][r]]
+        replica.distance_ranking = ','.join(distance_ranking)
         config.replicas.append(replica)
         config.num_partitions = len(replica.addresses)
     
