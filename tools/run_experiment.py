@@ -21,10 +21,10 @@ def generate_config(template_path: str, settings: dict):
     with open(template_path, "r") as f:
         text_format.Parse(f.read(), config)
 
-    regions = {
+    regions_ids = {
         name : id for id, name in enumerate(settings['servers_private'])
     }
-    for r in regions:
+    for r in settings['regions']:
         replica = Replica()
         servers_private = [addr.encode() for addr in settings['servers_private'][r]]
         replica.addresses.extend(servers_private)
@@ -32,7 +32,7 @@ def generate_config(template_path: str, settings: dict):
         replica.public_addresses.extend(servers_public)
         clients = [addr.encode() for addr in settings['clients'][r]]
         replica.client_addresses.extend(clients)
-        distance_ranking = [str(regions[other_r]) for other_r in settings['distance_ranking'][r]]
+        distance_ranking = [str(regions_ids[other_r]) for other_r in settings['distance_ranking'][r]]
         replica.distance_ranking = ','.join(distance_ranking)
         config.replicas.append(replica)
         config.num_partitions = len(replica.addresses)
@@ -88,7 +88,7 @@ def ycsb(args):
 
     varying_args = ["clients", "txns", "duration"]
     varying_params = [
-        "writes", "records", "hot_records", "mp_parts", "mh_homes", "hot", "mp", "mh"
+        "writes", "records", "hot_records", "mp_parts", "mh_homes", "mh_zipf", "hot", "mp", "mh"
     ]
 
     workload_setting = settings["ycsb"]
@@ -105,12 +105,13 @@ def ycsb(args):
 
         LOG.info("STOP ANY RUNNING EXPERIMENT")
         cleanup(config, user, image)
- 
-        LOG.info("START SERVERS")
-        admin.main(["start", *common_args])
-  
-        LOG.info("WAIT FOR ALL SERVERS TO BE ONLINE")
-        admin.main(["collect_server", *common_args, "--flush-only", "--no-pull"])
+
+        if not args.skip_starting_server:
+            LOG.info("START SERVERS")
+            admin.main(["start", *common_args])
+    
+            LOG.info("WAIT FOR ALL SERVERS TO BE ONLINE")
+            admin.main(["collect_server", *common_args, "--flush-only", "--no-pull"])
 
         # Compute the Cartesian product of all varying values
         varying_keys = varying_args + varying_params
@@ -155,10 +156,11 @@ def ycsb(args):
             time.sleep(2)
 
             LOG.info("COLLECT DATA")
-            collectors = [
-                Process(target=collect_client_data, args=(config, user, ycsb_out_dir, tag)),
-                Process(target=collect_server_data, args=(config, user, image, ycsb_out_dir, tag)),
-            ]
+            collectors = []
+            if not args.no_client_data:
+                collectors.append(Process(target=collect_client_data, args=(config, user, ycsb_out_dir, tag)))
+            if not args.no_server_data:
+                collectors.append(Process(target=collect_server_data, args=(config, user, image, ycsb_out_dir, tag)))
             for p in collectors:
                 p.start()
             for p in collectors:
@@ -183,6 +185,9 @@ if __name__ == "__main__":
         action='store_true',
         help="Check the settings and generate configs without running the experiment"
     )
+    parser.add_argument("--skip-starting-server", action="store_true", help="Skip starting server step")
+    parser.add_argument("--no-client-data", action="store_true", help="Don't collect client data")
+    parser.add_argument("--no-server-data", action="store_true", help="Don't collect server data")
     args = parser.parse_args()
 
     if args.dry_run:
