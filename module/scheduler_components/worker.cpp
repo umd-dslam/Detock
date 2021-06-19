@@ -128,7 +128,7 @@ bool Worker::OnCustomSocket() {
   RECORD(txn.mutable_internal(), TransactionEvent::ENTER_WORKER);
 
   // Create a state for the new transaction
-  // TODO: Clean up txns that later got into a deadlock
+  // TODO: Clean up txns that got into a deadlock
   auto [iter, ok] = txn_states_.try_emplace(run_id, txn_holder);
 
   CHECK(ok) << "Transaction " << run_id << " has already been dispatched to this worker";
@@ -367,7 +367,7 @@ void Worker::BroadcastReads(const RunId& run_id) {
 
 TransactionState& Worker::TxnState(const RunId& run_id) {
   auto state_it = txn_states_.find(run_id);
-  DCHECK(state_it != txn_states_.end());
+  CHECK(state_it != txn_states_.end());
   return state_it->second;
 }
 
