@@ -5,6 +5,7 @@
 
 #include "common/configuration.h"
 #include "common/metrics.h"
+#include "common/sharder.h"
 #include "common/types.h"
 #include "connection/broker.h"
 #include "data_structure/rolling_window.h"
@@ -59,6 +60,7 @@ class Forwarder : public NetworkedModule {
    */
   void Forward(EnvelopePtr&& env);
 
+  const SharderPtr sharder_;
   std::shared_ptr<LookupMasterIndex<Key, Metadata>> lookup_master_index_;
   std::unordered_map<TxnId, EnvelopePtr> pending_transactions_;
   std::vector<internal::Envelope> partitioned_lookup_request_;

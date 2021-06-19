@@ -3,6 +3,7 @@
 #include <map>
 #include <mutex>
 
+#include "common/sharder.h"
 #include "common/spin_latch.h"
 #include "module/base/networked_module.h"
 
@@ -31,6 +32,7 @@ class Batcher : public NetworkedModule {
 
   void ProcessStatsRequest(const internal::StatsRequest& stats_request);
 
+  const SharderPtr sharder_;
   SpinLatch future_txns_mut_;
   std::map<Timestamp, Transaction*> future_txns_;
   std::optional<Poller::Handle> process_future_txn_callback_handle_;

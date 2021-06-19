@@ -36,7 +36,7 @@ Worker::Worker(const std::shared_ptr<Broker>& broker, Channel channel,
       storage_(storage) {
   switch (config()->execution_type()) {
     case internal::ExecutionType::KEY_VALUE:
-      execution_ = make_unique<KeyValueExecution<Key, Record>>(config(), storage);
+      execution_ = make_unique<KeyValueExecution<Key, Record>>(Sharder::MakeSharder(config()), storage);
       break;
     default:
       execution_ = make_unique<NoopExecution>();
@@ -193,11 +193,12 @@ void Worker::ReadLocalStorage(const RunId& run_id) {
     }
 #endif
 
+    VLOG(3) << "Performing local read for: " << run_id;
     // We don't need to check if keys are in partition here since the assumption is that
     // the out-of-partition keys have already been removed
     for (auto& [key, value] : *(txn.mutable_keys())) {
       if (auto record = storage_->Read(key); record != nullptr) {
-        // Check whether the store master metadata matches with the information
+        // Check whether the stored master metadata matches with the information
         // stored in the transaction
         if (value.metadata().master() != record->metadata.master) {
           txn.set_status(TransactionStatus::ABORTED);
@@ -213,6 +214,7 @@ void Worker::ReadLocalStorage(const RunId& run_id) {
     }
   }
 
+  VLOG(3) << "Broadcasting local reads to other partitions";
   BroadcastReads(run_id);
 
   // Set the number of remote reads that this partition needs to wait for
@@ -360,8 +362,6 @@ void Worker::BroadcastReads(const RunId& run_id) {
       destinations.push_back(config()->MakeMachineId(local_replica, p));
     }
   }
-  // Try to use a different broker thread other than the default one so that
-  // a worker would have an exclusive pathway for information passing
   Send(env, destinations, MakeTag(run_id));
 }
 
