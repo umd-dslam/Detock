@@ -107,7 +107,7 @@ bool Scheduler::OnCustomSocket() {
     }
 
     auto it = active_txns_.find(txn_id);
-    DCHECK(it != active_txns_.end());
+    CHECK(it != active_txns_.end());
     auto& txn_holder = it->second;
 
 #if defined(REMASTER_PROTOCOL_SIMPLE) || defined(REMASTER_PROTOCOL_PER_KEY)
