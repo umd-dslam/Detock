@@ -31,6 +31,8 @@ class Sequencer : public NetworkedModule {
             const MetricsRepositoryManagerPtr& metrics_manager,
             std::chrono::milliseconds poll_timeout = kModuleTimeout);
 
+  std::string name() const override { return "Sequencer"; }
+
  protected:
   void Initialize() final;
   void OnInternalRequestReceived(EnvelopePtr&& env) final;

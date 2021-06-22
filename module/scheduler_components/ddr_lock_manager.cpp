@@ -40,7 +40,7 @@ class DeadlockResolver : public NetworkedModule {
   DeadlockResolver(DDRLockManager& lock_manager, const shared_ptr<Broker>& broker,
                    const MetricsRepositoryManagerPtr& metrics_manager, Channel signal_chan,
                    optional<milliseconds> poll_timeout)
-      : NetworkedModule("DeadlockResolver", broker, kDeadlockResolverChannel, metrics_manager, poll_timeout),
+      : NetworkedModule(broker, kDeadlockResolverChannel, metrics_manager, poll_timeout),
         lm_(lock_manager),
         config_(broker->config()),
         signal_chan_(signal_chan) {}
@@ -72,6 +72,8 @@ class DeadlockResolver : public NetworkedModule {
                                                          deadlocks_resolved_, graph_update_time_);
     }
   }
+
+  std::string name() const override { return "DeadlockResolver"; }
 
  private:
   DDRLockManager& lm_;

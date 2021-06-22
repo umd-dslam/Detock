@@ -13,7 +13,7 @@ using internal::Request;
 
 Batcher::Batcher(const std::shared_ptr<zmq::context_t>& context, const ConfigurationPtr& config,
                  const MetricsRepositoryManagerPtr& metrics_manager, milliseconds poll_timeout)
-    : NetworkedModule("Batcher", context, config, kBatcherChannel, metrics_manager, poll_timeout),
+    : NetworkedModule(context, config, kBatcherChannel, metrics_manager, poll_timeout),
       sharder_(Sharder::MakeSharder(config)),
       batch_id_counter_(0),
       batch_size_(0),

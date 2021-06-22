@@ -12,6 +12,8 @@ class ClockSynchronizer : public NetworkedModule {
                     const MetricsRepositoryManagerPtr& metrics_manager,
                     std::chrono::milliseconds poll_timeout_ms = kModuleTimeout);
 
+  std::string name() const override { return "ClockSynchronizer"; }
+
  protected:
   void Initialize() final;
   void OnInternalRequestReceived(EnvelopePtr&& env) final;

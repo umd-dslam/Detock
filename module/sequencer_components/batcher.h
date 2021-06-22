@@ -17,6 +17,8 @@ class Batcher : public NetworkedModule {
   // Returns true if the earliest time has changed
   bool BufferFutureTxn(Transaction* txn);
 
+  std::string name() const override { return "Batcher"; }
+
  protected:
   void OnInternalRequestReceived(EnvelopePtr&& env) final;
 

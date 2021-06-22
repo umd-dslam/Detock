@@ -19,8 +19,7 @@ using std::chrono::milliseconds;
 
 Sequencer::Sequencer(const std::shared_ptr<zmq::context_t>& context, const ConfigurationPtr& config,
                      const MetricsRepositoryManagerPtr& metrics_manager, milliseconds poll_timeout)
-    : NetworkedModule("Sequencer", context, config, config->sequencer_port(), kSequencerChannel, metrics_manager,
-                      poll_timeout),
+    : NetworkedModule(context, config, config->sequencer_port(), kSequencerChannel, metrics_manager, poll_timeout),
       batcher_(std::make_shared<Batcher>(context, config, metrics_manager, poll_timeout)),
       batcher_runner_(std::static_pointer_cast<Module>(batcher_)) {}
 
