@@ -95,7 +95,7 @@ message ForwardTransaction {
 
 message LookupMasterRequest {
     repeated uint64 txn_ids = 1;
-    repeated string keys = 2;
+    repeated bytes keys = 2;
 }
 
 message ForwardBatchData {
@@ -138,7 +138,7 @@ message RemoteReadResult {
     uint64 txn_id = 1;
     bool deadlocked = 2;
     uint32 partition = 3;
-    map<string, ValueEntry> reads = 4;
+    repeated KeyValueEntry reads = 4;
     bool will_abort = 5;
     string abort_reason = 6;
 }
@@ -189,9 +189,14 @@ message Pong {
     uint32 dst = 3;
 }
 
+message KeyMasterMetadata {
+    bytes key = 1;
+    MasterMetadata metadata = 2;
+}
+
 message LookupMasterResponse {
     repeated uint64 txn_ids = 1;
-    map<string, MasterMetadata> master_metadata = 2;
+    repeated KeyMasterMetadata lookup_results = 2;
 }
 
 message PaxosAcceptResponse {

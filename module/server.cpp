@@ -19,7 +19,7 @@ void PreprocessTxn(Transaction* txn) {
   txn->set_status(TransactionStatus::NOT_STARTED);
   txn->set_abort_reason("");
   for (auto& kv : *(txn->mutable_keys())) {
-    kv.second.clear_metadata();
+    kv.mutable_value_entry()->clear_metadata();
   }
   auto txn_internal = txn->mutable_internal();
   txn_internal->set_type(TransactionType::UNKNOWN);
