@@ -164,8 +164,6 @@ uint32_t Configuration::leader_replica_for_multi_home_ordering() const { return 
 
 uint32_t Configuration::leader_partition_for_multi_home_ordering() const { return 0; }
 
-uint32_t Configuration::master_of_key(uint32_t key) const { return (key / num_partitions()) % num_replicas(); }
-
 const internal::SimplePartitioning* Configuration::simple_partitioning() const {
   return config_.has_simple_partitioning() ? &config_.simple_partitioning() : nullptr;
 }
