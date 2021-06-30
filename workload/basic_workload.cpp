@@ -57,43 +57,40 @@ const RawParamMap DEFAULT_PARAMS = {{MH_PCT, "0"},   {MH_HOMES, "2"},     {MH_ZI
                                     {MP_PARTS, "2"}, {HOT, "0"},          {RECORDS, "10"}, {HOT_RECORDS, "0"},
                                     {WRITES, "10"},  {VALUE_SIZE, "100"}, {NEAREST, "1"},  {SP_PARTITION, "-1"}};
 
-std::discrete_distribution<> zipf_distribution(double a, size_t n) {
-  std::vector<double> weights(n);
-  double s = 0;
-  for (size_t i = 1; i <= n; i++) {
-    s += 1 / std::pow(i, a);
-  }
-  for (size_t i = 0; i < n; i++) {
-    weights[i] = 1 / (std::pow(i + 1, a) * s);
-  }
-  return std::discrete_distribution<>(weights.begin(), weights.end());
-}
-
 }  // namespace
 
-BasicWorkload::BasicWorkload(const ConfigurationPtr config, uint32_t region, const string& data_dir,
-                             const string& params_str, const uint32_t seed, const RawParamMap extra_default_params)
+BasicWorkload::BasicWorkload(const ConfigurationPtr& config, uint32_t region, const string& data_dir,
+                             const string& params_str, const uint32_t seed, const RawParamMap& extra_default_params)
     : Workload(MergeParams(extra_default_params, DEFAULT_PARAMS), params_str),
       config_(config),
       local_region_(region),
       distance_ranking_(config->distance_ranking_from(region)),
       partition_to_key_lists_(config->num_partitions()),
       rg_(seed),
+      rnd_str_(seed),
       client_txn_id_counter_(0) {
   name_ = "basic";
   auto num_replicas = config->num_replicas();
   auto num_partitions = config->num_partitions();
   auto hot_keys_per_list = std::max(1U, params_.GetUInt32(HOT) / num_replicas);
-  auto simple_partitioning = config->simple_partitioning();
+  const auto& proto_config = config->proto_config();
   for (uint32_t part = 0; part < num_partitions; part++) {
     for (uint32_t rep = 0; rep < num_replicas; rep++) {
       // Initialize hot keys limit for each key list. When keys are added to a list,
       // the first keys are considered hot keys until this limit is reached and any new
       // keys from there are cold keys.
-      if (simple_partitioning) {
-        partition_to_key_lists_[part].emplace_back(config, part, rep, hot_keys_per_list);
-      } else {
-        partition_to_key_lists_[part].emplace_back(hot_keys_per_list);
+      switch (proto_config.partitioning_case()) {
+        case internal::Configuration::kSimplePartitioning: {
+          partition_to_key_lists_[part].emplace_back(config, part, rep, hot_keys_per_list);
+          break;
+        }
+        case internal::Configuration::kHashPartitioning: {
+          partition_to_key_lists_[part].emplace_back(hot_keys_per_list);
+          break;
+        }
+        default:
+          LOG(FATAL) << "Invalid partioning mode: "
+                     << CASE_NAME(proto_config.partitioning_case(), internal::Configuration);
       }
     }
   }
@@ -103,7 +100,7 @@ BasicWorkload::BasicWorkload(const ConfigurationPtr config, uint32_t region, con
     distance_ranking_.insert(distance_ranking_.begin(), local_region_);
   }
 
-  if (!simple_partitioning) {
+  if (proto_config.partitioning_case() == internal::Configuration::kHashPartitioning) {
     // Load and index the initial data from file if simple partitioning is not used
     for (uint32_t partition = 0; partition < num_partitions; partition++) {
       auto data_file = data_dir + "/" + std::to_string(partition) + ".dat";
@@ -172,20 +169,15 @@ std::pair<Transaction*, TransactionProfile> BasicWorkload::NextTransaction() {
     auto max_num_homes = std::min(params_.GetUInt32(MH_HOMES), num_replicas);
     CHECK_GE(max_num_homes, 2) << "At least 2 regions must be selected for MH txns";
     auto num_homes = std::uniform_int_distribution{2U, max_num_homes}(rg_);
+    candidate_homes.reserve(num_homes);
+
     if (params_.GetInt32(NEAREST)) {
       candidate_homes.push_back(local_region_);
       num_homes--;
     }
-
     auto zipf_coef = params_.GetDouble(MH_ZIPF);
-    auto dis = zipf_distribution(zipf_coef, distance_ranking_.size());
-    for (size_t i = 0; i < num_homes; i++) {
-      auto next_home = distance_ranking_[dis(rg_)];
-      while (std::find(candidate_homes.begin(), candidate_homes.end(), next_home) != candidate_homes.end()) {
-        next_home = distance_ranking_[dis(rg_)];
-      }
-      candidate_homes.push_back(next_home);
-    }
+    auto sampled_homes = zipf_sample(rg_, zipf_coef, distance_ranking_, num_homes);
+    candidate_homes.insert(candidate_homes.end(), sampled_homes.begin(), sampled_homes.end());
   } else {
     if (params_.GetInt32(NEAREST)) {
       candidate_homes.push_back(local_region_);
@@ -225,7 +217,7 @@ std::pair<Transaction*, TransactionProfile> BasicWorkload::NextTransaction() {
       record.is_hot = is_hot;
       // Decide whether this is a read or a write record
       if (i < writes) {
-        code.push_back({"SET", key, RandomString(value_size, rg_)});
+        code.push_back({"SET", key, rnd_str_(value_size)});
         keys.emplace_back(key, KeyType::WRITE);
         record.is_write = true;
       } else {

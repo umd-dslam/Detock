@@ -1,10 +1,23 @@
 target_sources(slog-core
   PRIVATE
+    execution.cpp
+    execution.h
+    key_value.cpp
+    tpcc.cpp
+    tpcc/constants.h
+    tpcc/deliver.cpp
+    tpcc/load_tables.cpp
+    tpcc/load_tables.h
     tpcc/metadata_initializer.cpp
     tpcc/metadata_initializer.h
+    tpcc/new_order.cpp
+    tpcc/order_status.cpp
+    tpcc/payment.cpp
     tpcc/scalar.h
+    tpcc/stock_level.cpp
     tpcc/storage_adapter.cpp
     tpcc/storage_adapter.h
     tpcc/table.h
+    tpcc/transaction.h
     tpcc/types.h
 )

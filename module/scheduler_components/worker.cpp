@@ -37,6 +37,9 @@ Worker::Worker(const std::shared_ptr<Broker>& broker, Channel channel,
     case internal::ExecutionType::KEY_VALUE:
       execution_ = make_unique<KeyValueExecution>(Sharder::MakeSharder(config()), storage);
       break;
+    case internal::ExecutionType::TPC_C:
+      execution_ = make_unique<TPCCExecution>(Sharder::MakeSharder(config()), storage);
+      break;
     default:
       execution_ = make_unique<NoopExecution>();
       break;
