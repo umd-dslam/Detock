@@ -16,161 +16,173 @@ LOG = logging.getLogger("experiment")
 
 GENERATORS = 5
 
-def generate_config(template_path: str, settings: dict):
-    config = Configuration()
-    with open(template_path, "r") as f:
-        text_format.Parse(f.read(), config)
+class Experiment:
 
-    regions_ids = {
-        name : id for id, name in enumerate(settings['servers_private'])
-    }
-    for r in settings['regions']:
-        replica = Replica()
-        servers_private = [addr.encode() for addr in settings['servers_private'][r]]
-        replica.addresses.extend(servers_private)
-        servers_public = [addr.encode() for addr in settings['servers_public'][r]]
-        replica.public_addresses.extend(servers_public)
-        clients = [addr.encode() for addr in settings['clients'][r]]
-        replica.client_addresses.extend(clients)
-        distance_ranking = [str(regions_ids[other_r]) for other_r in settings['distance_ranking'][r]]
-        replica.distance_ranking = ','.join(distance_ranking)
-        config.replicas.append(replica)
-        config.num_partitions = len(replica.addresses)
-    
-    config_path = os.path.join(gettempdir(), os.path.basename(template_path))
-    with open(config_path, "w") as f:
-        text_format.PrintMessage(config, f)
-    
-    return config_path
+    def __init__(self):
+        self.settings = {}
 
+    def generate_config(self, template_path: str):
+        config = Configuration()
+        with open(template_path, "r") as f:
+            text_format.Parse(f.read(), config)
 
-def cleanup(config, user, image):
-    admin.main([
-        "benchmark",
-        config,
-        "--user", user,
-        "--image", image,
-        "--cleanup",
-        "--clients", "0",
-        "--txns", "0"
-    ])
+        regions_ids = {
+            name : id for id, name in enumerate(self.settings['servers_private'])
+        }
+        for r in self.settings['regions']:
+            replica = Replica()
+            servers_private = [addr.encode() for addr in self.settings['servers_private'][r]]
+            replica.addresses.extend(servers_private)
+            servers_public = [addr.encode() for addr in self.settings['servers_public'][r]]
+            replica.public_addresses.extend(servers_public)
+            clients = [addr.encode() for addr in self.settings['clients'][r]]
+            replica.client_addresses.extend(clients)
+            distance_ranking = [str(regions_ids[other_r]) for other_r in self.settings['distance_ranking'][r]]
+            replica.distance_ranking = ','.join(distance_ranking)
+            config.replicas.append(replica)
+            config.num_partitions = len(replica.addresses)
+        
+        config_path = os.path.join(gettempdir(), os.path.basename(template_path))
+        with open(config_path, "w") as f:
+            text_format.PrintMessage(config, f)
+        
+        return config_path
 
 
-def collect_client_data(config, user, out_dir, tag):
-    admin.main([
-        "collect_client",
-        config,
-        tag,
-        "--user", user,
-        "--out-dir", out_dir
-    ])
+    def cleanup(self, config, image):
+        admin.main([
+            "benchmark",
+            config,
+            "--user", self.settings['username'],
+            "--image", image,
+            "--cleanup",
+            "--clients", "0",
+            "--txns", "0"
+        ])
 
 
-def collect_server_data(config, user, image, out_dir, tag):
-    admin.main([
-        "collect_server",
-        config,
-        "--tag", tag,
-        "--user", user,
-        "--image", image,
-        "--out-dir", out_dir,
-        # The image has already been pulled when starting the servers
-        "--no-pull",
-    ])
+    def collect_client_data(self, config, out_dir, tag):
+        admin.main([
+            "collect_client",
+            config,
+            tag,
+            "--user", self.settings['username'],
+            "--out-dir", out_dir
+        ])
 
 
-def ycsb(args):
-    settings = {}
-    with open(os.path.join(args.config_dir, "settings.json"), "r") as f:
-        settings = json.load(f)
+    def collect_server_data(self, config, image, out_dir, tag):
+        admin.main([
+            "collect_server",
+            config,
+            "--tag", tag,
+            "--user", self.settings['username'],
+            "--image", image,
+            "--out-dir", out_dir,
+            # The image has already been pulled when starting the servers
+            "--no-pull",
+        ])
 
-    user = settings['username']
+    NAME = ""
+    VARYING_ARGS = []
+    VARYING_PARAMS = []
 
-    varying_args = ["clients", "txns", "duration"]
-    varying_params = [
-        "writes", "records", "hot_records", "mp_parts", "mh_homes", "mh_zipf", "hot", "mp", "mh"
-    ]
+    def run(self, args):
+        with open(os.path.join(args.config_dir, "settings.json"), "r") as f:
+            self.settings = json.load(f)
 
-    workload_setting = settings["ycsb"]
-    ycsb_out_dir = os.path.join(args.out_dir, "ycsb" if args.name is None else args.name)
+        workload_setting = self.settings[self.NAME]
+        out_dir = os.path.join(args.out_dir, self.NAME if args.name is None else args.name)
 
-    for server in workload_setting["servers"]:
-        config = generate_config(os.path.join(args.config_dir, server['config']), settings)
+        for server in workload_setting["servers"]:
+            config = self.generate_config(os.path.join(args.config_dir, server['config']))
 
-        LOG.info('============ GENERATED CONFIG "%s" ============', config)
+            LOG.info('============ GENERATED CONFIG "%s" ============', config)
 
-        config_name = os.path.splitext(os.path.basename(server['config']))[0]
-        image = server['image']
-        common_args = [config, "--user", user, "--image", image]
+            config_name = os.path.splitext(os.path.basename(server['config']))[0]
+            image = server['image']
+            common_args = [config, "--user", self.settings['username'], "--image", image]
 
-        LOG.info("STOP ANY RUNNING EXPERIMENT")
-        cleanup(config, user, image)
+            LOG.info("STOP ANY RUNNING EXPERIMENT")
+            self.cleanup(config, image)
 
-        if not args.skip_starting_server:
-            LOG.info("START SERVERS")
-            admin.main(["start", *common_args])
-    
-            LOG.info("WAIT FOR ALL SERVERS TO BE ONLINE")
-            admin.main(["collect_server", *common_args, "--flush-only", "--no-pull"])
+            if not args.skip_starting_server:
+                LOG.info("START SERVERS")
+                admin.main(["start", *common_args])
+        
+                LOG.info("WAIT FOR ALL SERVERS TO BE ONLINE")
+                admin.main(["collect_server", *common_args, "--flush-only", "--no-pull"])
 
-        # Compute the Cartesian product of all varying values
-        varying_keys = varying_args + varying_params
-        ordered_value_lists = []
-        for k in varying_keys:
-            if k not in workload_setting:
-                raise KeyError(f"Missing required key in workload setting: {k}")
-            ordered_value_lists.append(workload_setting[k])
+            # Compute the Cartesian product of all varying values
+            varying_keys = self.VARYING_ARGS + self.VARYING_PARAMS
+            ordered_value_lists = []
+            for k in varying_keys:
+                if k not in workload_setting:
+                    raise KeyError(f"Missing required key in workload setting: {k}")
+                ordered_value_lists.append(workload_setting[k])
 
-        varying_values = itertools.product(*ordered_value_lists)
-        values = [dict(zip(varying_keys, v)) for v in varying_values]
+            varying_values = itertools.product(*ordered_value_lists)
+            values = [dict(zip(varying_keys, v)) for v in varying_values]
 
-        if args.tag_keys:
-            tag_keys = args.tag_keys
-        else:
-            tag_keys = [k for k in varying_keys if len(workload_setting[k]) > 1]
+            if args.tag_keys:
+                tag_keys = args.tag_keys
+            else:
+                tag_keys = [k for k in varying_keys if len(workload_setting[k]) > 1]
 
-        for v in values:
-            tag = config_name
-            tag_suffix = ''.join([f"{k}{v[k]}" for k in tag_keys])
-            if tag_suffix:
-                tag += "-" + tag_suffix
+            for v in values:
+                tag = config_name
+                tag_suffix = ''.join([f"{k}{v[k]}" for k in tag_keys])
+                if tag_suffix:
+                    tag += "-" + tag_suffix
 
-            params = ','.join(f"{k}={v[k]}" for k in varying_params)
+                params = ','.join(f"{k}={v[k]}" for k in self.VARYING_PARAMS)
 
-            LOG.info("RUN BENCHMARK")
-            admin.main([
-                "benchmark",
-                *common_args,
-                "--clients", f"{v['clients']}",
-                "--generators", f"{GENERATORS}",
-                "--txns", f"{v['txns']}",
-                "--duration", f"{v['duration']}",
-                "--sample", "10",
-                "--seed", "0",
-                "--params", params,
-                "--tag", tag,
-                # The image has already been pulled in the cleanup step
-                "--no-pull"
-            ])
+                LOG.info("RUN BENCHMARK")
+                admin.main([
+                    "benchmark",
+                    *common_args,
+                    "--workload", workload_setting['workload'],
+                    "--clients", f"{v['clients']}",
+                    "--generators", f"{GENERATORS}",
+                    "--txns", f"{v['txns']}",
+                    "--duration", f"{v['duration']}",
+                    "--sample", "10",
+                    "--seed", "0",
+                    "--params", params,
+                    "--tag", tag,
+                    # The image has already been pulled in the cleanup step
+                    "--no-pull"
+                ])
 
-            time.sleep(2)
+                LOG.info("COLLECT DATA")
+                collectors = []
+                if not args.no_client_data:
+                    collectors.append(Process(target=self.collect_client_data, args=(config, out_dir, tag)))
+                if not args.no_server_data:
+                    collectors.append(Process(target=self.collect_server_data, args=(config, image, out_dir, tag)))
+                for p in collectors:
+                    p.start()
+                for p in collectors:
+                    p.join()
 
-            LOG.info("COLLECT DATA")
-            collectors = []
-            if not args.no_client_data:
-                collectors.append(Process(target=collect_client_data, args=(config, user, ycsb_out_dir, tag)))
-            if not args.no_server_data:
-                collectors.append(Process(target=collect_server_data, args=(config, user, image, ycsb_out_dir, tag)))
-            for p in collectors:
-                p.start()
-            for p in collectors:
-                p.join()
+
+class YCSBExperiment(Experiment):
+    NAME = "ycsb"
+    VARYING_ARGS = ["clients", "txns", "duration"]
+    VARYING_PARAMS = ["writes", "records", "hot_records", "mp_parts", "mh_homes", "mh_zipf", "hot", "mp", "mh"]
+
+
+class TPCCExperiment(Experiment):
+    NAME = "tpcc"
+    VARYING_ARGS = ["clients", "txns", "duration"]
+    VARYING_PARAMS = ["mh_zipf"]
 
 
 if __name__ == "__main__":
 
     EXPERIMENTS = {
-        "ycsb": ycsb
+        "ycsb": YCSBExperiment(),
+        "tpcc": TPCCExperiment()
     }
 
     parser = argparse.ArgumentParser(description="Run an experiment")
@@ -196,4 +208,4 @@ if __name__ == "__main__":
             print()
         admin.main = noop
 
-    EXPERIMENTS[args.experiment](args)
+    EXPERIMENTS[args.experiment].run(args)

@@ -154,6 +154,7 @@
         "image": "ctring/slog:ddr-dev"
       }
     ],
+    "workload": "basic",
     "txns": [1000000],
     "duration": [30],
     "clients": [400],
@@ -166,5 +167,26 @@
     "hot": [50, 10000],
     "mp": [0, 50, 100],
     "mh": [0, 25, 50, 75, 100]
+  },
+  "tpcc": {
+    "servers": [
+      {
+        "config": "tpcc/baseline.conf",
+        "image": "ctring/slog:rma-dev"
+      },
+      {
+        "config": "tpcc/ddr_only.conf",
+        "image": "ctring/slog:ddr-dev"
+      },
+      {
+        "config": "tpcc/ddr_ts.conf",
+        "image": "ctring/slog:ddr-dev"
+      }
+    ],
+    "workload": "tpcc",
+    "txns": [0],
+    "duration": [30],
+    "clients": [1, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000],
+    "mh_zipf": [1]
   }
 }
