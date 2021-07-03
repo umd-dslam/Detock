@@ -370,5 +370,7 @@ int main(int argc, char* argv[]) {
             << "\nMulti-home: " << summary.multi_home << "\nSingle-partition: " << summary.single_partition
             << "\nMulti-partition: " << summary.multi_partition << "\nRemaster: " << summary.remaster;
 
+  google::protobuf::ShutdownProtobufLibrary();
+
   return 0;
 }
