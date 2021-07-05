@@ -27,7 +27,7 @@ class Experiment:
             text_format.Parse(f.read(), config)
 
         regions_ids = {
-            name : id for id, name in enumerate(self.settings['servers_private'])
+            name : id for id, name in enumerate(self.settings['regions'])
         }
         for r in self.settings['regions']:
             replica = Replica()
