@@ -163,7 +163,7 @@ class CreateSpotClusterCommand(AWSCommand):
         instance_ids = {}
         for region in regions:
             if region not in spot_fleet_requests:
-                LOG.warn(
+                LOG.warning(
                     "%s: No spot fleet request found. Skipping", region
                 )
                 continue
@@ -211,7 +211,7 @@ class CreateSpotClusterCommand(AWSCommand):
         instance_private_ips = {}
         for region in regions:
             if region not in instance_ids:
-                LOG.warn('%s: Skip fetching IP addresses', region)
+                LOG.warning('%s: Skip fetching IP addresses', region)
                 continue
 
             ec2 = boto3.client('ec2', region_name=region)
