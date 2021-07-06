@@ -1057,7 +1057,7 @@ class CollectServerCommand(AdminCommand):
             addresses = [
                 a
                 for r in self.config.replicas
-                for a in r.addresses
+                for a in public_addresses(r)
             ]
 
             out_dir = os.path.join(HOST_DATA_DIR, args.tag)
