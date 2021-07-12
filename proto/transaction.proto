@@ -91,6 +91,9 @@ message TransactionInternal {
     int64 mh_depart_from_coordinator_time = 12;
     int64 mh_arrive_at_home_time = 13;
     int64 mh_enter_local_batch_time = 14;
+
+    // positions in the global log
+    repeated int64 global_log_positions = 15;
 }
 
 message RemasterProcedure {
