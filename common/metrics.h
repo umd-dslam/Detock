@@ -78,18 +78,20 @@ extern uint64_t gEnabledEvents;
 
 void InitializeRecording(const ConfigurationPtr& config);
 
-template <typename TxnOrBatchPtr>
-inline void RecordTxnEvent(TxnOrBatchPtr txn, TransactionEvent event) {
-  auto now = std::chrono::system_clock::now().time_since_epoch().count();
+template <typename TxnOrBatchInternalPtr>
+inline void RecordTxnEvent(TxnOrBatchInternalPtr txn_internal, TransactionEvent event) {
   if (!((gEnabledEvents >> event) & 1)) {
     return;
   }
   TxnId txn_id = 0;
-  if (txn != nullptr) {
-    txn->mutable_events()->Add(event);
-    txn->mutable_event_times()->Add(now);
-    txn->mutable_event_machines()->Add(gLocalMachineId);
-    txn_id = txn->id();
+  if (txn_internal != nullptr) {
+    auto now = std::chrono::system_clock::now().time_since_epoch().count();
+    auto new_event = txn_internal->mutable_events()->Add();
+    new_event->set_event(event);
+    new_event->set_time(now);
+    new_event->set_machine(gLocalMachineId);
+    new_event->set_home(-1);
+    txn_id = txn_internal->id();
   }
   if (per_thread_metrics_repo != nullptr) {
     per_thread_metrics_repo->RecordTxnEvent(txn_id, event);

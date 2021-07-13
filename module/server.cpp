@@ -30,10 +30,10 @@ void PreprocessTxn(Transaction* txn) {
 }
 }  // namespace
 
-Server::CompletedTransaction::CompletedTransaction(size_t involved_partitions)
+Server::FinishedTransaction::FinishedTransaction(size_t involved_partitions)
     : remaining_partitions_(involved_partitions) {}
 
-bool Server::CompletedTransaction::AddSubTxn(EnvelopePtr&& new_req) {
+bool Server::FinishedTransaction::AddSubTxn(EnvelopePtr&& new_req) {
   DCHECK(new_req != nullptr);
 
   remaining_partitions_--;
@@ -41,17 +41,17 @@ bool Server::CompletedTransaction::AddSubTxn(EnvelopePtr&& new_req) {
   if (req_ == nullptr) {
     req_ = std::move(new_req);
   } else {
-    auto& subtxn = new_req->request().completed_subtxn();
-    auto txn = req_->mutable_request()->mutable_completed_subtxn()->mutable_txn();
+    auto& subtxn = new_req->request().finished_subtxn();
+    auto txn = req_->mutable_request()->mutable_finished_subtxn()->mutable_txn();
     MergeTransaction(*txn, subtxn.txn());
   }
 
   return remaining_partitions_ == 0;
 }
 
-Transaction* Server::CompletedTransaction::ReleaseTxn() {
+Transaction* Server::FinishedTransaction::ReleaseTxn() {
   if (req_ == nullptr) return nullptr;
-  return req_->mutable_request()->mutable_completed_subtxn()->release_txn();
+  return req_->mutable_request()->mutable_finished_subtxn()->release_txn();
 }
 
 Server::Server(const std::shared_ptr<Broker>& broker, const MetricsRepositoryManagerPtr& metrics_manager,
@@ -193,8 +193,8 @@ void Server::OnInternalRequestReceived(EnvelopePtr&& env) {
         LOG(INFO) << "All machines are online";
       }
       break;
-    case internal::Request::kCompletedSubtxn:
-      ProcessCompletedSubtxn(move(env));
+    case internal::Request::kFinishedSubtxn:
+      ProcessFinishedSubtxn(move(env));
       break;
     default:
       LOG(ERROR) << "Unexpected request type received: \"" << CASE_NAME(env->request().type_case(), internal::Request)
@@ -202,9 +202,9 @@ void Server::OnInternalRequestReceived(EnvelopePtr&& env) {
   }
 }
 
-void Server::ProcessCompletedSubtxn(EnvelopePtr&& env) {
-  auto completed_subtxn = env->mutable_request()->mutable_completed_subtxn();
-  auto txn = completed_subtxn->mutable_txn();
+void Server::ProcessFinishedSubtxn(EnvelopePtr&& env) {
+  auto finished_subtxn = env->mutable_request()->mutable_finished_subtxn();
+  auto txn = finished_subtxn->mutable_txn();
   auto txn_internal = txn->mutable_internal();
 
   RECORD(txn_internal, TransactionEvent::RETURN_TO_SERVER);
@@ -214,11 +214,11 @@ void Server::ProcessCompletedSubtxn(EnvelopePtr&& env) {
     return;
   }
 
-  auto res = completed_txns_.try_emplace(txn_id, txn_internal->involved_partitions_size());
-  auto& completed_txn = res.first->second;
-  if (completed_txn.AddSubTxn(std::move(env))) {
-    SendTxnToClient(completed_txn.ReleaseTxn());
-    completed_txns_.erase(txn_id);
+  auto res = finished_txns_.try_emplace(txn_id, txn_internal->involved_partitions_size());
+  auto& finished_txn = res.first->second;
+  if (finished_txn.AddSubTxn(std::move(env))) {
+    SendTxnToClient(finished_txn.ReleaseTxn());
+    finished_txns_.erase(txn_id);
   }
 }
 
@@ -234,16 +234,16 @@ void Server::ProcessStatsRequest(const internal::StatsRequest& stats_request) {
   // Add stats for current transactions in the system
   stats.AddMember(StringRef(TXN_ID_COUNTER), txn_id_counter_, alloc);
   stats.AddMember(StringRef(NUM_PENDING_RESPONSES), pending_responses_.size(), alloc);
-  stats.AddMember(StringRef(NUM_PARTIALLY_COMPLETED_TXNS), completed_txns_.size(), alloc);
+  stats.AddMember(StringRef(NUM_PARTIALLY_FINISHED_TXNS), finished_txns_.size(), alloc);
   if (level >= 1) {
     stats.AddMember(StringRef(PENDING_RESPONSES),
                     ToJsonArrayOfKeyValue(
                         pending_responses_, [](const auto& resp) { return resp.stream_id; }, alloc),
                     alloc);
 
-    stats.AddMember(StringRef(PARTIALLY_COMPLETED_TXNS),
+    stats.AddMember(StringRef(PARTIALLY_FINISHED_TXNS),
                     ToJsonArray(
-                        completed_txns_, [](const auto& p) { return p.first; }, alloc),
+                        finished_txns_, [](const auto& p) { return p.first; }, alloc),
                     alloc);
   }
 

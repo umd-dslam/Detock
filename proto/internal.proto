@@ -13,9 +13,7 @@ message Batch {
     TransactionType transaction_type = 3;
     // For recording the event time for all
     // transactions in this batch simultaneously
-    repeated TransactionEvent events = 4;
-    repeated int64 event_times = 5;    // when the events took place
-    repeated uint32 event_machines = 6; // where the events took place
+    repeated TransactionEventInfo events = 4;
 }
 
 message LocalBatchOrder {
@@ -66,7 +64,7 @@ message Request {
         PaxosAcceptRequest paxos_accept = 10;
         PaxosCommitRequest paxos_commit = 11;
         RemoteReadResult remote_read_result = 12;
-        CompletedSubtransaction completed_subtxn = 13;
+        FinishedSubtransaction finished_subtxn = 13;
         StatsRequest stats = 14;
         GraphLog graph_log = 15;
     }
@@ -143,7 +141,7 @@ message RemoteReadResult {
     string abort_reason = 6;
 }
 
-message CompletedSubtransaction {
+message FinishedSubtransaction {
     Transaction txn = 1;
     uint32 partition = 2;
 }

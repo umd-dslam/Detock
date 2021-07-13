@@ -42,9 +42,9 @@ const TxnId kSentinelTxnId = 0;
 /* Server */
 const char TXN_ID_COUNTER[] = "txn_id_counter";
 const char NUM_PENDING_RESPONSES[] = "num_pending_responses";
-const char NUM_PARTIALLY_COMPLETED_TXNS[] = "num_partially_completed_txns";
+const char NUM_PARTIALLY_FINISHED_TXNS[] = "num_partially_finished_txns";
 const char PENDING_RESPONSES[] = "pending_responses";
-const char PARTIALLY_COMPLETED_TXNS[] = "partially_completed_txns";
+const char PARTIALLY_FINISHED_TXNS[] = "partially_finished_txns";
 
 /* Forwarder */
 const char FORW_LATENCIES_NS[] = "forw_latencies_us";

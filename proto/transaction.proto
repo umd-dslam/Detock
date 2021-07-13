@@ -70,6 +70,17 @@ enum TransactionEvent {
     EXIT_SERVER_TO_CLIENT = 29;
 }
 
+message TransactionEventInfo {
+    // Event name
+    TransactionEvent event = 1;
+    // When the event took place
+    int64 time = 2;
+    // Where the event took place
+    int32 machine = 3;
+    // Home of the LockOnlyTxn when the event took place
+    int32 home = 4;
+}
+
 message TransactionInternal {
     // unique transaction id, multi-home and lock only
     // txns share this id
@@ -83,17 +94,15 @@ message TransactionInternal {
     repeated uint32 involved_replicas = 8;
 
     // for recording time of different events of txn
-    repeated TransactionEvent events = 9;
-    repeated int64 event_times = 10;    // when the events took place
-    repeated uint32 event_machines = 11; // where the events took place
+    repeated TransactionEventInfo events = 9;
 
     // These fields are in slog time
-    int64 mh_depart_from_coordinator_time = 12;
-    int64 mh_arrive_at_home_time = 13;
-    int64 mh_enter_local_batch_time = 14;
+    int64 mh_depart_from_coordinator_time = 10;
+    int64 mh_arrive_at_home_time = 11;
+    int64 mh_enter_local_batch_time = 12;
 
     // positions in the global log
-    repeated int64 global_log_positions = 15;
+    repeated int64 global_log_positions = 13;
 }
 
 message RemasterProcedure {
