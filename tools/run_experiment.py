@@ -91,6 +91,7 @@ class Experiment:
         with open(os.path.join(args.config_dir, "settings.json"), "r") as f:
             self.settings = json.load(f)
 
+        sample = self.settings["sample"]
         workload_setting = self.settings[self.NAME]
         out_dir = os.path.join(args.out_dir, self.NAME if args.name is None else args.name)
 
@@ -146,7 +147,7 @@ class Experiment:
                     "--generators", f"{GENERATORS}",
                     "--txns", f"{v['txns']}",
                     "--duration", f"{v['duration']}",
-                    "--sample", "10",
+                    "--sample", f"{sample}",
                     "--seed", "0",
                     "--params", params,
                     "--tag", tag,
