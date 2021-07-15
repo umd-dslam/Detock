@@ -53,8 +53,6 @@ void Sequencer::ProcessForwardRequest(EnvelopePtr&& env) {
   txn_internal->set_mh_arrive_at_home_time(now);
 
   if (config()->bypass_mh_orderer() && config()->synchronized_batching()) {
-    RECORD_WITH_TIME(txn_internal, TransactionEvent::EXPECTED_ENTER_LOCAL_BATCH_TIME, txn_internal->timestamp());
-
     if (txn_internal->timestamp() <= now) {
       VLOG(3) << "Txn " << txn_internal->id() << " has a timestamp " << (now - txn_internal->timestamp()) / 1000
               << " us in the past";
@@ -71,6 +69,9 @@ void Sequencer::ProcessForwardRequest(EnvelopePtr&& env) {
     } else {
       VLOG(3) << "Txn " << txn_internal->id() << " has a timestamp " << (txn_internal->timestamp() - now) / 1000
               << " us into the future";
+
+      RECORD_WITH_TIME(txn_internal, TransactionEvent::EXPECTED_WAIT_TIME_UNTIL_ENTER_LOCAL_BATCH,
+                       txn_internal->timestamp() - now);
 
       // Put into a sorted buffer and wait until local clock reaches the txn's timestamp.
       // Send a signal to the batcher if the earliest time in the buffer has changed, so that

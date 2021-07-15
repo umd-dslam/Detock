@@ -49,7 +49,8 @@ enum TransactionEvent {
     EXIT_MULTI_HOME_ORDERER_IN_BATCH = 8;
     EXIT_MULTI_HOME_ORDERER = 9;
     ENTER_SEQUENCER = 10;
-    EXPECTED_ENTER_LOCAL_BATCH_TIME = 11;
+    // This is not an actual event, but used for storing extra information
+    EXPECTED_WAIT_TIME_UNTIL_ENTER_LOCAL_BATCH = 11;
     ENTER_LOCAL_BATCH = 12;
     ENTER_SEQUENCER_IN_BATCH = 13;
     EXIT_SEQUENCER_IN_BATCH = 14;

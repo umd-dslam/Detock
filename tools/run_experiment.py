@@ -176,7 +176,7 @@ class YCSBExperiment(Experiment):
 class TPCCExperiment(Experiment):
     NAME = "tpcc"
     VARYING_ARGS = ["clients", "txns", "duration"]
-    VARYING_PARAMS = ["mh_zipf"]
+    VARYING_PARAMS = ["mh_zipf", "sh_only"]
 
 
 if __name__ == "__main__":
