@@ -79,16 +79,18 @@ extern uint64_t gEnabledEvents;
 void InitializeRecording(const ConfigurationPtr& config);
 
 template <typename TxnOrBatchInternalPtr>
-inline void RecordTxnEvent(TxnOrBatchInternalPtr txn_internal, TransactionEvent event) {
+inline void RecordTxnEvent(TxnOrBatchInternalPtr txn_internal, TransactionEvent event, int64_t time = -1) {
   if (!((gEnabledEvents >> event) & 1)) {
     return;
   }
   TxnId txn_id = 0;
   if (txn_internal != nullptr) {
-    auto now = std::chrono::system_clock::now().time_since_epoch().count();
+    if (time < 0) {
+      time = std::chrono::system_clock::now().time_since_epoch().count();
+    }
     auto new_event = txn_internal->mutable_events()->Add();
     new_event->set_event(event);
-    new_event->set_time(now);
+    new_event->set_time(time);
     new_event->set_machine(gLocalMachineId);
     new_event->set_home(-1);
     txn_id = txn_internal->id();
@@ -101,9 +103,11 @@ inline void RecordTxnEvent(TxnOrBatchInternalPtr txn_internal, TransactionEvent 
 #ifdef ENABLE_TXN_EVENT_RECORDING
 #define INIT_RECORDING(config) slog::InitializeRecording(config)
 #define RECORD(txn, event) RecordTxnEvent(txn, event)
+#define RECORD_WITH_TIME(txn, event, t) RecordTxnEvent(txn, event, t)
 #else
 #define INIT_RECORDING(config)
 #define RECORD(txn, event)
+#define RECORD_WITH_TIME(txn, event, t)
 #endif
 
 // Helper function for quickly monitor throughput at a certain place

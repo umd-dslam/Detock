@@ -53,6 +53,8 @@ void Sequencer::ProcessForwardRequest(EnvelopePtr&& env) {
   txn_internal->set_mh_arrive_at_home_time(now);
 
   if (config()->bypass_mh_orderer() && config()->synchronized_batching()) {
+    RECORD_WITH_TIME(txn_internal, TransactionEvent::EXPECTED_ENTER_LOCAL_BATCH_TIME, txn_internal->timestamp());
+
     if (txn_internal->timestamp() <= now) {
       VLOG(3) << "Txn " << txn_internal->id() << " has a timestamp " << (now - txn_internal->timestamp()) / 1000
               << " us in the past";
