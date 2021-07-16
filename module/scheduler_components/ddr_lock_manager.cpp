@@ -23,7 +23,7 @@ namespace slog {
 
 /**
  * Periodically, the deadlock resolver wakes up, takes a snapshot of the dependency graph,
- * broadcast the local graph to other partitions, deterministically resolve the deadlocks using the combination
+ * broadcasts the local graph to other partitions, deterministically resolves the deadlocks using the combination
  * of graphs from all partitions, and applies any changes to the original graph.
  * It finds strongly connected components in the graph and only resolves the "stable" components.
  * The original graph might still grow while the resolver is running so care must be taken such that
@@ -589,7 +589,7 @@ AcquireLocksResult DDRLockManager::AcquireLocks(const Transaction& txn) {
     }
     result = txn_info.is_ready() ? AcquireLocksResult::ACQUIRED : AcquireLocksResult::WAITING;
   }
-  {
+  if (dl_resolver_) {
     lock_guard<SpinLatch> guard(log_latch_);
     log_[log_index_].emplace_back(txn_id, txn.internal().involved_partitions_size(), is_complete, blocking_txns);
   }

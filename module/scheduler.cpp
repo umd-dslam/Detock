@@ -7,6 +7,7 @@
 #include "common/types.h"
 #include "proto/internal.pb.h"
 
+using std::chrono::milliseconds;
 using std::make_shared;
 using std::move;
 using std::shared_ptr;
@@ -29,7 +30,9 @@ Scheduler::Scheduler(const shared_ptr<Broker>& broker, const shared_ptr<Storage>
 #endif
 
 #ifdef LOCK_MANAGER_DDR
-  lock_manager_.InitializeDeadlockResolver(broker, metrics_manager, kSchedulerChannel, poll_timeout);
+  if (config()->ddr_interval() > milliseconds(0)) {
+    lock_manager_.InitializeDeadlockResolver(broker, metrics_manager, kSchedulerChannel, poll_timeout);
+  }
 #endif
 }
 
