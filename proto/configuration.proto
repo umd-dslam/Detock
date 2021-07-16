@@ -144,36 +144,38 @@ message Configuration {
     repeated TransactionEvent enabled_events = 18;
     // For multi-home txn, send lock-only txns directly to the regions, skipping the global orderer
     bool bypass_mh_orderer = 19;
+    // Skip check when bypass mh orderer
+    bool force_bypass_mh_orderer = 20;
     // Deadlock checking/resolving interval in ms. Set to 0 to disable deadlock resolving thread
-    uint64 ddr_interval = 20;
+    uint64 ddr_interval = 21;
     // Pin each module to a cpu
-    repeated CpuPinning cpu_pinnings = 21;
+    repeated CpuPinning cpu_pinnings = 22;
     // Return dummy txns back to the client instead of full results
-    bool return_dummy_txn = 22;
+    bool return_dummy_txn = 23;
     // Number of retries after calling zmq::recv something
-    int32 recv_retries = 23;
+    int32 recv_retries = 24;
     // Transaction execution type 
-    ExecutionType execution_type = 24;
+    ExecutionType execution_type = 25;
     // For each MH transaction, the involved regions will wait in such a way that their respective lock-only 
     // txns are put into the batches at approximately the same time
-    bool synchronized_batching = 25;
+    bool synchronized_batching = 26;
     // Options for metrics
-    MetricOptions metric_options = 26;
+    MetricOptions metric_options = 27;
     // The ratio between fetching rate for remote logs message vs fetching rate for local log messages. Expressed
     // in the format "<remote>:<local>". For example "5:1" means the interleaver tries to fetch 5 messages for
     // remote logs before fetching 1 message for local log.
-    string interleaver_remote_to_local_ratio = 27;
+    string interleaver_remote_to_local_ratio = 28;
     // The forwarder sends probes to the sequencer to measure latency between current region and other regions on a set
     // interval. This interval is in ms.
-    uint64 fs_latency_interval = 28;
+    uint64 fs_latency_interval = 29;
     // Interval in ms for clock synchronizer to send messages
-    uint64 clock_sync_interval = 29;
+    uint64 clock_sync_interval = 30;
     // A txn is assigned a future timestamp, which will be equal to current time + latency to the furthest
     // region. When a txn arrives at a region, we want it to wait for a bit so that it can see other txns with
     // lower timestamp and get ordered after them. However, clocks are not perfectly synchronized and latency 
     // estimation may be off. The txn may arrive at a region A when time at A has already passed the txn's
     // timestamp. This value is thus used to extend the time a txn might be buffered at a region.
-    int64 timestamp_buffer_us = 30;
+    int64 timestamp_buffer_us = 31;
     // Rolling window size used to average the latency measurement
-    uint32 avg_latency_window_size = 31;
+    uint32 avg_latency_window_size = 32;
 }
