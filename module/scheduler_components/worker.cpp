@@ -333,12 +333,20 @@ void Worker::BroadcastReads(const RunId& run_id) {
   const auto& waiting_partitions = txn.internal().active_partitions();
 #endif
 
-  if (waiting_partitions.empty()) {
+  auto local_replica = config()->local_replica();
+  auto local_partition = config()->local_partition();
+
+  std::vector<MachineId> destinations;
+  for (auto p : waiting_partitions) {
+    if (p != local_partition) {
+      destinations.push_back(config()->MakeMachineId(local_replica, p));
+    }
+  }
+
+  if (destinations.empty()) {
     return;
   }
 
-  auto local_partition = config()->local_partition();
-  auto local_replica = config()->local_replica();
   auto aborted = txn.status() == TransactionStatus::ABORTED;
 
   // Send abort result and local reads to all remote active partitions
@@ -356,12 +364,6 @@ void Worker::BroadcastReads(const RunId& run_id) {
     }
   }
 
-  std::vector<MachineId> destinations;
-  for (auto p : waiting_partitions) {
-    if (p != local_partition) {
-      destinations.push_back(config()->MakeMachineId(local_replica, p));
-    }
-  }
   Send(env, destinations, MakeTag(run_id));
 }
 
