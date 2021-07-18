@@ -29,9 +29,9 @@ using internal::Request;
 using internal::Response;
 using std::make_unique;
 
-Worker::Worker(const std::shared_ptr<Broker>& broker, Channel channel, const std::shared_ptr<Storage>& storage,
+Worker::Worker(int id, const std::shared_ptr<Broker>& broker, const std::shared_ptr<Storage>& storage,
                const MetricsRepositoryManagerPtr& metrics_manager, std::chrono::milliseconds poll_timeout)
-    : NetworkedModule(broker, channel, metrics_manager, poll_timeout), storage_(storage) {
+    : NetworkedModule(broker, kMaxChannel + id, metrics_manager, poll_timeout), storage_(storage) {
   switch (config()->execution_type()) {
     case internal::ExecutionType::KEY_VALUE:
       execution_ = make_unique<KeyValueExecution>(Sharder::MakeSharder(config()), storage);
