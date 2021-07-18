@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <vector>
 #include <zmq.hpp>
 
@@ -62,7 +61,6 @@ class NetworkedModule : public Module {
 
   void AddCustomSocket(zmq::socket_t&& new_socket);
   zmq::socket_t& GetCustomSocket(size_t i);
-  void SetMainVsCustomSocketWeights(std::array<int, 2> weights) { weights_ = weights; }
 
   inline static EnvelopePtr NewEnvelope() { return std::make_unique<internal::Envelope>(); }
   void Send(const internal::Envelope& env, MachineId to_machine_id, Channel to_channel);
@@ -98,11 +96,6 @@ class NetworkedModule : public Module {
   Poller poller_;
   int recv_retries_start_;
   int recv_retries_;
-
-  // Weights for the main socket and the custom sockets
-  std::array<int, 2> weights_;
-  std::array<int, 2> counters_;
-  uint8_t current_;
 
   std::string debug_info_;
 

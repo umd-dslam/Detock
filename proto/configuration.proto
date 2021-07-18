@@ -161,21 +161,17 @@ message Configuration {
     bool synchronized_batching = 26;
     // Options for metrics
     MetricOptions metric_options = 27;
-    // The ratio between fetching rate for remote logs message vs fetching rate for local log messages. Expressed
-    // in the format "<remote>:<local>". For example "5:1" means the interleaver tries to fetch 5 messages for
-    // remote logs before fetching 1 message for local log.
-    string interleaver_remote_to_local_ratio = 28;
     // The forwarder sends probes to the sequencer to measure latency between current region and other regions on a set
     // interval. This interval is in ms.
-    uint64 fs_latency_interval = 29;
+    uint64 fs_latency_interval = 28;
     // Interval in ms for clock synchronizer to send messages
-    uint64 clock_sync_interval = 30;
+    uint64 clock_sync_interval = 29;
     // A txn is assigned a future timestamp, which will be equal to current time + latency to the furthest
     // region. When a txn arrives at a region, we want it to wait for a bit so that it can see other txns with
     // lower timestamp and get ordered after them. However, clocks are not perfectly synchronized and latency 
     // estimation may be off. The txn may arrive at a region A when time at A has already passed the txn's
     // timestamp. This value is thus used to extend the time a txn might be buffered at a region.
-    int64 timestamp_buffer_us = 31;
+    int64 timestamp_buffer_us = 30;
     // Rolling window size used to average the latency measurement
-    uint32 avg_latency_window_size = 32;
+    uint32 avg_latency_window_size = 31;
 }

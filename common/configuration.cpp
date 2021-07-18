@@ -216,16 +216,6 @@ bool Configuration::synchronized_batching() const { return config_.synchronized_
 
 const internal::MetricOptions& Configuration::metric_options() const { return config_.metric_options(); }
 
-std::array<int, 2> Configuration::interleaver_remote_to_local_ratio() const {
-  auto& ratio_str = config_.interleaver_remote_to_local_ratio();
-  if (ratio_str.empty()) {
-    return {1, 1};
-  }
-  auto ratio = Split(ratio_str, ":");
-  CHECK_EQ(ratio.size(), 2) << "Invalid ratio string";
-  return {std::stoi(ratio[0]), std::stoi(ratio[1])};
-}
-
 milliseconds Configuration::fs_latency_interval() const { return milliseconds(config_.fs_latency_interval()); }
 
 milliseconds Configuration::clock_sync_interval() const { return milliseconds(config_.clock_sync_interval()); }

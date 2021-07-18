@@ -7,10 +7,10 @@
 #include "common/types.h"
 #include "proto/internal.pb.h"
 
-using std::chrono::milliseconds;
 using std::make_shared;
 using std::move;
 using std::shared_ptr;
+using std::chrono::milliseconds;
 
 namespace slog {
 
