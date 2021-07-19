@@ -9,7 +9,7 @@
 #include "connection/zmq_utils.h"
 #include "module/consensus.h"
 #include "module/forwarder.h"
-#include "module/interleaver.h"
+#include "module/log_manager.h"
 #include "module/multi_home_orderer.h"
 #include "module/scheduler.h"
 #include "module/sequencer.h"
@@ -146,7 +146,11 @@ void TestSlog::AddSequencer() {
   sequencer_ = MakeRunnerFor<Sequencer>(broker_->context(), broker_->config(), nullptr, kTestModuleTimeout);
 }
 
-void TestSlog::AddInterleaver() { interleaver_ = MakeRunnerFor<Interleaver>(broker_, nullptr, kTestModuleTimeout); }
+void TestSlog::AddLogManagers() {
+  for (size_t i = 0; i < broker_->config()->num_replicas(); i++) {
+    log_managers_.push_back(MakeRunnerFor<LogManager>(i, broker_, nullptr, kTestModuleTimeout));
+  }
+}
 
 void TestSlog::AddScheduler() { scheduler_ = MakeRunnerFor<Scheduler>(broker_, storage_, nullptr, kTestModuleTimeout); }
 
@@ -222,8 +226,10 @@ void TestSlog::StartInNewThreads() {
   if (sequencer_) {
     sequencer_->StartInNewThread();
   }
-  if (interleaver_) {
-    interleaver_->StartInNewThread();
+  if (!log_managers_.empty()) {
+    for (auto& lm : log_managers_) {
+      lm->StartInNewThread();
+    }
   }
   if (scheduler_) {
     scheduler_->StartInNewThread();

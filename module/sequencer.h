@@ -14,13 +14,13 @@
 namespace slog {
 
 /**
- * A Sequencer batches transactions before sending to the Interleaver.
+ * A Sequencer batches transactions before sending to the Log Manager.
  *
  * INPUT:  ForwardTxn
  *
  * OUTPUT: For a single-home txn, it is put into a batch. The ID of this batch is
  *         sent to the local paxos process for ordering. Simultaneously, this batch
- *         is sent to the Interleaver of all machines across all regions.
+ *         is sent to the Log Manager of all machines across all regions.
  *
  *         For a multi-home txn, a corresponding lock-only txn is created and then goes
  *         through the same process as a single-home txn above.

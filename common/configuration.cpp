@@ -41,8 +41,7 @@ Configuration::Configuration(const internal::Configuration& config, const string
     : config_(config), local_address_(local_address), local_replica_(0), local_partition_(0) {
   CHECK_LE(config_.replication_factor(), config_.replicas_size())
       << "Replication factor must not exceed number of replicas";
-  CHECK_LE(config_.broker_ports_size(), kMaxChannel - kBrokerChannel)
-      << "Maximum number of broker threads is " << kMaxChannel - kBrokerChannel;
+  CHECK_LE(config_.broker_ports_size(), MAX_NUM_BROKERS) << "Maximum number of broker threads is " << MAX_NUM_BROKERS;
   CHECK_GT(config_.broker_ports_size(), 0) << "There must be at least one broker";
   CHECK_NE(config_.server_port(), 0) << "Server port must be set";
   CHECK_NE(config_.forwarder_port(), 0) << "Forwarder port must be set";

@@ -15,7 +15,7 @@
 #include "module/clock_synchronizer.h"
 #include "module/consensus.h"
 #include "module/forwarder.h"
-#include "module/interleaver.h"
+#include "module/log_manager.h"
 #include "module/multi_home_orderer.h"
 #include "module/scheduler.h"
 #include "module/sequencer.h"
@@ -212,11 +212,13 @@ int main(int argc, char* argv[]) {
                        slog::ModuleId::FORWARDER);
   modules.emplace_back(MakeRunnerFor<slog::Sequencer>(broker->context(), broker->config(), metrics_manager),
                        slog::ModuleId::SEQUENCER);
-  modules.emplace_back(MakeRunnerFor<slog::Interleaver>(broker, metrics_manager),
-                       slog::ModuleId::INTERLEAVER);
   modules.emplace_back(MakeRunnerFor<slog::Scheduler>(broker, storage, metrics_manager),
                        slog::ModuleId::SCHEDULER);
   // clang-format on
+
+  for (size_t i = 0; i < broker->config()->num_replicas(); i++) {
+    modules.emplace_back(MakeRunnerFor<slog::LogManager>(i, broker, metrics_manager), slog::ModuleId::LOG_MANAGER);
+  }
 
   // One region is selected to globally order the multihome batches
   if (config->leader_replica_for_multi_home_ordering() == config->local_replica()) {

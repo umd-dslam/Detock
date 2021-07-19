@@ -52,7 +52,7 @@ class TestSlog {
   void AddServerAndClient();
   void AddForwarder();
   void AddSequencer();
-  void AddInterleaver();
+  void AddLogManagers();
   void AddScheduler();
   void AddLocalPaxos();
   void AddGlobalPaxos();
@@ -81,7 +81,7 @@ class TestSlog {
   ModuleRunnerPtr server_;
   ModuleRunnerPtr forwarder_;
   ModuleRunnerPtr sequencer_;
-  ModuleRunnerPtr interleaver_;
+  std::vector<ModuleRunnerPtr> log_managers_;
   ModuleRunnerPtr scheduler_;
   ModuleRunnerPtr local_paxos_;
   ModuleRunnerPtr global_paxos_;

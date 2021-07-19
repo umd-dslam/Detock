@@ -158,7 +158,7 @@ void Batcher::SendBatch() {
     RECORD(batch_partition, TransactionEvent::EXIT_SEQUENCER_IN_BATCH);
 
     auto env = NewBatchForwardingMessage({batch_partition});
-    Send(*env, config()->MakeMachineId(local_replica, p), kLocalLogChannel);
+    Send(*env, config()->MakeMachineId(local_replica, p), kLogManagerChannel + local_replica);
     // Collect back the batch partition to send to other replicas
     batch_partitions.push_back(
         env->mutable_request()->mutable_forward_batch_data()->mutable_batch_data()->ReleaseLast());
@@ -185,9 +185,9 @@ void Batcher::SendBatch() {
       VLOG(3) << "Delay batch " << batch_id() << " for " << delay_ms << " ms";
 
       NewTimedCallback(milliseconds(delay_ms),
-                       [this, destinations, batch_id = batch_id(), delayed_env = env.release()]() {
+                       [this, destinations, local_replica, batch_id = batch_id(), delayed_env = env.release()]() {
                          VLOG(3) << "Sending delayed batch " << batch_id;
-                         Send(*delayed_env, destinations, kInterleaverChannel);
+                         Send(*delayed_env, destinations, kLogManagerChannel + local_replica);
                          delete delayed_env;
                        });
 
@@ -195,7 +195,7 @@ void Batcher::SendBatch() {
     }
   }
 
-  Send(*env, destinations, kInterleaverChannel);
+  Send(*env, destinations, kLogManagerChannel + local_replica);
 }
 
 EnvelopePtr Batcher::NewBatchForwardingMessage(std::vector<internal::Batch*>&& batch) {

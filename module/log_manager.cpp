@@ -1,4 +1,4 @@
-#include "interleaver.h"
+#include "log_manager.h"
 
 #include <glog/logging.h>
 
@@ -53,11 +53,12 @@ void LocalLog::UpdateReadyBatches() {
   }
 }
 
-Interleaver::Interleaver(const shared_ptr<Broker>& broker, const MetricsRepositoryManagerPtr& metrics_manager,
-                         std::chrono::milliseconds poll_timeout)
-    : NetworkedModule(broker, kInterleaverChannel, metrics_manager, poll_timeout), rg_(std::random_device()()) {
-  broker->AddChannel(kLocalLogChannel);
-
+LogManager::LogManager(int region, const shared_ptr<Broker>& broker, const MetricsRepositoryManagerPtr& metrics_manager,
+                       std::chrono::milliseconds poll_timeout)
+    : NetworkedModule(broker, kLogManagerChannel + region, metrics_manager, poll_timeout),
+      region_(region),
+      channel_(kLogManagerChannel + region),
+      rg_(std::random_device()()) {
   for (uint32_t p = 0; p < config()->num_partitions(); p++) {
     if (p != config()->local_partition()) {
       other_partitions_.push_back(config()->MakeMachineId(config()->local_replica(), p));
@@ -71,31 +72,7 @@ Interleaver::Interleaver(const shared_ptr<Broker>& broker, const MetricsReposito
   }
 }
 
-void Interleaver::Initialize() {
-  zmq::socket_t local_queue_socket(*context(), ZMQ_PULL);
-  local_queue_socket.set(zmq::sockopt::rcvhwm, 0);
-  local_queue_socket.bind(MakeInProcChannelAddress(kLocalLogChannel));
-
-  AddCustomSocket(std::move(local_queue_socket));
-}
-
-/**
- * The local queue order messages and local batch data are received via a dedicated socket so that
- * we can control the priority between it and other message types
- */
-bool Interleaver::OnCustomSocket() {
-  auto& socket = GetCustomSocket(0);
-  auto env = RecvEnvelope(socket, true /* dont_wait */);
-  if (env == nullptr) {
-    return false;
-  }
-
-  OnInternalRequestReceived(std::move(env));
-
-  return true;
-}
-
-void Interleaver::OnInternalRequestReceived(EnvelopePtr&& env) {
+void LogManager::OnInternalRequestReceived(EnvelopePtr&& env) {
   auto request = env->mutable_request();
   switch (request->type_case()) {
     case Request::kBatchReplicationAck:
@@ -107,31 +84,27 @@ void Interleaver::OnInternalRequestReceived(EnvelopePtr&& env) {
     case Request::kForwardBatchOrder:
       ProcessForwardBatchOrder(std::move(env));
       break;
-    case Request::kStats:
-      ProcessStatsRequest(request->stats());
-      break;
     default:
       LOG(ERROR) << "Unexpected request type received: \"" << CASE_NAME(request->type_case(), Request) << "\"";
   }
 
-  AdvanceLogs();
+  AdvanceLog();
 }
 
-void Interleaver::ProcessBatchReplicationAck(EnvelopePtr&& env) {
+void LogManager::ProcessBatchReplicationAck(EnvelopePtr&& env) {
   auto from_replica = config()->UnpackMachineId(env->from()).first;
 
   // If this ack comes from another replica, propagate the ack to
   // other machines in the same replica
   if (from_replica != config()->local_replica()) {
-    Send(*env, other_partitions_, kInterleaverChannel);
+    Send(*env, other_partitions_, channel_);
   }
 
-  auto local_replica = config()->local_replica();
   auto batch_id = env->request().batch_replication_ack().batch_id();
-  single_home_logs_[local_replica].AckReplication(batch_id);
+  single_home_log_.AckReplication(batch_id);
 }
 
-void Interleaver::ProcessForwardBatchData(EnvelopePtr&& env) {
+void LogManager::ProcessForwardBatchData(EnvelopePtr&& env) {
   auto local_replica = config()->local_replica();
   auto forward_batch_data = env->mutable_request()->mutable_forward_batch_data();
   auto [from_replica, from_partition] = config()->UnpackMachineId(env->from());
@@ -153,13 +126,13 @@ void Interleaver::ProcessForwardBatchData(EnvelopePtr&& env) {
         new_forward_batch->set_home(forward_batch_data->home());
         new_forward_batch->set_home_position(forward_batch_data->home_position());
         new_forward_batch->mutable_batch_data()->AddAllocated(batch_partition);
-        Send(*new_env, config()->MakeMachineId(local_replica, p), kInterleaverChannel);
+        Send(*new_env, config()->MakeMachineId(local_replica, p), channel_);
       }
       p--;
     }
   }
 
-  RECORD(my_batch.get(), TransactionEvent::ENTER_INTERLEAVER_IN_BATCH);
+  RECORD(my_batch.get(), TransactionEvent::ENTER_LOG_MANAGER_IN_BATCH);
 
   VLOG(1) << "Received data for batch " << my_batch->id() << " from [" << env->from()
           << "]. Number of txns: " << my_batch->transactions_size();
@@ -171,10 +144,10 @@ void Interleaver::ProcessForwardBatchData(EnvelopePtr&& env) {
                           forward_batch_data->home_position(), my_batch->id());
   }
 
-  single_home_logs_[forward_batch_data->home()].AddBatch(move(my_batch));
+  single_home_log_.AddBatch(move(my_batch));
 }
 
-void Interleaver::ProcessForwardBatchOrder(EnvelopePtr&& env) {
+void LogManager::ProcessForwardBatchOrder(EnvelopePtr&& env) {
   auto forward_batch_order = env->mutable_request()->mutable_forward_batch_order();
   auto from_replica = config()->UnpackMachineId(env->from()).first;
   switch (forward_batch_order->locality_case()) {
@@ -194,16 +167,16 @@ void Interleaver::ProcessForwardBatchOrder(EnvelopePtr&& env) {
 
       // If this batch order comes from another replica, send this order to other partitions in the local replica
       if (from_replica != config()->local_replica()) {
-        Send(*env, other_partitions_, kInterleaverChannel);
+        Send(*env, other_partitions_, channel_);
         // Ack back if needed
         if (batch_order.need_ack()) {
           Envelope env_ack;
           env_ack.mutable_request()->mutable_batch_replication_ack()->set_batch_id(batch_id);
-          Send(env_ack, env->from(), kInterleaverChannel);
+          Send(env_ack, env->from(), channel_);
         }
       }
 
-      single_home_logs_[batch_order.home()].AddSlot(batch_order.slot(), batch_id);
+      single_home_log_.AddSlot(batch_order.slot(), batch_id);
       break;
     }
     default:
@@ -211,7 +184,7 @@ void Interleaver::ProcessForwardBatchOrder(EnvelopePtr&& env) {
   }
 }
 
-void Interleaver::AdvanceLogs() {
+void LogManager::AdvanceLog() {
   // Advance local log
   auto local_replica = config()->local_replica();
   while (local_log_.HasNextBatch()) {
@@ -246,81 +219,44 @@ void Interleaver::AdvanceLogs() {
         }
       }
 
-      Send(env, destinations, kInterleaverChannel);
+      Send(env, destinations, channel_);
 
       forward_batch_order->set_need_ack(true);
-      Send(env, ack_destinations, kInterleaverChannel);
+      Send(env, ack_destinations, channel_);
     }
 
-    single_home_logs_[local_replica].AddSlot(slot_id, batch_id, config()->replication_factor() - 1);
+    single_home_log_.AddSlot(slot_id, batch_id, config()->replication_factor() - 1);
   }
 
-  // Advance single-home logs
-  for (auto& [r, log] : single_home_logs_) {
-    while (log.HasNextBatch()) {
-      auto next_batch = log.NextBatch().second;
+  // Advance the single-home log
+  while (single_home_log_.HasNextBatch()) {
+    auto next_batch = single_home_log_.NextBatch().second;
 
-      // Record the log for debugging
-      if (per_thread_metrics_repo != nullptr && config()->metric_options().interleaver_logs()) {
-        for (auto& txn : next_batch->transactions()) {
-          const auto& internal = txn.internal();
-          per_thread_metrics_repo->RecordInterleaverLogEntry(
-              r, next_batch->id(), internal.id(), internal.timestamp(), internal.mh_depart_from_coordinator_time(),
-              internal.mh_arrive_at_home_time(), internal.mh_enter_local_batch_time());
-        }
+    // Record the log for debugging
+    if (per_thread_metrics_repo != nullptr && config()->metric_options().logs()) {
+      for (auto& txn : next_batch->transactions()) {
+        const auto& internal = txn.internal();
+        per_thread_metrics_repo->RecordLogManagerEntry(
+            region_, next_batch->id(), internal.id(), internal.timestamp(), internal.mh_depart_from_coordinator_time(),
+            internal.mh_arrive_at_home_time(), internal.mh_enter_local_batch_time());
       }
-
-      EmitBatch(move(next_batch));
     }
+
+    EmitBatch(move(next_batch));
   }
 }
 
-void Interleaver::EmitBatch(BatchPtr&& batch) {
+void LogManager::EmitBatch(BatchPtr&& batch) {
   VLOG(1) << "Processing batch " << batch->id() << " from global log";
 
   auto transactions = Unbatch(batch.get());
   for (auto txn : transactions) {
-    RECORD(txn->mutable_internal(), TransactionEvent::EXIT_INTERLEAVER);
+    RECORD(txn->mutable_internal(), TransactionEvent::EXIT_LOG_MANAGER);
     auto env = NewEnvelope();
     auto forward_txn = env->mutable_request()->mutable_forward_txn();
     forward_txn->set_allocated_txn(txn);
     Send(move(env), kSchedulerChannel);
   }
-}
-
-void Interleaver::ProcessStatsRequest(const internal::StatsRequest& stats_request) {
-  using rapidjson::StringRef;
-
-  rapidjson::Document stats;
-  stats.SetObject();
-  auto& alloc = stats.GetAllocator();
-
-  // Add stats for local logs
-  stats.AddMember(StringRef(LOCAL_LOG_NUM_BUFFERED_SLOTS), local_log_.NumBufferedSlots(), alloc);
-  stats.AddMember(StringRef(LOCAL_LOG_NUM_BUFFERED_BATCHES_PER_QUEUE),
-                  ToJsonArrayOfKeyValue(local_log_.NumBufferedBatchesPerQueue(), alloc), alloc);
-
-  // Add stats for global logs
-  stats.AddMember(StringRef(GLOBAL_LOG_NUM_BUFFERED_SLOTS_PER_REGION),
-                  ToJsonArrayOfKeyValue(
-                      single_home_logs_, [](const BatchLog& batch_log) { return batch_log.NumBufferedSlots(); }, alloc),
-                  alloc);
-
-  stats.AddMember(
-      StringRef(GLOBAL_LOG_NUM_BUFFERED_BATCHES_PER_REGION),
-      ToJsonArrayOfKeyValue(
-          single_home_logs_, [](const BatchLog& batch_log) { return batch_log.NumBufferedBatches(); }, alloc),
-      alloc);
-
-  // Write JSON object to a buffer and send back to the server
-  rapidjson::StringBuffer buf;
-  rapidjson::Writer<rapidjson::StringBuffer> writer(buf);
-  stats.Accept(writer);
-
-  auto env = NewEnvelope();
-  env->mutable_response()->mutable_stats()->set_id(stats_request.id());
-  env->mutable_response()->mutable_stats()->set_stats_json(buf.GetString());
-  Send(move(env), kServerChannel);
 }
 
 }  // namespace slog

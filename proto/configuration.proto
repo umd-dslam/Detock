@@ -83,7 +83,7 @@ message MetricOptions {
     bool deadlock_resolver_deadlock_details = 4;
     uint32 forw_sequ_latency_sample = 5;
     uint32 clock_sync_sample = 6;
-    bool interleaver_logs = 7;
+    bool logs = 7;
     uint32 forwarder_batch_sample = 8;
     uint32 sequencer_batch_sample = 9;
     uint32 mhorderer_batch_sample = 10;

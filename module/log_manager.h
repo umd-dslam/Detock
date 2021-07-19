@@ -48,28 +48,26 @@ class LocalLog {
   std::queue<std::pair<SlotId, std::pair<BatchId, MachineId>>> ready_batches_;
 };
 
-class Interleaver : public NetworkedModule {
+class LogManager : public NetworkedModule {
  public:
-  Interleaver(const std::shared_ptr<Broker>& broker, const MetricsRepositoryManagerPtr& metrics_manager,
-              std::chrono::milliseconds poll_timeout = kModuleTimeout);
+  LogManager(int region, const std::shared_ptr<Broker>& broker, const MetricsRepositoryManagerPtr& metrics_manager,
+             std::chrono::milliseconds poll_timeout = kModuleTimeout);
 
-  std::string name() const override { return "Interleaver"; }
+  std::string name() const override { return "LogManager"; }
 
  protected:
-  void Initialize() final;
-  bool OnCustomSocket() final;
   void OnInternalRequestReceived(EnvelopePtr&& env) final;
 
  private:
   void ProcessBatchReplicationAck(EnvelopePtr&& env);
   void ProcessForwardBatchData(EnvelopePtr&& env);
   void ProcessForwardBatchOrder(EnvelopePtr&& env);
-  void AdvanceLogs();
+  void AdvanceLog();
   void EmitBatch(BatchPtr&& batch);
 
-  void ProcessStatsRequest(const internal::StatsRequest& stats_request);
-
-  std::unordered_map<uint32_t, BatchLog> single_home_logs_;
+  int region_;
+  int channel_;
+  BatchLog single_home_log_;
   LocalLog local_log_;
   std::vector<MachineId> other_partitions_;
   std::vector<bool> need_ack_from_replica_;

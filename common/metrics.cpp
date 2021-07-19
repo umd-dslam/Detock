@@ -186,18 +186,18 @@ class DeadlockResolverDeadlockMetrics {
   list<Data> data_;
 };
 
-class InterleaverLogs {
+class LogManagerLogs {
  public:
   void Record(uint32_t replica, BatchId batch_id, TxnId txn_id, int64_t txn_timestamp,
               int64_t mh_depart_from_coordinator_time, int64_t mh_arrive_at_home_time,
               int64_t mh_enter_local_batch_time) {
-    global_log_.push_back({.replica = replica,
-                           .txn_id = txn_id,
-                           .batch_id = batch_id,
-                           .txn_timestamp = txn_timestamp,
-                           .mh_depart_from_coordinator_time = mh_depart_from_coordinator_time,
-                           .mh_arrive_at_home_time = mh_arrive_at_home_time,
-                           .mh_enter_local_batch_time = mh_enter_local_batch_time});
+    approx_global_log_.push_back({.replica = replica,
+                                  .txn_id = txn_id,
+                                  .batch_id = batch_id,
+                                  .txn_timestamp = txn_timestamp,
+                                  .mh_depart_from_coordinator_time = mh_depart_from_coordinator_time,
+                                  .mh_arrive_at_home_time = mh_arrive_at_home_time,
+                                  .mh_enter_local_batch_time = mh_enter_local_batch_time});
   }
   struct Data {
     uint32_t replica;
@@ -208,20 +208,21 @@ class InterleaverLogs {
     int64_t mh_arrive_at_home_time;
     int64_t mh_enter_local_batch_time;
   };
-  const vector<Data>& global_log() const { return global_log_; }
+  const vector<Data>& global_log() const { return approx_global_log_; }
 
   static void WriteToDisk(const std::string& dir, const vector<Data>& global_log) {
-    CSVWriter global_log_csv(dir + "/global_log.csv",
-                             {"replica", "batch_id", "txn_id", "timestamp", "depart_from_coordinator", "arrive_at_home",
-                              "enter_local_batch"});
+    CSVWriter approx_global_log_csv(dir + "/global_log.csv",
+                                    {"replica", "batch_id", "txn_id", "timestamp", "depart_from_coordinator",
+                                     "arrive_at_home", "enter_local_batch"});
     for (const auto& e : global_log) {
-      global_log_csv << e.replica << e.batch_id << e.txn_id << e.txn_timestamp << e.mh_depart_from_coordinator_time
-                     << e.mh_arrive_at_home_time << e.mh_enter_local_batch_time << csvendl;
+      approx_global_log_csv << e.replica << e.batch_id << e.txn_id << e.txn_timestamp
+                            << e.mh_depart_from_coordinator_time << e.mh_arrive_at_home_time
+                            << e.mh_enter_local_batch_time << csvendl;
     }
   }
 
  private:
-  vector<Data> global_log_;
+  vector<Data> approx_global_log_;
 };
 
 class ForwSequLatencyMetrics {
@@ -329,7 +330,7 @@ struct AllMetrics {
   TransactionEventMetrics txn_event_metrics;
   DeadlockResolverRunMetrics deadlock_resolver_run_metrics;
   DeadlockResolverDeadlockMetrics deadlock_resolver_deadlock_metrics;
-  InterleaverLogs interleaver_logs;
+  LogManagerLogs log_manager_logs;
   ForwSequLatencyMetrics forw_sequ_latency_metrics;
   ClockSyncMetrics clock_sync_metrics;
   BatchMetrics forwarder_batch_metrics;
@@ -363,14 +364,14 @@ void MetricsRepository::RecordDeadlockResolverDeadlock(int num_vertices,
   return metrics_->deadlock_resolver_deadlock_metrics.Record(num_vertices, edges_removed, edges_added);
 }
 
-void MetricsRepository::RecordInterleaverLogEntry(uint32_t replica, BatchId batch_id, TxnId txn_id,
-                                                  int64_t txn_timestamp, int64_t mh_depart_from_coordinator_time,
-                                                  int64_t mh_arrive_at_home_time, int64_t mh_enter_local_batch_time) {
-  if (!config_->metric_options().interleaver_logs()) {
+void MetricsRepository::RecordLogManagerEntry(uint32_t replica, BatchId batch_id, TxnId txn_id, int64_t txn_timestamp,
+                                              int64_t mh_depart_from_coordinator_time, int64_t mh_arrive_at_home_time,
+                                              int64_t mh_enter_local_batch_time) {
+  if (!config_->metric_options().logs()) {
     return;
   }
   std::lock_guard<SpinLatch> guard(latch_);
-  return metrics_->interleaver_logs.Record(replica, batch_id, txn_id, txn_timestamp, mh_depart_from_coordinator_time,
+  return metrics_->log_manager_logs.Record(replica, batch_id, txn_id, txn_timestamp, mh_depart_from_coordinator_time,
                                            mh_arrive_at_home_time, mh_enter_local_batch_time);
 }
 
@@ -414,7 +415,7 @@ std::unique_ptr<AllMetrics> MetricsRepository::Reset() {
            DeadlockResolverDeadlockMetrics(config_->metric_options().deadlock_resolver_deadlocks_sample(),
                                            config_->metric_options().deadlock_resolver_deadlock_details(),
                                            config_->local_replica(), config_->local_partition()),
-       .interleaver_logs = InterleaverLogs(),
+       .log_manager_logs = LogManagerLogs(),
        .forw_sequ_latency_metrics = ForwSequLatencyMetrics(config_->metric_options().forw_sequ_latency_sample()),
        .clock_sync_metrics = ClockSyncMetrics(config_->metric_options().clock_sync_sample()),
        .forwarder_batch_metrics = BatchMetrics(config_->metric_options().forwarder_batch_sample()),
@@ -448,7 +449,7 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
   list<TransactionEventMetrics::Data> txn_events_data;
   list<DeadlockResolverRunMetrics::Data> deadlock_resolver_run_data;
   list<DeadlockResolverDeadlockMetrics::Data> deadlock_resolver_deadlock_data;
-  vector<InterleaverLogs::Data> global_log;
+  vector<LogManagerLogs::Data> global_log;
   list<ForwSequLatencyMetrics::Data> forw_sequ_latency_data;
   list<ClockSyncMetrics::Data> clock_sync_data;
   list<BatchMetrics::Data> forwarder_batch_data, sequencer_batch_data, mhorderer_batch_data;
@@ -462,8 +463,8 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
       deadlock_resolver_deadlock_data.splice(deadlock_resolver_deadlock_data.end(),
                                              metrics->deadlock_resolver_deadlock_metrics.data());
       // There is only one thread with local logs and global log data so there is no need to splice
-      if (!metrics->interleaver_logs.global_log().empty()) {
-        global_log = metrics->interleaver_logs.global_log();
+      if (!metrics->log_manager_logs.global_log().empty()) {
+        global_log = metrics->log_manager_logs.global_log();
       }
       forw_sequ_latency_data.splice(forw_sequ_latency_data.end(), metrics->forw_sequ_latency_metrics.data());
       clock_sync_data.splice(clock_sync_data.end(), metrics->clock_sync_metrics.data());
@@ -482,7 +483,7 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
     DeadlockResolverRunMetrics::WriteToDisk(dir, deadlock_resolver_run_data);
     DeadlockResolverDeadlockMetrics::WriteToDisk(dir, deadlock_resolver_deadlock_data,
                                                  config_->metric_options().deadlock_resolver_deadlock_details());
-    InterleaverLogs::WriteToDisk(dir, global_log);
+    LogManagerLogs::WriteToDisk(dir, global_log);
     ForwSequLatencyMetrics::WriteToDisk(dir, forw_sequ_latency_data);
     ClockSyncMetrics::WriteToDisk(dir, clock_sync_data);
     BatchMetrics::WriteToDisk(dir + "/forwarder_batch.csv", forwarder_batch_data);

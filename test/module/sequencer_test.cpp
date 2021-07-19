@@ -28,8 +28,9 @@ class SequencerTest : public ::testing::TestWithParam<bool> {
     for (int i = 0; i < 4; i++) {
       slog_[i] = make_unique<TestSlog>(configs_[i]);
       slog_[i]->AddSequencer();
-      slog_[i]->AddOutputSocket(kInterleaverChannel);
-      slog_[i]->AddOutputSocket(kLocalLogChannel);
+      // There are 2 regions, hence 2 logs
+      slog_[i]->AddOutputSocket(kLogManagerChannel);
+      slog_[i]->AddOutputSocket(kLogManagerChannel + 1);
     }
     sender_ = slog_[0]->NewSender();
     for (auto& slog : slog_) {
@@ -39,10 +40,8 @@ class SequencerTest : public ::testing::TestWithParam<bool> {
 
   void SendToSequencer(EnvelopePtr&& req) { sender_->Send(std::move(req), kSequencerChannel); }
 
-  vector<internal::Batch> ReceiveBatches(int i) {
-    // If i is in the same replica as the sender (machine 0), check the local log channel instead
-    auto channel = configs_[0]->UnpackMachineId(i).first == 0 ? kLocalLogChannel : kInterleaverChannel;
-    auto req_env = slog_[i]->ReceiveFromOutputSocket(channel);
+  vector<internal::Batch> ReceiveBatches(int i, int log_id = 0) {
+    auto req_env = slog_[i]->ReceiveFromOutputSocket(kLogManagerChannel + log_id);
     if (req_env == nullptr) {
       return {};
     }

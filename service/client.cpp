@@ -175,29 +175,6 @@ void PrintSequencerStats(const rapidjson::Document& stats, uint32_t level) {
   }
 }
 
-void PrintInterleaverStats(const rapidjson::Document& stats, uint32_t) {
-  cout << "LOCAL LOG\n";
-  cout << "Buffered slots: " << stats[LOCAL_LOG_NUM_BUFFERED_SLOTS].GetUint() << "\n";
-  cout << "Buffered batches per queue:\n";
-  const auto& batches_per_queue = stats[LOCAL_LOG_NUM_BUFFERED_BATCHES_PER_QUEUE].GetArray();
-  for (size_t i = 0; i < batches_per_queue.Size(); i++) {
-    const auto& pair = batches_per_queue[i].GetArray();
-    cout << "\tQueue " << pair[0].GetUint() << ": " << pair[1].GetUint() << "\n";
-  }
-
-  cout << "\nGLOBAL LOG\n";
-  const auto& slots_per_region = stats[GLOBAL_LOG_NUM_BUFFERED_SLOTS_PER_REGION].GetArray();
-  const auto& batches_per_region = stats[GLOBAL_LOG_NUM_BUFFERED_BATCHES_PER_REGION].GetArray();
-  // The last "region" is the log for multi-home txns
-  cout << setw(12) << "Regions" << setw(20) << "# buffered slots" << setw(22) << "# buffered batches\n";
-  for (size_t i = 0; i < slots_per_region.Size(); i++) {
-    const auto& slots = slots_per_region[i].GetArray();
-    const auto& batches = batches_per_region[i].GetArray();
-    cout << setw(12) << slots[0].GetUint() << setw(20) << slots[1].GetUint() << setw(22) << batches[1].GetUint()
-         << "\n";
-  }
-}
-
 string LockModeStr(LockMode mode) {
   switch (mode) {
     case LockMode::UNLOCKED:
@@ -295,12 +272,10 @@ void PrintSchedulerStats(const rapidjson::Document& stats, uint32_t level) {
   }
 }
 
-const unordered_map<string, StatsModule> STATS_MODULES = {
-    {"server", {ModuleId::SERVER, PrintServerStats}},
-    {"forwarder", {ModuleId::FORWARDER, PrintForwarderStats}},
-    {"sequencer", {ModuleId::SEQUENCER, PrintSequencerStats}},
-    {"interleaver", {ModuleId::INTERLEAVER, PrintInterleaverStats}},
-    {"scheduler", {ModuleId::SCHEDULER, PrintSchedulerStats}}};
+const unordered_map<string, StatsModule> STATS_MODULES = {{"server", {ModuleId::SERVER, PrintServerStats}},
+                                                          {"forwarder", {ModuleId::FORWARDER, PrintForwarderStats}},
+                                                          {"sequencer", {ModuleId::SEQUENCER, PrintSequencerStats}},
+                                                          {"scheduler", {ModuleId::SCHEDULER, PrintSchedulerStats}}};
 
 void ExecuteStats(const char* module, uint32_t level) {
   auto stats_module_it = STATS_MODULES.find(string(module));

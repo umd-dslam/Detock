@@ -44,7 +44,8 @@ void GlobalPaxos::OnCommit(uint32_t slot, uint32_t value, MachineId leader) {
 
 LocalPaxos::LocalPaxos(const shared_ptr<Broker>& broker, std::chrono::milliseconds poll_timeout)
     : SimulatedMultiPaxos(kLocalPaxos, broker, GetMembers(broker->config()), broker->config()->local_machine_id(),
-                          poll_timeout) {}
+                          poll_timeout),
+      local_replica_(broker->config()->local_replica()) {}
 
 void LocalPaxos::OnCommit(uint32_t slot, uint32_t value, MachineId leader) {
   auto env = NewEnvelope();
@@ -52,7 +53,7 @@ void LocalPaxos::OnCommit(uint32_t slot, uint32_t value, MachineId leader) {
   order->set_queue_id(value);
   order->set_slot(slot);
   order->set_leader(leader);
-  Send(std::move(env), kLocalLogChannel);
+  Send(std::move(env), kLogManagerChannel + local_replica_);
 }
 
 }  // namespace slog

@@ -15,16 +15,19 @@ const Channel kSequencerChannel = 3;
 const Channel kBatcherChannel = 4;
 const Channel kMultiHomeOrdererChannel = 5;
 const Channel kClockSynchronizerChannel = 6;
-const Channel kInterleaverChannel = 7;
-const Channel kLocalLogChannel = 8;
-const Channel kSchedulerChannel = 9;
-const Channel kLocalPaxos = 10;
-const Channel kGlobalPaxos = 11;
-const Channel kWorkerChannel = 12;
-const Channel kDeadlockResolverChannel = 13;
-// Broker channels range from kBrokerChannel to kMaxChannel - 1
-const Channel kBrokerChannel = 14;
-const Channel kMaxChannel = 17;
+const Channel kSchedulerChannel = 7;
+const Channel kLocalPaxos = 8;
+const Channel kGlobalPaxos = 9;
+const Channel kWorkerChannel = 10;
+const Channel kDeadlockResolverChannel = 11;
+// Broker channels are in [kBrokerChannel, kLogManagerChannel)
+const Channel kBrokerChannel = 12;
+// Log manager channels are in [kLogManagerChannel , kMaxChannel)
+const Channel kLogManagerChannel = 15;
+const Channel kMaxChannel = 30;
+
+#define MAX_NUM_BROKERS (kLogManagerChannel - kBrokerChannel)
+#define MAX_NUM_LOGS (kMaxChannel - kLogManagerChannel)
 
 const uint32_t kMaxNumMachines = 100;
 
@@ -61,12 +64,6 @@ const char SEQ_BATCH_SIZE[] = "seq_batch_size";
 /* Multi-home orderer */
 const char MHO_BATCH_SIZE_PCTLS[] = "mho_batch_size_pctls";
 const char MHO_BATCH_DURATION_MS_PCTLS[] = "mho_batch_duration_ms_pctls";
-
-/* Interleaver */
-const char LOCAL_LOG_NUM_BUFFERED_SLOTS[] = "local_log_num_buffered_slots";
-const char LOCAL_LOG_NUM_BUFFERED_BATCHES_PER_QUEUE[] = "local_log_num_buffered_batches_per_queue";
-const char GLOBAL_LOG_NUM_BUFFERED_SLOTS_PER_REGION[] = "global_log_num_buffered_slots_per_region";
-const char GLOBAL_LOG_NUM_BUFFERED_BATCHES_PER_REGION[] = "global_log_num_buffered_batches_per_region";
 
 /* Scheduler */
 const char ALL_TXNS[] = "all_txns";
