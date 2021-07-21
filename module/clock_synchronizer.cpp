@@ -11,14 +11,29 @@ ClockSynchronizer::ClockSynchronizer(const std::shared_ptr<zmq::context_t>& cont
     : NetworkedModule(context, config, config->clock_synchronizer_port(), kClockSynchronizerChannel, metrics_manager,
                       poll_timeout_ms) {
   CHECK_NE(config->clock_synchronizer_port(), 0) << "Cannot initialize clock synchronizer with port 0";
+
   size_t avg_window;
   if (config->clock_sync_interval().count() == 0) {
     avg_window = 1;
   } else {
     avg_window = std::max(2, 1000 / static_cast<int>(config->clock_sync_interval().count()));
   }
-  for (uint32_t i = 0; i < config->num_replicas(); i++) {
-    latencies_ns_.emplace_back(avg_window);
+
+  for (size_t p = 0; p < config->num_partitions(); p++) {
+    auto m = config->MakeMachineId(config->local_replica(), p);
+    if (m != config->local_machine_id()) {
+      latencies_ns_.emplace(m, avg_window);
+    }
+  }
+
+  auto leader_partition = config->leader_partition_for_multi_home_ordering();
+  if (config->local_partition() == leader_partition) {
+    for (size_t r = 0; r < config->num_replicas(); r++) {
+      auto m = config->MakeMachineId(r, leader_partition);
+      if (m != config->local_machine_id()) {
+        latencies_ns_.emplace(m, avg_window);
+      }
+    }
   }
 }
 
@@ -30,17 +45,12 @@ void ClockSynchronizer::Initialize() {
 
 void ClockSynchronizer::ScheduleNextSync() {
   NewTimedCallback(config()->clock_sync_interval(), [this] {
-    auto p = config()->leader_partition_for_multi_home_ordering();
-    for (uint32_t r = 0; r < config()->num_replicas(); r++) {
-      auto machine_id = config()->MakeMachineId(r, p);
-      if (machine_id == config()->local_machine_id()) {
-        continue;
-      }
+    for (auto pair : latencies_ns_) {
       internal::Envelope env;
       auto ping = env.mutable_request()->mutable_ping();
       ping->set_src_send_time(std::chrono::steady_clock::now().time_since_epoch().count());
-      ping->set_dst(r);
-      Send(env, machine_id, kClockSynchronizerChannel);
+      ping->set_dst(pair.first);
+      Send(env, pair.first, kClockSynchronizerChannel);
     }
     ScheduleNextSync();
   });
@@ -63,9 +73,15 @@ void ClockSynchronizer::OnInternalRequestReceived(EnvelopePtr&& env) {
 void ClockSynchronizer::OnInternalResponseReceived(EnvelopePtr&& env) {
   auto now = std::chrono::steady_clock::now().time_since_epoch().count();
   auto slog_now = slog_clock::now().time_since_epoch().count();
-  const auto& pong = env->response().pong();
-  auto& latency_ns = latencies_ns_[pong.dst()];
 
+  const auto& pong = env->response().pong();
+  auto it = latencies_ns_.find(pong.dst());
+  if (it == latencies_ns_.end()) {
+    LOG(ERROR) << "Invalid clock sync peer: " << pong.dst();
+    return;
+  }
+
+  auto& latency_ns = it->second;
   latency_ns.Add((now - pong.src_send_time()) / 2);
 
   auto avg_latency_ns = static_cast<int64_t>(latency_ns.avg());

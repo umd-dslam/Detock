@@ -173,6 +173,19 @@ int main(int argc, char* argv[]) {
 
   auto broker = Broker::New(config);
 
+  auto config_name = FLAGS_config;
+  if (auto pos = config_name.rfind('/'); pos != std::string::npos) {
+    config_name = config_name.substr(pos + 1);
+  }
+  auto metrics_manager = make_shared<slog::MetricsRepositoryManager>(config_name, config);
+
+  unique_ptr<slog::ModuleRunner> clock_sync;
+  if (config->clock_synchronizer_port() != 0) {
+    // Start the clock synchronizer early so that it runs while data is generating
+    clock_sync = MakeRunnerFor<slog::ClockSynchronizer>(broker->context(), broker->config(), metrics_manager);
+    clock_sync->StartInNewThread();
+  }
+
   // Create and initialize storage layer
   auto storage = make_shared<slog::MemOnlyStorage>();
   std::shared_ptr<slog::MetadataInitializer> metadata_initializer;
@@ -192,12 +205,6 @@ int main(int argc, char* argv[]) {
       LoadData(*storage, config, FLAGS_data_dir);
       break;
   }
-
-  auto config_name = FLAGS_config;
-  if (auto pos = config_name.rfind('/'); pos != std::string::npos) {
-    config_name = config_name.substr(pos + 1);
-  }
-  auto metrics_manager = make_shared<slog::MetricsRepositoryManager>(config_name, config);
 
   vector<pair<unique_ptr<slog::ModuleRunner>, slog::ModuleId>> modules;
   // clang-format off
@@ -223,11 +230,6 @@ int main(int argc, char* argv[]) {
   // One region is selected to globally order the multihome batches
   if (config->leader_replica_for_multi_home_ordering() == config->local_replica()) {
     modules.emplace_back(MakeRunnerFor<slog::GlobalPaxos>(broker), slog::ModuleId::GLOBALPAXOS);
-  }
-
-  if (config->clock_synchronizer_port() != 0) {
-    modules.emplace_back(MakeRunnerFor<slog::ClockSynchronizer>(broker->context(), broker->config(), metrics_manager),
-                         slog::ModuleId::CLOCK_SYNCHRONIZER);
   }
 
   // Block SIGINT from here so that the new threads inherit the block mask
