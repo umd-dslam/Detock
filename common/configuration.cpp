@@ -41,11 +41,16 @@ Configuration::Configuration(const internal::Configuration& config, const string
     : config_(config), local_address_(local_address), local_replica_(0), local_partition_(0) {
   CHECK_LE(config_.replication_factor(), config_.replicas_size())
       << "Replication factor must not exceed number of replicas";
-  CHECK_LE(config_.broker_ports_size(), MAX_NUM_BROKERS) << "Maximum number of broker threads is " << MAX_NUM_BROKERS;
+  CHECK_LT(config_.broker_ports_size(), kMaxNumBrokers) << "Too many brokers";
   CHECK_GT(config_.broker_ports_size(), 0) << "There must be at least one broker";
   CHECK_NE(config_.server_port(), 0) << "Server port must be set";
   CHECK_NE(config_.forwarder_port(), 0) << "Forwarder port must be set";
   CHECK_NE(config_.sequencer_port(), 0) << "Sequencer port must be set";
+  CHECK_LT(config_.num_workers(), kMaxNumWorkers) << "Too many workers";
+  CHECK_LT(config_.num_log_managers(), kMaxNumLogManagers) << "Too many log managers";
+  CHECK_LT(config_.replicas_size(), kMaxNumLogs) << "Too many reigons";
+  CHECK_LE(config_.num_log_managers(), config_.replicas_size())
+      << "Number of log managers cannot exceed number of regions";
 
   if (config_.force_bypass_mh_orderer()) {
     config_.set_bypass_mh_orderer(true);
@@ -116,6 +121,8 @@ uint32_t Configuration::num_replicas() const { return config_.replicas_size(); }
 uint32_t Configuration::num_partitions() const { return config_.num_partitions(); }
 
 uint32_t Configuration::num_workers() const { return std::max(config_.num_workers(), 1U); }
+
+uint32_t Configuration::num_log_managers() const { return std::max(config_.num_log_managers(), 1U); }
 
 uint32_t Configuration::broker_ports(int i) const { return config_.broker_ports(i); }
 uint32_t Configuration::broker_ports_size() const { return config_.broker_ports_size(); }

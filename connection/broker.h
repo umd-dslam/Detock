@@ -57,8 +57,15 @@ class Broker {
 
   void StartInNewThreads();
   void Stop();
+  struct ChannelOption {
+    ChannelOption(Channel channel, bool is_raw = true, const std::vector<Channel>& initial_tags = {})
+        : channel(channel), is_raw(is_raw), initial_tags(initial_tags) {}
 
-  void AddChannel(Channel chan, bool send_raw = false);
+    Channel channel;
+    bool is_raw;
+    std::vector<Channel> initial_tags;
+  };
+  void AddChannel(const ChannelOption& opt);
 
   const ConfigurationPtr& config() const { return config_; }
   const std::shared_ptr<zmq::context_t>& context() const { return context_; }
@@ -72,7 +79,7 @@ class Broker {
   std::chrono::milliseconds poll_timeout_ms_;
 
   bool running_;
-  std::vector<std::pair<Channel, bool>> channels_;
+  std::vector<ChannelOption> channels_;
   std::vector<std::unique_ptr<slog::ModuleRunner>> threads_;
 };
 

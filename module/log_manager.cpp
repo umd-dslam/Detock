@@ -12,6 +12,16 @@ using std::shared_ptr;
 
 namespace slog {
 
+namespace {
+std::vector<uint64_t> RegionsToTags(const std::vector<uint32_t>& regions) {
+  std::vector<uint64_t> tags;
+  for (auto r : regions) {
+    tags.push_back(LogManager::MakeTag(r));
+  }
+  return tags;
+}
+}  // namespace
+
 using internal::Envelope;
 using internal::Request;
 using internal::Response;
@@ -53,17 +63,17 @@ void LocalLog::UpdateReadyBatches() {
   }
 }
 
-LogManager::LogManager(int region, const shared_ptr<Broker>& broker, const MetricsRepositoryManagerPtr& metrics_manager,
-                       std::chrono::milliseconds poll_timeout)
-    : NetworkedModule(broker, kLogManagerChannel + region, metrics_manager, poll_timeout),
-      region_(region),
-      channel_(kLogManagerChannel + region),
+LogManager::LogManager(int id, const std::vector<uint32_t>& regions, const shared_ptr<Broker>& broker,
+                       const MetricsRepositoryManagerPtr& metrics_manager, std::chrono::milliseconds poll_timeout)
+    : NetworkedModule(broker, Broker::ChannelOption(kLogManagerChannel + id, true, RegionsToTags(regions)),
+                      metrics_manager, poll_timeout),
       rg_(std::random_device()()) {
   for (uint32_t p = 0; p < config()->num_partitions(); p++) {
     if (p != config()->local_partition()) {
       other_partitions_.push_back(config()->MakeMachineId(config()->local_replica(), p));
     }
   }
+
   need_ack_from_replica_.resize(config()->num_replicas());
   auto replication_factor = static_cast<size_t>(config()->replication_factor());
   const auto& replication_order = config()->replication_order();
@@ -93,15 +103,15 @@ void LogManager::OnInternalRequestReceived(EnvelopePtr&& env) {
 
 void LogManager::ProcessBatchReplicationAck(EnvelopePtr&& env) {
   auto from_replica = config()->UnpackMachineId(env->from()).first;
-
+  auto local_replica = config()->local_replica();
   // If this ack comes from another replica, propagate the ack to
   // other machines in the same replica
-  if (from_replica != config()->local_replica()) {
-    Send(*env, other_partitions_, channel_);
+  if (from_replica != local_replica) {
+    Send(*env, other_partitions_, MakeTag(local_replica));
   }
 
   auto batch_id = env->request().batch_replication_ack().batch_id();
-  single_home_log_.AckReplication(batch_id);
+  single_home_logs_[local_replica].AckReplication(batch_id);
 }
 
 void LogManager::ProcessForwardBatchData(EnvelopePtr&& env) {
@@ -121,12 +131,13 @@ void LogManager::ProcessForwardBatchData(EnvelopePtr&& env) {
       if (p == config()->local_partition()) {
         my_batch = BatchPtr(batch_partition);
       } else {
+        auto home = forward_batch_data->home();
         auto new_env = NewEnvelope();
         auto new_forward_batch = new_env->mutable_request()->mutable_forward_batch_data();
-        new_forward_batch->set_home(forward_batch_data->home());
+        new_forward_batch->set_home(home);
         new_forward_batch->set_home_position(forward_batch_data->home_position());
         new_forward_batch->mutable_batch_data()->AddAllocated(batch_partition);
-        Send(*new_env, config()->MakeMachineId(local_replica, p), channel_);
+        Send(*new_env, config()->MakeMachineId(local_replica, p), MakeTag(home));
       }
       p--;
     }
@@ -144,7 +155,7 @@ void LogManager::ProcessForwardBatchData(EnvelopePtr&& env) {
                           forward_batch_data->home_position(), my_batch->id());
   }
 
-  single_home_log_.AddBatch(move(my_batch));
+  single_home_logs_[forward_batch_data->home()].AddBatch(move(my_batch));
 }
 
 void LogManager::ProcessForwardBatchOrder(EnvelopePtr&& env) {
@@ -161,22 +172,23 @@ void LogManager::ProcessForwardBatchOrder(EnvelopePtr&& env) {
     case internal::ForwardBatchOrder::kRemoteBatchOrder: {
       auto& batch_order = forward_batch_order->remote_batch_order();
       auto batch_id = batch_order.batch_id();
+      auto home = batch_order.home();
 
-      VLOG(1) << "Received remote batch order " << batch_id << " (home = " << batch_order.home() << ") from ["
-              << env->from() << "]. Slot: " << batch_order.slot();
+      VLOG(1) << "Received remote batch order " << batch_id << " (home = " << home << ") from [" << env->from()
+              << "]. Slot: " << batch_order.slot();
 
       // If this batch order comes from another replica, send this order to other partitions in the local replica
       if (from_replica != config()->local_replica()) {
-        Send(*env, other_partitions_, channel_);
+        Send(*env, other_partitions_, MakeTag(home));
         // Ack back if needed
         if (batch_order.need_ack()) {
           Envelope env_ack;
           env_ack.mutable_request()->mutable_batch_replication_ack()->set_batch_id(batch_id);
-          Send(env_ack, env->from(), channel_);
+          Send(env_ack, env->from(), MakeTag(home));
         }
       }
 
-      single_home_log_.AddSlot(batch_order.slot(), batch_id);
+      single_home_logs_[home].AddSlot(batch_order.slot(), batch_id);
       break;
     }
     default:
@@ -219,30 +231,32 @@ void LogManager::AdvanceLog() {
         }
       }
 
-      Send(env, destinations, channel_);
+      Send(env, destinations, MakeTag(local_replica));
 
       forward_batch_order->set_need_ack(true);
-      Send(env, ack_destinations, channel_);
+      Send(env, ack_destinations, MakeTag(local_replica));
     }
 
-    single_home_log_.AddSlot(slot_id, batch_id, config()->replication_factor() - 1);
+    single_home_logs_[local_replica].AddSlot(slot_id, batch_id, config()->replication_factor() - 1);
   }
 
-  // Advance the single-home log
-  while (single_home_log_.HasNextBatch()) {
-    auto next_batch = single_home_log_.NextBatch().second;
+  for (auto& [r, log] : single_home_logs_) {
+    // Advance the single-home log
+    while (log.HasNextBatch()) {
+      auto next_batch = log.NextBatch().second;
 
-    // Record the log for debugging
-    if (per_thread_metrics_repo != nullptr && config()->metric_options().logs()) {
-      for (auto& txn : next_batch->transactions()) {
-        const auto& internal = txn.internal();
-        per_thread_metrics_repo->RecordLogManagerEntry(
-            region_, next_batch->id(), internal.id(), internal.timestamp(), internal.mh_depart_from_coordinator_time(),
-            internal.mh_arrive_at_home_time(), internal.mh_enter_local_batch_time());
+      // Record the log for debugging
+      if (per_thread_metrics_repo != nullptr && config()->metric_options().logs()) {
+        for (auto& txn : next_batch->transactions()) {
+          const auto& internal = txn.internal();
+          per_thread_metrics_repo->RecordLogManagerEntry(
+              r, next_batch->id(), internal.id(), internal.timestamp(), internal.mh_depart_from_coordinator_time(),
+              internal.mh_arrive_at_home_time(), internal.mh_enter_local_batch_time());
+        }
       }
-    }
 
-    EmitBatch(move(next_batch));
+      EmitBatch(move(next_batch));
+    }
   }
 }
 

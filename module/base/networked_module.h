@@ -15,12 +15,6 @@
 
 namespace slog {
 
-struct ChannelOption {
-  ChannelOption(Channel channel, bool recv_raw = true) : channel(channel), recv_raw(recv_raw) {}
-  Channel channel;
-  bool recv_raw;
-};
-
 /**
  * Base class for modules that can send and receive in internal messages.
  */
@@ -36,7 +30,7 @@ class NetworkedModule : public Module {
   /**
    * Use broker to receive external messages.
    */
-  NetworkedModule(const std::shared_ptr<Broker>& broker, ChannelOption chopt,
+  NetworkedModule(const std::shared_ptr<Broker>& broker, Broker::ChannelOption chopt,
                   const MetricsRepositoryManagerPtr& metrics_manager,
                   std::optional<std::chrono::milliseconds> poll_timeout);
 
@@ -50,6 +44,9 @@ class NetworkedModule : public Module {
   MetricsRepositoryManager& metrics_manager() { return *metrics_manager_; }
 
  protected:
+  /**
+   * Called once when the module starts
+   */
   virtual void Initialize(){};
 
   virtual void OnInternalRequestReceived(EnvelopePtr&& env) = 0;

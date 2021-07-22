@@ -34,6 +34,7 @@ class Configuration {
   uint32_t num_replicas() const;
   uint32_t num_partitions() const;
   uint32_t num_workers() const;
+  uint32_t num_log_managers() const;
   std::vector<MachineId> all_machine_ids() const;
   std::chrono::milliseconds forwarder_batch_duration() const;
   std::chrono::milliseconds sequencer_batch_duration() const;

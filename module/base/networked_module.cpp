@@ -36,11 +36,11 @@ NetworkedModule::NetworkedModule(const std::shared_ptr<zmq::context_t>& context,
   debug_info_ = os.str();
 }
 
-NetworkedModule::NetworkedModule(const std::shared_ptr<Broker>& broker, ChannelOption chopt,
+NetworkedModule::NetworkedModule(const std::shared_ptr<Broker>& broker, Broker::ChannelOption chopt,
                                  const MetricsRepositoryManagerPtr& metrics_manager,
                                  optional<std::chrono::milliseconds> poll_timeout)
     : NetworkedModule(broker->context(), broker->config(), chopt.channel, metrics_manager, poll_timeout) {
-  broker->AddChannel(channel_, chopt.recv_raw);
+  broker->AddChannel(chopt);
 }
 
 NetworkedModule::NetworkedModule(const std::shared_ptr<zmq::context_t>& context, const ConfigurationPtr& config,

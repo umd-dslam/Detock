@@ -45,12 +45,12 @@ void ClockSynchronizer::Initialize() {
 
 void ClockSynchronizer::ScheduleNextSync() {
   NewTimedCallback(config()->clock_sync_interval(), [this] {
-    for (auto pair : latencies_ns_) {
+    for (auto kv : latencies_ns_) {
       internal::Envelope env;
       auto ping = env.mutable_request()->mutable_ping();
       ping->set_src_send_time(std::chrono::steady_clock::now().time_since_epoch().count());
-      ping->set_dst(pair.first);
-      Send(env, pair.first, kClockSynchronizerChannel);
+      ping->set_dst(kv.first);
+      Send(env, kv.first, kClockSynchronizerChannel);
     }
     ScheduleNextSync();
   });

@@ -1,6 +1,7 @@
 #include "module/consensus.h"
 
 #include "common/proto_utils.h"
+#include "module/log_manager.h"
 
 namespace slog {
 
@@ -45,7 +46,8 @@ void GlobalPaxos::OnCommit(uint32_t slot, uint32_t value, MachineId leader) {
 LocalPaxos::LocalPaxos(const shared_ptr<Broker>& broker, std::chrono::milliseconds poll_timeout)
     : SimulatedMultiPaxos(kLocalPaxos, broker, GetMembers(broker->config()), broker->config()->local_machine_id(),
                           poll_timeout),
-      local_replica_(broker->config()->local_replica()) {}
+      local_log_channel_(kLogManagerChannel +
+                         broker->config()->local_replica() % broker->config()->num_log_managers()) {}
 
 void LocalPaxos::OnCommit(uint32_t slot, uint32_t value, MachineId leader) {
   auto env = NewEnvelope();
@@ -53,7 +55,7 @@ void LocalPaxos::OnCommit(uint32_t slot, uint32_t value, MachineId leader) {
   order->set_queue_id(value);
   order->set_slot(slot);
   order->set_leader(leader);
-  Send(std::move(env), kLogManagerChannel + local_replica_);
+  Send(std::move(env), local_log_channel_);
 }
 
 }  // namespace slog

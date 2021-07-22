@@ -18,18 +18,29 @@ const Channel kClockSynchronizerChannel = 6;
 const Channel kSchedulerChannel = 7;
 const Channel kLocalPaxos = 8;
 const Channel kGlobalPaxos = 9;
-const Channel kWorkerChannel = 10;
+const Channel kSchedulerWorkerChannel = 10;
 const Channel kDeadlockResolverChannel = 11;
 // Broker channels are in [kBrokerChannel, kLogManagerChannel)
 const Channel kBrokerChannel = 12;
-// Log manager channels are in [kLogManagerChannel , kMaxChannel)
+// LogManager channels are in [kLogManagerChannel, kWorkerChannel)
 const Channel kLogManagerChannel = 15;
-const Channel kMaxChannel = 30;
-
-#define MAX_NUM_BROKERS (kLogManagerChannel - kBrokerChannel)
-#define MAX_NUM_LOGS (kMaxChannel - kLogManagerChannel)
-
+// Worker channels are in [kWorkerChannel, kMaxChannel)
+const Channel kWorkerChannel = 45;
+// The broker considers anything larger than or equal to kMaxChannel as a tag.
+// Tags are like channels but can be added/removed on the fly. Tags are used
+// by log managers and workers. Log managers use tag to instruct the broker to
+// distribute messages to the correct logs. Workers use tag to tell the broker
+// which txn it is processing.
+const Channel kMaxChannel = 70;
+// Since workers use TxnId for their tags and TxnId starts from kMaxNumMachines,
+// anything larger than or equal to kMaxNumMachines must be reserved for workers' tags.
+// The range [kMaxChannel, kMaxNumMachines) is reserved for the log managers.
 const uint32_t kMaxNumMachines = 100;
+
+constexpr Channel kMaxNumBrokers = kLogManagerChannel - kBrokerChannel;
+constexpr Channel kMaxNumLogManagers = kWorkerChannel - kLogManagerChannel;
+constexpr Channel kMaxNumLogs = kMaxNumMachines - kMaxChannel;
+constexpr Channel kMaxNumWorkers = kMaxChannel - kWorkerChannel;
 
 const uint32_t kPaxosDefaultLeaderPosition = 0;
 

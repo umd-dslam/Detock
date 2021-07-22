@@ -31,7 +31,7 @@ using std::make_unique;
 
 Worker::Worker(int id, const std::shared_ptr<Broker>& broker, const std::shared_ptr<Storage>& storage,
                const MetricsRepositoryManagerPtr& metrics_manager, std::chrono::milliseconds poll_timeout)
-    : NetworkedModule(broker, kMaxChannel + id, metrics_manager, poll_timeout), storage_(storage) {
+    : NetworkedModule(broker, kWorkerChannel + id, metrics_manager, poll_timeout), storage_(storage) {
   switch (config()->execution_type()) {
     case internal::ExecutionType::KEY_VALUE:
       execution_ = make_unique<KeyValueExecution>(Sharder::MakeSharder(config()), storage);
@@ -49,7 +49,7 @@ void Worker::Initialize() {
   zmq::socket_t sched_socket(*context(), ZMQ_DEALER);
   sched_socket.set(zmq::sockopt::rcvhwm, 0);
   sched_socket.set(zmq::sockopt::sndhwm, 0);
-  sched_socket.connect(MakeInProcChannelAddress(kWorkerChannel));
+  sched_socket.connect(MakeInProcChannelAddress(kSchedulerWorkerChannel));
 
   AddCustomSocket(std::move(sched_socket));
 }

@@ -147,8 +147,15 @@ void TestSlog::AddSequencer() {
 }
 
 void TestSlog::AddLogManagers() {
-  for (size_t i = 0; i < broker_->config()->num_replicas(); i++) {
-    log_managers_.push_back(MakeRunnerFor<LogManager>(i, broker_, nullptr, kTestModuleTimeout));
+  auto num_log_managers = broker_->config()->num_log_managers();
+  for (size_t i = 0; i < num_log_managers; i++) {
+    std::vector<uint32_t> regions;
+    for (size_t r = 0; r < broker_->config()->num_replicas(); r++) {
+      if (r % num_log_managers == i) {
+        regions.push_back(r);
+      }
+    }
+    log_managers_.push_back(MakeRunnerFor<slog::LogManager>(i, regions, broker_, nullptr, kTestModuleTimeout));
   }
 }
 
@@ -162,7 +169,7 @@ void TestSlog::AddMultiHomeOrderer() {
   multi_home_orderer_ = MakeRunnerFor<MultiHomeOrderer>(broker_, nullptr, kTestModuleTimeout);
 }
 
-void TestSlog::AddOutputSocket(Channel channel) {
+void TestSlog::AddOutputSocket(Channel channel, const std::vector<uint64_t>& tags) {
   switch (channel) {
     case kForwarderChannel: {
       zmq::socket_t outproc_socket(*broker_->context(), ZMQ_PULL);
@@ -179,7 +186,7 @@ void TestSlog::AddOutputSocket(Channel channel) {
       break;
     }
     default:
-      broker_->AddChannel(channel);
+      broker_->AddChannel(Broker::ChannelOption(channel, false, tags));
   }
 
   zmq::socket_t inproc_socket(*broker_->context(), ZMQ_PULL);

@@ -21,10 +21,11 @@ namespace slog {
 using internal::Envelope;
 
 namespace {
+
 class BrokerThread : public Module {
  public:
   BrokerThread(const shared_ptr<zmq::context_t>& context, const string& internal_endpoint,
-               const string& external_endpoint, const vector<pair<Channel, bool>>& channels, int recv_retries_start_,
+               const string& external_endpoint, const vector<Broker::ChannelOption>& channels, int recv_retries_start_,
                std::chrono::milliseconds poll_timeout_ms)
       : external_socket_(*context, ZMQ_PULL),
         internal_socket_(*context, ZMQ_PULL),
@@ -36,12 +37,15 @@ class BrokerThread : public Module {
     // Remove all limits on the message queue
     external_socket_.set(zmq::sockopt::rcvhwm, 0);
 
-    for (auto [chan, send_raw] : channels) {
-      DCHECK(channels_.find(chan) == channels_.end()) << "Duplicate channel: " << chan;
+    for (const auto& c : channels) {
+      DCHECK(channels_.find(c.channel) == channels_.end()) << "Duplicate channel: " << c.channel;
       zmq::socket_t new_channel(*context, ZMQ_PUSH);
       new_channel.set(zmq::sockopt::sndhwm, 0);
-      new_channel.connect(MakeInProcChannelAddress(chan));
-      channels_.try_emplace(chan, move(new_channel), send_raw);
+      new_channel.connect(MakeInProcChannelAddress(c.channel));
+      channels_.try_emplace(c.channel, move(new_channel), c.is_raw);
+      for (const auto& t : c.initial_tags) {
+        redirect_[t].to = c.channel;
+      }
     }
   }
 
@@ -109,11 +113,10 @@ class BrokerThread : public Module {
 
     auto chan_id = tag_or_chan_id;
 
-    // Check if this is a tag or a channel id.
-    // This condition effectively allows sending messages to a worker only via redirection since
-    // workers' channel ids are larger than kMaxChannel
+    // Anything larger than or equal to kMaxChannel is considered a tag
     if (tag_or_chan_id >= kMaxChannel) {
       auto& entry = redirect_[tag_or_chan_id];
+      // Buffer the message if the redirection is not established yet
       if (!entry.to.has_value()) {
         entry.pending_msgs.push_back(move(msg));
         return;
@@ -182,9 +185,9 @@ Broker::Broker(const ConfigurationPtr& config, const shared_ptr<zmq::context_t>&
                std::chrono::milliseconds poll_timeout_ms)
     : config_(config), context_(context), poll_timeout_ms_(poll_timeout_ms), running_(false) {}
 
-void Broker::AddChannel(Channel chan, bool send_raw) {
+void Broker::AddChannel(const ChannelOption& opt) {
   CHECK(!running_) << "Cannot add new channel. The broker has already been running";
-  channels_.emplace_back(chan, send_raw);
+  channels_.emplace_back(opt);
 }
 
 void Broker::StartInNewThreads() {

@@ -19,7 +19,7 @@ using internal::Response;
 
 Scheduler::Scheduler(const shared_ptr<Broker>& broker, const shared_ptr<Storage>& storage,
                      const MetricsRepositoryManagerPtr& metrics_manager, std::chrono::milliseconds poll_timeout)
-    : NetworkedModule(broker, {kSchedulerChannel, false /* recv_raw */}, metrics_manager, poll_timeout),
+    : NetworkedModule(broker, {kSchedulerChannel, false /* is_raw */}, metrics_manager, poll_timeout),
       global_log_counter_(0) {
   for (size_t i = 0; i < config()->num_workers(); i++) {
     workers_.push_back(MakeRunnerFor<Worker>(i, broker, storage, metrics_manager, poll_timeout));
@@ -54,7 +54,7 @@ void Scheduler::Initialize() {
   zmq::socket_t worker_socket(*context(), ZMQ_DEALER);
   worker_socket.set(zmq::sockopt::rcvhwm, 0);
   worker_socket.set(zmq::sockopt::sndhwm, 0);
-  worker_socket.bind(MakeInProcChannelAddress(kWorkerChannel));
+  worker_socket.bind(MakeInProcChannelAddress(kSchedulerWorkerChannel));
 
   AddCustomSocket(move(worker_socket));
 }

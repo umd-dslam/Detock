@@ -223,8 +223,16 @@ int main(int argc, char* argv[]) {
                        slog::ModuleId::SCHEDULER);
   // clang-format on
 
-  for (size_t i = 0; i < broker->config()->num_replicas(); i++) {
-    modules.emplace_back(MakeRunnerFor<slog::LogManager>(i, broker, metrics_manager), slog::ModuleId::LOG_MANAGER);
+  auto num_log_managers = broker->config()->num_log_managers();
+  for (size_t i = 0; i < num_log_managers; i++) {
+    std::vector<uint32_t> regions;
+    for (size_t r = 0; r < broker->config()->num_replicas(); r++) {
+      if (r % num_log_managers == i) {
+        regions.push_back(r);
+      }
+    }
+    modules.emplace_back(MakeRunnerFor<slog::LogManager>(i, regions, broker, metrics_manager),
+                         slog::ModuleId::LOG_MANAGER);
   }
 
   // One region is selected to globally order the multihome batches

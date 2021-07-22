@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "common/proto_utils.h"
+#include "module/log_manager.h"
 #include "test/test_utils.h"
 
 using namespace std;
@@ -20,6 +21,7 @@ class SequencerTest : public ::testing::TestWithParam<bool> {
       internal::Configuration extra_config;
       extra_config.mutable_replication_delay()->set_delay_pct(100);
       extra_config.mutable_replication_delay()->set_delay_amount_ms(5);
+      extra_config.set_num_log_managers(2);
       configs_ = MakeTestConfigurations("sequencer", 2, 2, extra_config);
     } else {
       configs_ = MakeTestConfigurations("sequencer", 2, 2);
@@ -28,9 +30,9 @@ class SequencerTest : public ::testing::TestWithParam<bool> {
     for (int i = 0; i < 4; i++) {
       slog_[i] = make_unique<TestSlog>(configs_[i]);
       slog_[i]->AddSequencer();
-      // There are 2 regions, hence 2 logs
-      slog_[i]->AddOutputSocket(kLogManagerChannel);
-      slog_[i]->AddOutputSocket(kLogManagerChannel + 1);
+      // There are 2 lock managers as set in the config
+      slog_[i]->AddOutputSocket(kLogManagerChannel, {LogManager::MakeTag(0)});
+      slog_[i]->AddOutputSocket(kLogManagerChannel + 1, {LogManager::MakeTag(1)});
       senders_[i] = slog_[i]->NewSender();
     }
     for (auto& slog : slog_) {
@@ -40,7 +42,7 @@ class SequencerTest : public ::testing::TestWithParam<bool> {
 
   void SendToSequencer(int i, EnvelopePtr&& req) { senders_[i]->Send(std::move(req), kSequencerChannel); }
 
-  vector<internal::Batch> ReceiveBatches(int i, int log_id = 0) {
+  vector<internal::Batch> ReceiveBatches(int i, int log_id) {
     auto req_env = slog_[i]->ReceiveFromOutputSocket(kLogManagerChannel + log_id);
     if (req_env == nullptr) {
       return {};
@@ -75,7 +77,7 @@ TEST_P(SequencerTest, SingleHomeTransaction1) {
 
   // Batch partitions are distributed to corresponding local partitions
   {
-    auto batches = ReceiveBatches(0, true);
+    auto batches = ReceiveBatches(0, 0);
     ASSERT_EQ(batches.size(), 1);
     ASSERT_EQ(batches[0].transactions_size(), 1);
     ASSERT_EQ(batches[0].transaction_type(), TransactionType::SINGLE_HOME);
@@ -87,7 +89,7 @@ TEST_P(SequencerTest, SingleHomeTransaction1) {
   }
 
   {
-    auto batches = ReceiveBatches(1, true);
+    auto batches = ReceiveBatches(1, 0);
     ASSERT_EQ(batches.size(), 1);
     ASSERT_EQ(batches[0].transactions_size(), 1);
     ASSERT_EQ(batches[0].transaction_type(), TransactionType::SINGLE_HOME);
@@ -99,7 +101,7 @@ TEST_P(SequencerTest, SingleHomeTransaction1) {
 
   // All batch partitions are sent to a machine in the remote replica
   {
-    auto batches = ReceiveBatches(3, false);
+    auto batches = ReceiveBatches(3, 0);
     ASSERT_EQ(batches.size(), 2);
     ASSERT_EQ(batches[0].transactions_size(), 1);
     ASSERT_EQ(batches[0].transaction_type(), TransactionType::SINGLE_HOME);
@@ -132,7 +134,7 @@ TEST_P(SequencerTest, SingleHomeTransaction2) {
 
   // Batch partitions are distributed to corresponding local partitions
   {
-    auto batches = ReceiveBatches(2, true);
+    auto batches = ReceiveBatches(2, 1);
     ASSERT_EQ(batches.size(), 1);
     ASSERT_EQ(batches[0].transactions_size(), 1);
     ASSERT_EQ(batches[0].transaction_type(), TransactionType::SINGLE_HOME);
@@ -144,7 +146,7 @@ TEST_P(SequencerTest, SingleHomeTransaction2) {
   }
 
   {
-    auto batches = ReceiveBatches(3, true);
+    auto batches = ReceiveBatches(3, 1);
     ASSERT_EQ(batches.size(), 1);
     ASSERT_EQ(batches[0].transactions_size(), 1);
     ASSERT_EQ(batches[0].transaction_type(), TransactionType::SINGLE_HOME);
@@ -156,7 +158,7 @@ TEST_P(SequencerTest, SingleHomeTransaction2) {
 
   // All batch partitions are sent to a machine in the remote replica
   {
-    auto batches = ReceiveBatches(1, false);
+    auto batches = ReceiveBatches(1, 1);
     ASSERT_EQ(batches.size(), 2);
     ASSERT_EQ(batches[0].transactions_size(), 1);
     ASSERT_EQ(batches[0].transaction_type(), TransactionType::SINGLE_HOME);
@@ -192,7 +194,7 @@ TEST_P(SequencerTest, MultiHomeTransaction1) {
   // The txn was sent to region 0, which generates two subtxns, each for each partitions. These subtxns are
   // also replicated to region 1.
   {
-    auto batches = ReceiveBatches(0, true);
+    auto batches = ReceiveBatches(0, 0);
     ASSERT_EQ(batches.size(), 1);
     auto lo_txn = batches[0].transactions().at(0);
     ASSERT_EQ(lo_txn.internal().id(), 1000);
@@ -204,7 +206,7 @@ TEST_P(SequencerTest, MultiHomeTransaction1) {
   }
 
   {
-    auto batches = ReceiveBatches(1, true);
+    auto batches = ReceiveBatches(1, 0);
     ASSERT_EQ(batches.size(), 1);
     auto lo_txn = batches[0].transactions().at(0);
     ASSERT_EQ(lo_txn.internal().id(), 1000);
@@ -216,7 +218,7 @@ TEST_P(SequencerTest, MultiHomeTransaction1) {
   }
 
   {
-    auto batches = ReceiveBatches(3, false);
+    auto batches = ReceiveBatches(3, 0);
     ASSERT_FALSE(batches.empty());
     ASSERT_EQ(batches.size(), 2);
     {
@@ -254,13 +256,13 @@ TEST_P(SequencerTest, MultiHomeTransaction2) {
   // The txn was sent to region 0, which only generates one subtxn for partition 1 because the subtxn for partition
   // 0 is redundant (both A and C are homed at region 1)
   {
-    auto batches = ReceiveBatches(0, true);
+    auto batches = ReceiveBatches(0, 0);
     ASSERT_EQ(batches.size(), 1);
     ASSERT_EQ(batches[0].transactions_size(), 0);
   }
 
   {
-    auto batches = ReceiveBatches(1, true);
+    auto batches = ReceiveBatches(1, 0);
 
     ASSERT_EQ(batches.size(), 1);
 
@@ -274,7 +276,7 @@ TEST_P(SequencerTest, MultiHomeTransaction2) {
   }
 
   {
-    auto batches = ReceiveBatches(3, false);
+    auto batches = ReceiveBatches(3, 0);
     ASSERT_FALSE(batches.empty());
     ASSERT_EQ(batches.size(), 2);
 
@@ -299,7 +301,7 @@ TEST_P(SequencerTest, RemasterTransaction) {
   SendToSequencer(0, move(env));
 
   {
-    auto batches = ReceiveBatches(0, true);
+    auto batches = ReceiveBatches(0, 0);
 
     ASSERT_EQ(batches.size(), 1);
     ASSERT_EQ(batches[0].transactions_size(), 1);
@@ -314,14 +316,14 @@ TEST_P(SequencerTest, RemasterTransaction) {
   }
 
   {
-    auto batches = ReceiveBatches(1, true);
+    auto batches = ReceiveBatches(1, 0);
 
     ASSERT_EQ(batches.size(), 1);
     ASSERT_EQ(batches[0].transactions_size(), 0);
   }
 
   {
-    auto batches = ReceiveBatches(3, false);
+    auto batches = ReceiveBatches(3, 0);
 
     ASSERT_EQ(batches.size(), 2);
     ASSERT_EQ(batches[0].transactions_size(), 1);
@@ -351,7 +353,7 @@ TEST_P(SequencerTest, MultiHomeTransactionBypassedOrderer) {
   // The txn was sent to region 0, which only generates one subtxns for partition 0 because B of partition 1
   // does not have any key homed at 0.
   {
-    auto batches = ReceiveBatches(0, true);
+    auto batches = ReceiveBatches(0, 0);
 
     ASSERT_EQ(batches.size(), 1);
     ASSERT_EQ(batches[0].transactions_size(), 1);
@@ -365,14 +367,14 @@ TEST_P(SequencerTest, MultiHomeTransactionBypassedOrderer) {
   }
 
   {
-    auto batches = ReceiveBatches(1, true);
+    auto batches = ReceiveBatches(1, 0);
 
     ASSERT_EQ(batches.size(), 1);
     ASSERT_EQ(batches[0].transactions_size(), 0);
   }
 
   {
-    auto batches = ReceiveBatches(3, false);
+    auto batches = ReceiveBatches(3, 0);
 
     ASSERT_EQ(batches.size(), 2);
     ASSERT_EQ(batches[0].transactions_size(), 1);

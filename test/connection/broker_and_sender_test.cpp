@@ -43,7 +43,7 @@ TEST(BrokerAndSenderTest, PingPong) {
 
   auto ping = thread([&]() {
     auto broker = Broker::New(configs[0], kTestModuleTimeout);
-    broker->AddChannel(PING);
+    broker->AddChannel(Broker::ChannelOption(PING, false /* is_raw */));
     broker->StartInNewThreads();
 
     auto recv_socket = MakePullSocket(*broker->context(), PING);
@@ -63,7 +63,7 @@ TEST(BrokerAndSenderTest, PingPong) {
   auto pong = thread([&]() {
     // Set blocky to true to avoid exitting before sending the pong message
     auto broker = Broker::New(configs[1], kTestModuleTimeout, true);
-    broker->AddChannel(PONG);
+    broker->AddChannel(Broker::ChannelOption(PONG, false /* is_raw */));
     broker->StartInNewThreads();
 
     auto socket = MakePullSocket(*broker->context(), PONG);
@@ -90,8 +90,8 @@ TEST(BrokerTest, LocalPingPong) {
   const Channel PONG = 9;
   ConfigVec configs = MakeTestConfigurations("local_ping_pong", 1, 1);
   auto broker = Broker::New(configs[0], kTestModuleTimeout);
-  broker->AddChannel(PING);
-  broker->AddChannel(PONG);
+  broker->AddChannel(Broker::ChannelOption(PING, false /* is_raw */));
+  broker->AddChannel(Broker::ChannelOption(PONG, false /* is_raw */));
 
   broker->StartInNewThreads();
 
@@ -133,7 +133,7 @@ TEST(BrokerTest, MultiSend) {
 
   auto ping = thread([&]() {
     auto broker = Broker::New(configs[0], kTestModuleTimeout);
-    broker->AddChannel(PING);
+    broker->AddChannel(Broker::ChannelOption(PING, false /* is_raw */));
     broker->StartInNewThreads();
 
     auto socket = MakePullSocket(*broker->context(), PING);
@@ -160,7 +160,7 @@ TEST(BrokerTest, MultiSend) {
   for (int i = 0; i < NUM_PONGS; i++) {
     pongs[i] = thread([&configs, i]() {
       auto broker = Broker::New(configs[i + 1], kTestModuleTimeout);
-      broker->AddChannel(PONG);
+      broker->AddChannel(Broker::ChannelOption(PONG, false /* is_raw */));
       broker->StartInNewThreads();
 
       auto socket = MakePullSocket(*broker->context(), PONG);
@@ -196,7 +196,7 @@ TEST(BrokerTest, CreateRedirection) {
   // Initialize ping machine
   auto ping_broker = Broker::New(configs[0], kTestModuleTimeout);
   auto ping_socket = MakePullSocket(*ping_broker->context(), PING);
-  ping_broker->AddChannel(PING);
+  ping_broker->AddChannel(Broker::ChannelOption(PING, false /* is_raw */));
   ping_broker->StartInNewThreads();
   Sender ping_sender(ping_broker->config(), ping_broker->context());
 
@@ -214,7 +214,7 @@ TEST(BrokerTest, CreateRedirection) {
   // Initialize pong machine
   auto pong_broker = Broker::New(configs[1], kTestModuleTimeout);
   auto pong_socket = MakePullSocket(*pong_broker->context(), PONG);
-  pong_broker->AddChannel(PONG);
+  pong_broker->AddChannel(Broker::ChannelOption(PONG, false /* is_raw */));
   pong_broker->StartInNewThreads();
   Sender pong_sender(pong_broker->config(), pong_broker->context());
 
@@ -271,14 +271,14 @@ TEST(BrokerTest, RemoveRedirection) {
   // Initialize ping machine
   auto ping_broker = Broker::New(configs[0], kTestModuleTimeout);
   auto ping_socket = MakePullSocket(*ping_broker->context(), PING);
-  ping_broker->AddChannel(PING);
+  ping_broker->AddChannel(Broker::ChannelOption(PING, false /* is_raw */));
   ping_broker->StartInNewThreads();
   Sender ping_sender(ping_broker->config(), ping_broker->context());
 
   // Initialize pong machine
   auto pong_broker = Broker::New(configs[1], kTestModuleTimeout);
   auto pong_socket = MakePullSocket(*pong_broker->context(), PONG);
-  pong_broker->AddChannel(PONG);
+  pong_broker->AddChannel(Broker::ChannelOption(PONG, false /* is_raw */));
   pong_broker->StartInNewThreads();
   Sender pong_sender(pong_broker->config(), pong_broker->context());
 

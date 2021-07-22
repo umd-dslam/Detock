@@ -58,7 +58,7 @@ class TestSlog {
   void AddGlobalPaxos();
   void AddMultiHomeOrderer();
 
-  void AddOutputSocket(Channel channel);
+  void AddOutputSocket(Channel channel, const std::vector<uint64_t>& tags = {});
   zmq::pollitem_t GetPollItemForOutputSocket(Channel channel, bool inproc = true);
   EnvelopePtr ReceiveFromOutputSocket(Channel channel, bool inproc = true);
 

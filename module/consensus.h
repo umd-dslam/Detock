@@ -24,7 +24,7 @@ class LocalPaxos : public SimulatedMultiPaxos {
   void OnCommit(uint32_t slot, uint32_t value, MachineId leader) final;
 
  private:
-  uint32_t local_replica_;
+  Channel local_log_channel_;
 };
 
 }  // namespace slog
