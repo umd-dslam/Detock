@@ -769,33 +769,6 @@ class BenchmarkCommand(AdminCommand):
 
     NAME = "benchmark"
     HELP = "Spawn distributed clients to run benchmark"
-    DESCRIPTION = """
-    The format of the client config file is:
-    [
-        {
-            '<addr_0>': <number_of_processes>,
-            '<addr_1>': <number_of_processes>,
-            ...
-        },
-        ...
-    ]
-
-    Example:
-    [
-        {
-            '192.168.0.10': 2,
-            '192.168.0.11': 3
-        },
-        {
-            '192.168.0.13': 2
-        }
-    ]
-
-    This config will start 2 client processes for machine at '192.168.0.10',
-    3 clients for machine at '192.168.0.11', and 2 clients for machine at
-    '192.168.0.13'. The first two machines will send transactions to the first
-    region and the last machine will send transactions to the second region.
-    """
 
     def add_arguments(self, parser):
         super().add_arguments(parser)
