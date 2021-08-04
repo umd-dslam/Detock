@@ -91,7 +91,8 @@ class Experiment:
         with open(os.path.join(args.config_dir, "settings.json"), "r") as f:
             self.settings = json.load(f)
 
-        sample = self.settings["sample"]
+        sample = self.settings.get("sample", 10)
+        trials = self.settings.get("trials", 1)
         workload_setting = self.settings[self.NAME]
         out_dir = os.path.join(args.out_dir, self.NAME if args.name is None else args.name)
 
@@ -131,40 +132,43 @@ class Experiment:
                 tag_keys = [k for k in varying_keys if len(workload_setting[k]) > 1]
 
             for v in values:
-                tag = config_name
-                tag_suffix = ''.join([f"{k}{v[k]}" for k in tag_keys])
-                if tag_suffix:
-                    tag += "-" + tag_suffix
+                for t in range(trials):
+                    tag = config_name
+                    tag_suffix = ''.join([f"{k}{v[k]}" for k in tag_keys])
+                    if tag_suffix:
+                        tag += "-" + tag_suffix
+                    if trials > 1:
+                        tag += f"-{t}"
 
-                params = ','.join(f"{k}={v[k]}" for k in self.VARYING_PARAMS)
+                    params = ','.join(f"{k}={v[k]}" for k in self.VARYING_PARAMS)
 
-                LOG.info("RUN BENCHMARK")
-                admin.main([
-                    "benchmark",
-                    *common_args,
-                    "--workload", workload_setting['workload'],
-                    "--clients", f"{v['clients']}",
-                    "--generators", f"{GENERATORS}",
-                    "--txns", f"{v['txns']}",
-                    "--duration", f"{v['duration']}",
-                    "--sample", f"{sample}",
-                    "--seed", "0",
-                    "--params", params,
-                    "--tag", tag,
-                    # The image has already been pulled in the cleanup step
-                    "--no-pull"
-                ])
+                    LOG.info("RUN BENCHMARK")
+                    admin.main([
+                        "benchmark",
+                        *common_args,
+                        "--workload", workload_setting['workload'],
+                        "--clients", f"{v['clients']}",
+                        "--generators", f"{GENERATORS}",
+                        "--txns", f"{v['txns']}",
+                        "--duration", f"{v['duration']}",
+                        "--sample", f"{sample}",
+                        "--seed", "0",
+                        "--params", params,
+                        "--tag", tag,
+                        # The image has already been pulled in the cleanup step
+                        "--no-pull"
+                    ])
 
-                LOG.info("COLLECT DATA")
-                collectors = []
-                if not args.no_client_data:
-                    collectors.append(Process(target=self.collect_client_data, args=(config, out_dir, tag)))
-                if not args.no_server_data:
-                    collectors.append(Process(target=self.collect_server_data, args=(config, image, out_dir, tag)))
-                for p in collectors:
-                    p.start()
-                for p in collectors:
-                    p.join()
+                    LOG.info("COLLECT DATA")
+                    collectors = []
+                    if not args.no_client_data:
+                        collectors.append(Process(target=self.collect_client_data, args=(config, out_dir, tag)))
+                    if not args.no_server_data:
+                        collectors.append(Process(target=self.collect_server_data, args=(config, image, out_dir, tag)))
+                    for p in collectors:
+                        p.start()
+                    for p in collectors:
+                        p.join()
 
 
 class YCSBExperiment(Experiment):
