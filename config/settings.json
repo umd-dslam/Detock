@@ -142,7 +142,7 @@
     "workload": "basic",
     "txns": [1000000],
     "duration": [30],
-    "clients": [1500],
+    "clients": [2000],
     "writes": [10],
     "records": [10],
     "hot_records": [2],

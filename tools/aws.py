@@ -236,38 +236,9 @@ class CreateSpotClusterCommand(AWSCommand):
             except Exception as e:
                 LOG.exception(region, e)
 
-        install_docker(instance_public_ips)
         print_instance_ips(instance_public_ips, "PUBLIC IP ADDRESSES")
         print_instance_ips(instance_private_ips, "PRIVATE IP ADDRESSES")
         print_slog_config_fragment(instance_public_ips, instance_private_ips, args.clients)
-
-
-class DestroySpotClusterCommand(AWSCommand):
-
-    NAME = "stop"
-    HELP = "Destroy a spot clusters from given configurations"
-
-    def add_arguments(self, parser):
-        super().add_arguments(parser)
-        parser.add_argument(
-            "--dry-run", action="store_true", help="Run the command without actually destroying the clusters"
-        )
-
-    def initialize_and_do_command(self, args):
-        for region in args.regions:
-            ec2 = boto3.client('ec2', region_name=region)
-            response = ec2.describe_spot_fleet_requests()
-            spot_fleet_requests_ids = [
-                config['SpotFleetRequestId'] for config in
-                response['SpotFleetRequestConfigs']
-                if config['SpotFleetRequestState'] in ['submitted', 'active', 'modifying']
-            ]
-            LOG.info("%s: Cancelling request IDs: %s", region, spot_fleet_requests_ids)
-            if not args.dry_run:
-                if len(spot_fleet_requests_ids) > 0:
-                    ec2.cancel_spot_fleet_requests(
-                        SpotFleetRequestIds=spot_fleet_requests_ids, TerminateInstances=True
-                    )
 
 
 class DestroySpotClusterCommand(AWSCommand):
@@ -357,10 +328,6 @@ class ListInstancesCommand(AWSCommand):
             nargs="*",
             help="Filter instances by state"
         )
-        parser.add_argument(
-            "-c", type=int,
-            help="When this parameter is set, a config fragment is printed. This value is used for number of clients"
-        )
 
     def initialize_and_do_command(self, args):
         if not args.regions:
@@ -409,7 +376,6 @@ class ListInstancesCommand(AWSCommand):
                 instance_ips[region] = ips
 
             print_instance_ips(instance_ips)
-            print_slog_config_fragment(instance_ips, args.c)
 
 
 if __name__ == "__main__":
