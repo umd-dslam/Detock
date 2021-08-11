@@ -19,9 +19,9 @@
 #include "common/json_utils.h"
 #include "common/metrics.h"
 #include "common/spin_latch.h"
-#include "common/txn_holder.h"
 #include "common/types.h"
 #include "module/base/networked_module.h"
+#include "module/scheduler_components/txn_holder.h"
 
 namespace slog {
 
