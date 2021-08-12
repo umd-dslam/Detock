@@ -18,10 +18,9 @@ const Channel kClockSynchronizerChannel = 6;
 const Channel kSchedulerChannel = 7;
 const Channel kLocalPaxos = 8;
 const Channel kGlobalPaxos = 9;
-const Channel kSchedulerWorkerChannel = 10;
-const Channel kDeadlockResolverChannel = 11;
+const Channel kDeadlockResolverChannel = 10;
 // Broker channels are in [kBrokerChannel, kLogManagerChannel)
-const Channel kBrokerChannel = 12;
+const Channel kBrokerChannel = 11;
 // LogManager channels are in [kLogManagerChannel, kWorkerChannel)
 const Channel kLogManagerChannel = 15;
 // Worker channels are in [kWorkerChannel, kMaxChannel)

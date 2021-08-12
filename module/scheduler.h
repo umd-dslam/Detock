@@ -112,6 +112,7 @@ class Scheduler : public NetworkedModule {
   // This must be defined at the end so that the workers exit before any resources
   // in the scheduler is destroyed
   std::vector<std::unique_ptr<ModuleRunner>> workers_;
+  int current_worker_;
 
   int64_t global_log_counter_;
 };

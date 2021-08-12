@@ -20,6 +20,8 @@ namespace slog {
 
 using RunId = pair<TxnId, bool>;
 
+const std::string kSchedWorkerAddress = "inproc://sched_worker";
+
 struct TransactionState {
   enum class Phase { READ_LOCAL_STORAGE, WAIT_REMOTE_READ, EXECUTE, FINISH };
 
@@ -84,6 +86,7 @@ class Worker : public NetworkedModule {
   // Precondition: txn_id must exists in txn states table
   TransactionState& TxnState(const RunId& run_id);
 
+  int id_;
   std::shared_ptr<Storage> storage_;
   std::unique_ptr<Execution> execution_;
 

@@ -20,6 +20,7 @@ using internal::Response;
 Scheduler::Scheduler(const shared_ptr<Broker>& broker, const shared_ptr<Storage>& storage,
                      const MetricsRepositoryManagerPtr& metrics_manager, std::chrono::milliseconds poll_timeout)
     : NetworkedModule(broker, {kSchedulerChannel, false /* is_raw */}, metrics_manager, poll_timeout),
+      current_worker_(0),
       global_log_counter_(0) {
   for (size_t i = 0; i < config()->num_workers(); i++) {
     workers_.push_back(MakeRunnerFor<Worker>(i, broker, storage, metrics_manager, poll_timeout));
@@ -46,17 +47,19 @@ void Scheduler::Initialize() {
   for (auto& worker : workers_) {
     std::optional<uint32_t> cpu = {};
     if (i < cpus.size()) {
-      cpu = cpus[i++];
+      cpu = cpus[i];
     }
     worker->StartInNewThread(cpu);
+
+    zmq::socket_t worker_socket(*context(), ZMQ_PAIR);
+    worker_socket.set(zmq::sockopt::rcvhwm, 0);
+    worker_socket.set(zmq::sockopt::sndhwm, 0);
+    worker_socket.bind(kSchedWorkerAddress + std::to_string(i));
+
+    AddCustomSocket(move(worker_socket));
+
+    i++;
   }
-
-  zmq::socket_t worker_socket(*context(), ZMQ_DEALER);
-  worker_socket.set(zmq::sockopt::rcvhwm, 0);
-  worker_socket.set(zmq::sockopt::sndhwm, 0);
-  worker_socket.bind(MakeInProcChannelAddress(kSchedulerWorkerChannel));
-
-  AddCustomSocket(move(worker_socket));
 }
 
 void Scheduler::OnInternalRequestReceived(EnvelopePtr&& env) {
@@ -90,45 +93,50 @@ void Scheduler::OnInternalRequestReceived(EnvelopePtr&& env) {
 
 // Handle responses from the workers
 bool Scheduler::OnCustomSocket() {
-  auto& worker_socket = GetCustomSocket(0);
-  zmq::message_t msg;
   bool has_msg = false;
-  while (worker_socket.recv(msg, zmq::recv_flags::dontwait)) {
-    has_msg = true;
-    auto txn_id = *msg.data<TxnId>();
-    // Release locks held by this txn then dispatch the txns that become ready thanks to this release.
-    auto unblocked_txns = lock_manager_.ReleaseLocks(txn_id);
-    VLOG(2) << "Released locks of txn " << txn_id;
+  bool stop = false;
+  while (!stop) {
+    stop = true;
+    for (size_t i = 0; i < workers_.size(); i++) {
+      if (zmq::message_t msg; GetCustomSocket(i).recv(msg, zmq::recv_flags::dontwait)) {
+        stop = false;
+        has_msg = true;
+        auto txn_id = *msg.data<TxnId>();
+        // Release locks held by this txn then dispatch the txns that become ready thanks to this release.
+        auto unblocked_txns = lock_manager_.ReleaseLocks(txn_id);
+        VLOG(2) << "Released locks of txn " << txn_id;
 
-    for (auto unblocked_txn : unblocked_txns) {
+        for (auto unblocked_txn : unblocked_txns) {
 #ifdef LOCK_MANAGER_DDR
-      auto it = active_txns_.find(unblocked_txn.first);
-      DCHECK(it != active_txns_.end());
-      Dispatch(unblocked_txn.first, unblocked_txn.second /* deadlocked */, false /* is_fast */);
+          auto it = active_txns_.find(unblocked_txn.first);
+          DCHECK(it != active_txns_.end());
+          Dispatch(unblocked_txn.first, unblocked_txn.second /* deadlocked */, false /* is_fast */);
 #else
-      Dispatch(unblocked_txn, false /* deadlocked */, false /* is_fast */);
+          Dispatch(unblocked_txn, false /* deadlocked */, false /* is_fast */);
 #endif
-    }
+        }
 
-    auto it = active_txns_.find(txn_id);
-    CHECK(it != active_txns_.end());
-    auto& txn_holder = it->second;
+        auto it = active_txns_.find(txn_id);
+        CHECK(it != active_txns_.end());
+        auto& txn_holder = it->second;
 
 #if defined(REMASTER_PROTOCOL_SIMPLE) || defined(REMASTER_PROTOCOL_PER_KEY)
-    auto remaster_result = txn_holder.remaster_result();
-    // If a remaster transaction, trigger any unblocked txns
-    if (remaster_result.has_value()) {
-      ProcessRemasterResult(remaster_manager_.RemasterOccured(remaster_result->first, remaster_result->second));
-    }
+        auto remaster_result = txn_holder.remaster_result();
+        // If a remaster transaction, trigger any unblocked txns
+        if (remaster_result.has_value()) {
+          ProcessRemasterResult(remaster_manager_.RemasterOccured(remaster_result->first, remaster_result->second));
+        }
 #endif /* defined(REMASTER_PROTOCOL_SIMPLE) || \
           defined(REMASTER_PROTOCOL_PER_KEY) */
 
-    txn_holder.SetDone();
+        txn_holder.SetDone();
 
-    if (txn_holder.is_ready_for_gc()) {
-      active_txns_.erase(it);
+        if (txn_holder.is_ready_for_gc()) {
+          active_txns_.erase(it);
+        }
+      }
     }
-  }
+  };
 
   return has_msg;
 }
@@ -245,10 +253,7 @@ void Scheduler::SendToLockManager(Transaction& txn) {
 
 void Scheduler::Dispatch(TxnId txn_id, bool deadlocked, bool is_fast) {
   auto it = active_txns_.find(txn_id);
-  if (it == active_txns_.end()) {
-    LOG(ERROR) << "Txn " << txn_id << " does not exist for dispatching";
-    return;
-  }
+  CHECK(it != active_txns_.end()) << "Txn " << txn_id << " does not exist for dispatching";
   auto& txn_holder = it->second;
 
   CHECK(txn_holder.dispatchable()) << "Can no longer dispatch txn " << txn_holder.txn_id()
@@ -270,11 +275,11 @@ void Scheduler::Dispatch(TxnId txn_id, bool deadlocked, bool is_fast) {
       RECORD(txn_holder.txn().mutable_internal(), TransactionEvent::DISPATCHED_SLOW);
     }
   }
-
   auto data = std::make_pair(&txn_holder, deadlocked);
   zmq::message_t msg(sizeof(data));
   *msg.data<decltype(data)>() = data;
-  GetCustomSocket(0).send(msg, zmq::send_flags::none);
+  GetCustomSocket(current_worker_).send(msg, zmq::send_flags::none);
+  current_worker_ = (current_worker_ + 1) % workers_.size();
 
   VLOG(2) << "Dispatched txn " << txn_id << " (deadlocked = " << deadlocked << ")";
 }
