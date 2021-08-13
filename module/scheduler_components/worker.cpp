@@ -54,14 +54,12 @@ void Worker::Initialize() {
 }
 
 void Worker::OnInternalRequestReceived(EnvelopePtr&& env) {
-  if (env->request().type_case() != Request::kRemoteReadResult) {
-    LOG(FATAL) << "Invalid request for worker";
-  }
+  CHECK_EQ(env->request().type_case(), Request::kRemoteReadResult) << "Invalid request for worker";
   auto& read_result = env->request().remote_read_result();
   auto run_id = make_pair(read_result.txn_id(), read_result.deadlocked());
   auto state_it = txn_states_.find(run_id);
   if (state_it == txn_states_.end()) {
-    LOG(ERROR) << "Transaction " << run_id << " does not exist for remote read result";
+    LOG(WARNING) << "Transaction " << run_id << " does not exist for remote read result";
     return;
   }
 
@@ -98,10 +96,7 @@ void Worker::OnInternalRequestReceived(EnvelopePtr&& env) {
       state.phase = TransactionState::Phase::EXECUTE;
 
       // Remove the redirection at broker for this txn
-      auto redirect_env = NewEnvelope();
-      redirect_env->mutable_request()->mutable_broker_redirect()->set_tag(MakeTag(run_id));
-      redirect_env->mutable_request()->mutable_broker_redirect()->set_stop(true);
-      Send(move(redirect_env), Broker::MakeChannel(config()->broker_ports_size() - 1));
+      StopRedirection(run_id);
 
       VLOG(3) << "Execute txn " << run_id << " after receving all remote read results";
     } else {
@@ -120,10 +115,16 @@ bool Worker::OnCustomSocket() {
     return false;
   }
 
-  auto data = *msg.data<std::pair<TxnHolder*, bool>>();
-  auto txn_holder = data.first;
+  auto [txn_holder, deadlocked] = *msg.data<std::pair<TxnHolder*, bool>>();
   auto& txn = txn_holder->txn();
-  auto run_id = std::make_pair(txn.internal().id(), data.second);
+  auto run_id = std::make_pair(txn.internal().id(), deadlocked);
+  if (deadlocked) {
+    auto old_run_id = std::make_pair(txn.internal().id(), false);
+    // Clean up any transaction state created before the deadlock was detected
+    if (txn_states_.erase(old_run_id)) {
+      StopRedirection(old_run_id);
+    }
+  }
 
   RECORD(txn.mutable_internal(), TransactionEvent::ENTER_WORKER);
 
@@ -237,10 +238,7 @@ void Worker::ReadLocalStorage(const RunId& run_id) {
     state.phase = TransactionState::Phase::EXECUTE;
   } else {
     // Establish a redirection at broker for this txn so that we can receive remote reads
-    auto redirect_env = NewEnvelope();
-    redirect_env->mutable_request()->mutable_broker_redirect()->set_tag(MakeTag(run_id));
-    redirect_env->mutable_request()->mutable_broker_redirect()->set_channel(channel());
-    Send(move(redirect_env), Broker::MakeChannel(config()->broker_ports_size() - 1));
+    StartRedirection(run_id);
 
     VLOG(3) << "Defer executing txn " << run_id << " until having enough remote reads";
     state.phase = TransactionState::Phase::WAIT_REMOTE_READ;
@@ -370,6 +368,20 @@ TransactionState& Worker::TxnState(const RunId& run_id) {
   auto state_it = txn_states_.find(run_id);
   CHECK(state_it != txn_states_.end());
   return state_it->second;
+}
+
+void Worker::StartRedirection(const RunId& run_id) {
+  auto redirect_env = NewEnvelope();
+  redirect_env->mutable_request()->mutable_broker_redirect()->set_tag(MakeTag(run_id));
+  redirect_env->mutable_request()->mutable_broker_redirect()->set_channel(channel());
+  Send(move(redirect_env), Broker::MakeChannel(config()->broker_ports_size() - 1));
+}
+
+void Worker::StopRedirection(const RunId& run_id) {
+  auto redirect_env = NewEnvelope();
+  redirect_env->mutable_request()->mutable_broker_redirect()->set_tag(MakeTag(run_id));
+  redirect_env->mutable_request()->mutable_broker_redirect()->set_stop(true);
+  Send(move(redirect_env), Broker::MakeChannel(config()->broker_ports_size() - 1));
 }
 
 }  // namespace slog

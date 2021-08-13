@@ -12,7 +12,8 @@ TxnHolder::TxnHolder(const ConfigurationPtr& config, Transaction* txn)
       done_(false),
       num_lo_txns_(0),
       expected_num_lo_txns_(txn->internal().involved_replicas_size()),
-      num_dispatches_(0) {
+      num_dispatches_(0),
+      worker_(std::nullopt) {
   lo_txns_[main_txn_idx_].reset(txn);
   ++num_lo_txns_;
 }

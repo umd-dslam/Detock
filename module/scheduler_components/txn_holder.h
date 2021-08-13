@@ -48,6 +48,9 @@ class TxnHolder {
   int num_lock_only_txns() const { return num_lo_txns_; }
   int expected_num_lock_only_txns() const { return expected_num_lo_txns_; }
 
+  void SetWorker(int worker) { worker_ = worker; }
+  std::optional<int> worker() const { return worker_; }
+
  private:
   TxnId txn_id_;
   size_t main_txn_idx_;
@@ -59,6 +62,7 @@ class TxnHolder {
   int num_lo_txns_;
   int expected_num_lo_txns_;
   int num_dispatches_;
+  std::optional<int> worker_;
 };
 
 }  // namespace slog

@@ -1,3 +1,27 @@
+/*
+  For a new transaction T, the scheduler create a txn holder to keep track additional information
+  relating to T. After acquiring all the necessary locks, T is dispatched to a worker, which will
+  assume ownership of T from that point. Scheduler makes sure that it does not access T during this
+  time. On completion, the worker frees up T's memory and signals the scheduler about T's completion
+  so that the scheduler can unblocks other transactions waiting on T, if any.
+
+  The scheduler may dispatch T before the deadlock resolver detects a deadlock involving T. This case
+  happens in a distributed deadlock situation. For example, say there are two partitions owning the keys {A} and
+  {B}. A and B are mastered by 2 different regions. Let T1 and T2 be 2 transactions that write to both A and B.
+  It is possible that on the first partition, T1 is before T2 in the log, however in the second partition,
+  T2 is before T1. In the first partition, T1 enters the scheduler and is able to get all the locks then
+  dispatched to a worker; then the second partition sends the T2 -> T1 edge to the first partition, which
+  detect a deadlock after T1 has already been dispatched.
+
+  In such a situation, the scheduler redispatch T1 to the same worker. That workers now has 2 "dispatches"
+  of T1, which are differentiated by the flag 'deadlocked': it is set to false for the first dispatch and
+  true for the second dispatch. A worker also includes this flag when it sends its reads to other partitions,
+  and the remote reads will only be applied to the dispatch with the same 'deadlocked' flag.
+  In a distributed deadlock, the first dispatch will never get all of its remote reads (otherwise, there is no deadlock
+  to begin with) and therefore will never finish. The second dispatch will replace the first dispatch and get all
+  of its remote reads.
+ */
+
 #include "module/scheduler.h"
 
 #include <algorithm>
@@ -259,7 +283,7 @@ void Scheduler::Dispatch(TxnId txn_id, bool deadlocked, bool is_fast) {
   CHECK(txn_holder.dispatchable()) << "Can no longer dispatch txn " << txn_holder.txn_id()
                                    << " (deadlocked = " << deadlocked << ")";
   // If we did not detect a deadlock in the first dispatch, there is still a second chance to dispatch after a deadlock
-  // is found. However, there will be no other chance to dispatch after that.
+  // is found. There will be no other chance to dispatch after that.
   if (deadlocked) {
     txn_holder.SetUndispatchable();
   }
@@ -278,8 +302,15 @@ void Scheduler::Dispatch(TxnId txn_id, bool deadlocked, bool is_fast) {
   auto data = std::make_pair(&txn_holder, deadlocked);
   zmq::message_t msg(sizeof(data));
   *msg.data<decltype(data)>() = data;
-  GetCustomSocket(current_worker_).send(msg, zmq::send_flags::none);
+
+  int worker = current_worker_;
   current_worker_ = (current_worker_ + 1) % workers_.size();
+  // If this txn was dispatched to a worker before, dispatch to the same worker again
+  if (txn_holder.worker().has_value()) {
+    worker = txn_holder.worker().value();
+  }
+  txn_holder.SetWorker(worker);
+  GetCustomSocket(worker).send(msg, zmq::send_flags::none);
 
   VLOG(2) << "Dispatched txn " << txn_id << " (deadlocked = " << deadlocked << ")";
 }
