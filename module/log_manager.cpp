@@ -63,11 +63,11 @@ void LocalLog::UpdateReadyBatches() {
   }
 }
 
+
 LogManager::LogManager(int id, const std::vector<uint32_t>& regions, const shared_ptr<Broker>& broker,
                        const MetricsRepositoryManagerPtr& metrics_manager, std::chrono::milliseconds poll_timeout)
     : NetworkedModule(broker, Broker::ChannelOption(kLogManagerChannel + id, true, RegionsToTags(regions)),
-                      metrics_manager, poll_timeout),
-      rg_(std::random_device()()) {
+                      metrics_manager, poll_timeout) {
   for (uint32_t p = 0; p < config()->num_partitions(); p++) {
     if (p != config()->local_partition()) {
       other_partitions_.push_back(config()->MakeMachineId(config()->local_replica(), p));
@@ -214,16 +214,18 @@ void LogManager::AdvanceLog() {
       forward_batch_order->set_home(local_replica);
       forward_batch_order->set_need_ack(false);
 
-      std::uniform_int_distribution<> rnd(0, config()->num_partitions() - 1);
-      auto part = rnd(rg_);
+      auto num_replicas = config()->num_replicas();
+      auto num_partitions = config()->num_partitions();
 
       std::vector<MachineId> destinations, ack_destinations;
-      destinations.reserve(config()->num_replicas());
+      destinations.reserve(num_replicas);
       ack_destinations.reserve(config()->replication_factor());
-      for (uint32_t rep = 0; rep < config()->num_replicas(); rep++) {
+      for (uint32_t rep = 0; rep < num_replicas; rep++) {
         if (rep == local_replica) {
           continue;
         }
+        auto part = (rep + num_replicas - local_replica) % num_replicas % num_partitions;
+
         if (need_ack_from_replica_[rep]) {
           ack_destinations.push_back(config()->MakeMachineId(rep, part));
         } else {
