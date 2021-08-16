@@ -63,7 +63,6 @@ void LocalLog::UpdateReadyBatches() {
   }
 }
 
-
 LogManager::LogManager(int id, const std::vector<uint32_t>& regions, const shared_ptr<Broker>& broker,
                        const MetricsRepositoryManagerPtr& metrics_manager, std::chrono::milliseconds poll_timeout)
     : NetworkedModule(broker, Broker::ChannelOption(kLogManagerChannel + id, true, RegionsToTags(regions)),
