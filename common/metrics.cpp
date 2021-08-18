@@ -84,6 +84,42 @@ class TransactionEventMetrics {
   list<Data> txn_events_;
 };
 
+class GenericMetrics {
+ public:
+  GenericMetrics(int sample_rate, uint32_t local_replica, uint32_t local_partition)
+      : sampler_(sample_rate, 1), local_replica_(local_replica), local_partition_(local_partition) {}
+
+  void Record(int type, int64_t time, int64_t data) {
+    if (sampler_.IsChosen(0)) {
+      data_.push_back(
+          {.time = time, .data = data, .type = type, .replica = local_replica_, .partition = local_partition_});
+    }
+  }
+
+  struct Data {
+    int64_t time;  // nanosecond since epoch
+    int64_t data;
+    int type;
+    uint32_t replica;
+    uint32_t partition;
+  };
+
+  list<Data>& data() { return data_; }
+
+  static void WriteToDisk(const std::string& dir, const list<Data>& data) {
+    CSVWriter generic_csv(dir + "/generic.csv", {"type", "time", "data", "partition", "replica"});
+    for (const auto& d : data) {
+      generic_csv << d.type << d.time << d.data << d.partition << d.replica << csvendl;
+    }
+  }
+
+ private:
+  Sampler sampler_;
+  uint32_t local_replica_;
+  uint32_t local_partition_;
+  list<Data> data_;
+};
+
 class DeadlockResolverRunMetrics {
  public:
   DeadlockResolverRunMetrics(int sample_rate, uint32_t local_replica, uint32_t local_partition)
@@ -336,6 +372,7 @@ struct AllMetrics {
   BatchMetrics forwarder_batch_metrics;
   BatchMetrics sequencer_batch_metrics;
   BatchMetrics mhorderer_batch_metrics;
+  GenericMetrics generic_metrics;
 };
 
 /**
@@ -404,23 +441,29 @@ void MetricsRepository::RecordMHOrdererBatch(BatchId batch_id, size_t batch_size
   return metrics_->mhorderer_batch_metrics.Record(batch_id, batch_size, batch_duration);
 }
 
+void MetricsRepository::RecordGeneric(int type, int64_t time, int64_t data) {
+  std::lock_guard<SpinLatch> guard(latch_);
+  return metrics_->generic_metrics.Record(type, time, data);
+}
+
 std::unique_ptr<AllMetrics> MetricsRepository::Reset() {
+  auto local_replica = config_->local_replica();
+  auto local_partition = config_->local_partition();
   std::unique_ptr<AllMetrics> new_metrics(new AllMetrics(
-      {.txn_event_metrics = TransactionEventMetrics(config_->metric_options().txn_events_sample(),
-                                                    config_->local_replica(), config_->local_partition()),
-       .deadlock_resolver_run_metrics =
-           DeadlockResolverRunMetrics(config_->metric_options().deadlock_resolver_runs_sample(),
-                                      config_->local_replica(), config_->local_partition()),
-       .deadlock_resolver_deadlock_metrics =
-           DeadlockResolverDeadlockMetrics(config_->metric_options().deadlock_resolver_deadlocks_sample(),
-                                           config_->metric_options().deadlock_resolver_deadlock_details(),
-                                           config_->local_replica(), config_->local_partition()),
+      {.txn_event_metrics =
+           TransactionEventMetrics(config_->metric_options().txn_events_sample(), local_replica, local_partition),
+       .deadlock_resolver_run_metrics = DeadlockResolverRunMetrics(
+           config_->metric_options().deadlock_resolver_runs_sample(), local_replica, local_partition),
+       .deadlock_resolver_deadlock_metrics = DeadlockResolverDeadlockMetrics(
+           config_->metric_options().deadlock_resolver_deadlocks_sample(),
+           config_->metric_options().deadlock_resolver_deadlock_details(), local_replica, local_partition),
        .log_manager_logs = LogManagerLogs(),
        .forw_sequ_latency_metrics = ForwSequLatencyMetrics(config_->metric_options().forw_sequ_latency_sample()),
        .clock_sync_metrics = ClockSyncMetrics(config_->metric_options().clock_sync_sample()),
        .forwarder_batch_metrics = BatchMetrics(config_->metric_options().forwarder_batch_sample()),
        .sequencer_batch_metrics = BatchMetrics(config_->metric_options().sequencer_batch_sample()),
-       .mhorderer_batch_metrics = BatchMetrics(config_->metric_options().mhorderer_batch_sample())}));
+       .mhorderer_batch_metrics = BatchMetrics(config_->metric_options().mhorderer_batch_sample()),
+       .generic_metrics = GenericMetrics(config_->metric_options().generic_sample(), local_replica, local_partition)}));
 
   std::lock_guard<SpinLatch> guard(latch_);
   metrics_.swap(new_metrics);
@@ -453,6 +496,7 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
   list<ForwSequLatencyMetrics::Data> forw_sequ_latency_data;
   list<ClockSyncMetrics::Data> clock_sync_data;
   list<BatchMetrics::Data> forwarder_batch_data, sequencer_batch_data, mhorderer_batch_data;
+  list<GenericMetrics::Data> generic_data;
   {
     std::lock_guard<std::mutex> guard(mut_);
     for (auto& kv : metrics_repos_) {
@@ -471,6 +515,7 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
       forwarder_batch_data.splice(forwarder_batch_data.end(), metrics->forwarder_batch_metrics.data());
       sequencer_batch_data.splice(sequencer_batch_data.end(), metrics->sequencer_batch_metrics.data());
       mhorderer_batch_data.splice(mhorderer_batch_data.end(), metrics->mhorderer_batch_metrics.data());
+      generic_data.splice(generic_data.end(), metrics->generic_metrics.data());
     }
   }
 
@@ -489,6 +534,7 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
     BatchMetrics::WriteToDisk(dir + "/forwarder_batch.csv", forwarder_batch_data);
     BatchMetrics::WriteToDisk(dir + "/sequencer_batch.csv", sequencer_batch_data);
     BatchMetrics::WriteToDisk(dir + "/mhorderer_batch.csv", mhorderer_batch_data);
+    GenericMetrics::WriteToDisk(dir + "/generic.csv", generic_data);
     LOG(INFO) << "Metrics written to: \"" << dir << "/\"";
   } catch (std::runtime_error& e) {
     LOG(ERROR) << e.what();

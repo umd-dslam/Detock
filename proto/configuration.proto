@@ -87,6 +87,7 @@ message MetricOptions {
     uint32 forwarder_batch_sample = 8;
     uint32 sequencer_batch_sample = 9;
     uint32 mhorderer_batch_sample = 10;
+    uint32 generic_sample = 11;
 }
 
 enum ExecutionType {
