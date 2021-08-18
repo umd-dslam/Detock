@@ -534,7 +534,7 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
     BatchMetrics::WriteToDisk(dir + "/forwarder_batch.csv", forwarder_batch_data);
     BatchMetrics::WriteToDisk(dir + "/sequencer_batch.csv", sequencer_batch_data);
     BatchMetrics::WriteToDisk(dir + "/mhorderer_batch.csv", mhorderer_batch_data);
-    GenericMetrics::WriteToDisk(dir + "/generic.csv", generic_data);
+    GenericMetrics::WriteToDisk(dir, generic_data);
     LOG(INFO) << "Metrics written to: \"" << dir << "/\"";
   } catch (std::runtime_error& e) {
     LOG(ERROR) << e.what();
