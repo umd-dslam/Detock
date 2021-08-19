@@ -140,7 +140,7 @@
       }
     ],
     "workload": "basic",
-    "txns": [1000000],
+    "txns": [2000000],
     "duration": [30],
     "clients": [2000],
     "writes": [10],

@@ -167,7 +167,6 @@ void Batcher::SendBatch() {
 
   // Distribute the batch data to other replicas. All partitions of current batch are contained in a single message
   auto env = NewBatchForwardingMessage(move(batch_partitions));
-  // Send to any partition
   std::vector<MachineId> destinations;
   destinations.reserve(num_replicas);
   for (uint32_t rep = 0; rep < num_replicas; rep++) {
