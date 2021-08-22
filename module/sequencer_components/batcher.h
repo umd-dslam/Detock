@@ -24,13 +24,15 @@ class Batcher : public NetworkedModule {
 
  private:
   using Timestamp = std::pair<int64_t, TxnId>;
+  using PartitionedBatch = std::vector<std::unique_ptr<internal::Batch>>;
 
   void ProcessReadyFutureTxns();
+  void StartOver();
   void NewBatch();
   void BatchTxn(Transaction* txn);
   BatchId batch_id() const;
-  void SendBatch();
-  EnvelopePtr NewBatchForwardingMessage(std::vector<internal::Batch*>&& batch);
+  void SendBatches();
+  EnvelopePtr NewBatchForwardingMessage(std::vector<internal::Batch*>&& batch, int home_position);
 
   void ProcessStatsRequest(const internal::StatsRequest& stats_request);
 
@@ -39,9 +41,11 @@ class Batcher : public NetworkedModule {
   std::map<Timestamp, Transaction*> future_txns_;
   std::optional<Poller::Handle> process_future_txn_callback_handle_;
 
-  std::vector<std::unique_ptr<internal::Batch>> partitioned_batch_;
+  std::vector<PartitionedBatch> batches_;
   BatchId batch_id_counter_;
-  int batch_size_;
+  int current_batch_size_;
+  int total_batch_size_;
+
   std::chrono::steady_clock::time_point batch_starting_time_;
 
   std::mt19937 rg_;

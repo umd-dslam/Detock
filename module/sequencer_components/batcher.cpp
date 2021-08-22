@@ -17,10 +17,8 @@ Batcher::Batcher(const std::shared_ptr<zmq::context_t>& context, const Configura
     : NetworkedModule(context, config, kBatcherChannel, metrics_manager, poll_timeout),
       sharder_(Sharder::MakeSharder(config)),
       batch_id_counter_(0),
-      batch_size_(0),
       rg_(std::random_device()()) {
-  partitioned_batch_.resize(config->num_partitions());
-  NewBatch();
+  StartOver();
 }
 
 bool Batcher::BufferFutureTxn(Transaction* txn) {
@@ -89,17 +87,24 @@ void Batcher::ProcessReadyFutureTxns() {
 
 BatchId Batcher::batch_id() const { return batch_id_counter_ * kMaxNumMachines + config()->local_machine_id(); }
 
+void Batcher::StartOver() {
+  total_batch_size_ = 0;
+  batches_.clear();
+  NewBatch();
+}
+
 void Batcher::NewBatch() {
+  current_batch_size_ = 0;
   ++batch_id_counter_;
-  batch_size_ = 0;
-  for (auto& batch : partitioned_batch_) {
-    if (batch == nullptr) {
-      batch.reset(new Batch());
-    }
-    batch->Clear();
-    batch->set_transaction_type(TransactionType::SINGLE_HOME);
-    batch->set_id(batch_id());
+
+  PartitionedBatch new_batch(config()->num_partitions());
+  for (auto& partition : new_batch) {
+    partition.reset(new Batch());
+    partition->set_transaction_type(TransactionType::SINGLE_HOME);
+    partition->set_id(batch_id());
   }
+
+  batches_.push_back(std::move(new_batch));
 }
 
 void Batcher::BatchTxn(Transaction* txn) {
@@ -109,104 +114,118 @@ void Batcher::BatchTxn(Transaction* txn) {
     txn = GenerateLockOnlyTxn(txn, config()->local_replica(), true /* in_place */);
   }
 
+  auto& current_batch = batches_.back();
   auto num_involved_partitions = txn->internal().involved_partitions_size();
   for (int i = 0; i < num_involved_partitions; ++i) {
     bool in_place = i == (num_involved_partitions - 1);
     auto p = txn->internal().involved_partitions(i);
     auto new_txn = GeneratePartitionedTxn(sharder_, txn, p, in_place);
     if (new_txn != nullptr) {
-      partitioned_batch_[p]->mutable_transactions()->AddAllocated(new_txn);
+      current_batch[p]->mutable_transactions()->AddAllocated(new_txn);
     }
   }
 
-  ++batch_size_;
+  ++current_batch_size_;
+  ++total_batch_size_;
 
-  // If this is the first txn in the batch, schedule to send the batch at a later time
-  if (batch_size_ == 1) {
+  // If this is the first txn after starting over, schedule to send the batch at a later time
+  if (total_batch_size_ == 1) {
     NewTimedCallback(config()->sequencer_batch_duration(), [this]() {
-      SendBatch();
-      NewBatch();
+      SendBatches();
+      StartOver();
     });
+
     batch_starting_time_ = std::chrono::steady_clock::now();
+  }
+
+  auto max_batch_size = config()->sequencer_batch_size();
+  if (max_batch_size > 0 && current_batch_size_ >= max_batch_size) {
+    NewBatch();
   }
 }
 
-void Batcher::SendBatch() {
-  VLOG(3) << "Finished batch " << batch_id() << " of size " << batch_size_
-          << ". Sending out for ordering and replicating";
+void Batcher::SendBatches() {
+  VLOG(3) << "Finished up to batch " << batch_id() << " with " << total_batch_size_ << " txns to be replicated. "
+          << "Sending out for ordering and replicating";
 
   if (per_thread_metrics_repo != nullptr) {
-    per_thread_metrics_repo->RecordSequencerBatch(batch_id(), batch_size_,
+    per_thread_metrics_repo->RecordSequencerBatch(batch_id(), total_batch_size_,
                                                   (std::chrono::steady_clock::now() - batch_starting_time_).count());
   }
 
   auto local_replica = config()->local_replica();
   auto local_partition = config()->local_partition();
-
-  // Propose a new batch
-  auto paxos_env = NewEnvelope();
-  auto paxos_propose = paxos_env->mutable_request()->mutable_paxos_propose();
-  paxos_propose->set_value(local_partition);
-  Send(move(paxos_env), kLocalPaxos);
-
-  // Distribute the batch data to other partitions in the same replica
   auto num_replicas = config()->num_replicas();
   auto num_partitions = config()->num_partitions();
-  std::vector<internal::Batch*> batch_partitions;
-  for (uint32_t p = 0; p < num_partitions; p++) {
-    auto batch_partition = partitioned_batch_[p].release();
 
-    RECORD(batch_partition, TransactionEvent::EXIT_SEQUENCER_IN_BATCH);
+  int home_position = batch_id_counter_ - batches_.size();
+  for (auto& batch : batches_) {
+    auto batch_id = batch[0]->id();
 
-    auto env = NewBatchForwardingMessage({batch_partition});
-    Send(*env, config()->MakeMachineId(local_replica, p), LogManager::MakeTag(local_replica));
-    // Collect back the batch partition to send to other replicas
-    batch_partitions.push_back(
-        env->mutable_request()->mutable_forward_batch_data()->mutable_batch_data()->ReleaseLast());
-  }
+    // Propose a new batch
+    auto paxos_env = NewEnvelope();
+    auto paxos_propose = paxos_env->mutable_request()->mutable_paxos_propose();
+    paxos_propose->set_value(local_partition);
+    Send(move(paxos_env), kLocalPaxos);
 
-  // Distribute the batch data to other replicas. All partitions of current batch are contained in a single message
-  auto env = NewBatchForwardingMessage(move(batch_partitions));
-  std::vector<MachineId> destinations;
-  destinations.reserve(num_replicas);
-  for (uint32_t rep = 0; rep < num_replicas; rep++) {
-    if (rep != local_replica) {
-      // Send to a fixed partition of the destination replica to avoid reordering.
-      // The partition is selected such that the logs are evenly distributed over
-      // all partitions
-      auto part = (rep + num_replicas - local_replica) % num_replicas % num_partitions;
-      destinations.push_back(config()->MakeMachineId(rep, part));
+    // Distribute the batch data to other partitions in the same replica
+    std::vector<internal::Batch*> batch_partitions;
+    for (uint32_t p = 0; p < num_partitions; p++) {
+      auto batch_partition = batch[p].release();
+
+      RECORD(batch_partition, TransactionEvent::EXIT_SEQUENCER_IN_BATCH);
+
+      auto env = NewBatchForwardingMessage({batch_partition}, home_position);
+      Send(*env, config()->MakeMachineId(local_replica, p), LogManager::MakeTag(local_replica));
+      // Collect back the batch partition to send to other replicas
+      batch_partitions.push_back(
+          env->mutable_request()->mutable_forward_batch_data()->mutable_batch_data()->ReleaseLast());
     }
-  }
 
-  // Deliberately delay the batch as specified in the config
-  if (config()->replication_delay_pct()) {
-    std::bernoulli_distribution is_delayed(config()->replication_delay_pct() / 100.0);
-    if (is_delayed(rg_)) {
-      auto delay_ms = config()->replication_delay_amount_ms();
-
-      VLOG(3) << "Delay batch " << batch_id() << " for " << delay_ms << " ms";
-
-      NewTimedCallback(milliseconds(delay_ms),
-                       [this, destinations, local_replica, batch_id = batch_id(), delayed_env = env.release()]() {
-                         VLOG(3) << "Sending delayed batch " << batch_id;
-                         Send(*delayed_env, destinations, LogManager::MakeTag(local_replica));
-                         delete delayed_env;
-                       });
-
-      return;
+    // Distribute the batch data to other replicas. All partitions of current batch are contained in a single message
+    auto env = NewBatchForwardingMessage(move(batch_partitions), home_position);
+    std::vector<MachineId> destinations;
+    destinations.reserve(num_replicas);
+    for (uint32_t rep = 0; rep < num_replicas; rep++) {
+      if (rep != local_replica) {
+        // Send to a fixed partition of the destination replica to avoid reordering.
+        // The partition is selected such that the logs are evenly distributed over
+        // all partitions
+        auto part = (rep + num_replicas - local_replica) % num_replicas % num_partitions;
+        destinations.push_back(config()->MakeMachineId(rep, part));
+      }
     }
-  }
 
-  Send(*env, destinations, LogManager::MakeTag(local_replica));
+    // Deliberately delay the batch as specified in the config
+    if (config()->replication_delay_pct()) {
+      std::bernoulli_distribution is_delayed(config()->replication_delay_pct() / 100.0);
+      if (is_delayed(rg_)) {
+        auto delay_ms = config()->replication_delay_amount_ms();
+
+        VLOG(3) << "Delay batch " << batch_id << " for " << delay_ms << " ms";
+
+        NewTimedCallback(milliseconds(delay_ms),
+                        [this, destinations, local_replica, batch_id, delayed_env = env.release()]() {
+                          VLOG(3) << "Sending delayed batch " << batch_id;
+                          Send(*delayed_env, destinations, LogManager::MakeTag(local_replica));
+                          delete delayed_env;
+                        });
+
+        return;
+      }
+    }
+
+    Send(*env, destinations, LogManager::MakeTag(local_replica));
+
+    home_position++;
+  }
 }
 
-EnvelopePtr Batcher::NewBatchForwardingMessage(std::vector<internal::Batch*>&& batch) {
+EnvelopePtr Batcher::NewBatchForwardingMessage(std::vector<internal::Batch*>&& batch, int home_position) {
   auto env = NewEnvelope();
   auto forward_batch = env->mutable_request()->mutable_forward_batch_data();
   forward_batch->set_home(config()->local_replica());
-  // Minus 1 so that batch id counter starts from 0
-  forward_batch->set_home_position(batch_id_counter_ - 1);
+  forward_batch->set_home_position(home_position);
   for (auto b : batch) {
     forward_batch->mutable_batch_data()->AddAllocated(b);
   }
@@ -236,7 +255,7 @@ void Batcher::ProcessStatsRequest(const internal::StatsRequest& stats_request) {
   } else {
     stats.AddMember(StringRef(SEQ_PROCESS_FUTURE_TXN_CALLBACK_ID), -1, alloc);
   }
-  stats.AddMember(StringRef(SEQ_BATCH_SIZE), batch_size_, alloc);
+  stats.AddMember(StringRef(SEQ_BATCH_SIZE), total_batch_size_, alloc);
   {
     std::lock_guard<SpinLatch> guard(future_txns_mut_);
     stats.AddMember(StringRef(SEQ_NUM_FUTURE_TXNS), future_txns_.size(), alloc);
