@@ -14,7 +14,7 @@ using internal::Request;
 
 Batcher::Batcher(const std::shared_ptr<zmq::context_t>& context, const ConfigurationPtr& config,
                  const MetricsRepositoryManagerPtr& metrics_manager, milliseconds poll_timeout)
-    : NetworkedModule(context, config, kBatcherChannel, metrics_manager, poll_timeout),
+    : NetworkedModule(context, config, kBatcherChannel, metrics_manager, poll_timeout, true /* is_long_sender */),
       sharder_(Sharder::MakeSharder(config)),
       batch_id_counter_(0),
       rg_(std::random_device()()) {
@@ -205,11 +205,11 @@ void Batcher::SendBatches() {
         VLOG(3) << "Delay batch " << batch_id << " for " << delay_ms << " ms";
 
         NewTimedCallback(milliseconds(delay_ms),
-                        [this, destinations, local_replica, batch_id, delayed_env = env.release()]() {
-                          VLOG(3) << "Sending delayed batch " << batch_id;
-                          Send(*delayed_env, destinations, LogManager::MakeTag(local_replica));
-                          delete delayed_env;
-                        });
+                         [this, destinations, local_replica, batch_id, delayed_env = env.release()]() {
+                           VLOG(3) << "Sending delayed batch " << batch_id;
+                           Send(*delayed_env, destinations, LogManager::MakeTag(local_replica));
+                           delete delayed_env;
+                         });
 
         return;
       }

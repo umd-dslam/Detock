@@ -17,7 +17,8 @@ using internal::Request;
 
 MultiHomeOrderer::MultiHomeOrderer(const shared_ptr<Broker>& broker, const MetricsRepositoryManagerPtr& metrics_manager,
                                    std::chrono::milliseconds poll_timeout)
-    : NetworkedModule(broker, kMultiHomeOrdererChannel, metrics_manager, poll_timeout), batch_id_counter_(0) {
+    : NetworkedModule(broker, kMultiHomeOrdererChannel, metrics_manager, poll_timeout, true /* is_long_sender */),
+      batch_id_counter_(0) {
   batch_per_rep_.resize(config()->num_replicas());
   NewBatch();
 }

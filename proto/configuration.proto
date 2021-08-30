@@ -181,4 +181,8 @@ message Configuration {
     int64 timestamp_buffer_us = 33;
     // Rolling window size used to average the latency measurement
     uint32 avg_latency_window_size = 34;
+    // Kernel receiving buffer size (bytes) of a broker socket
+    int32 broker_rcvbuf = 35;
+    // Kernel sending buffer size (bytes) of long-distance sockets (e.g. those in the Forwarder and Sequencer)
+    int32 long_sender_sndbuf = 36;
 }

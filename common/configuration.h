@@ -71,6 +71,9 @@ class Configuration {
   uint32_t avg_latency_window_size() const;
   std::vector<int> distance_ranking_from(int replica_id) const;
 
+  int broker_rcvbuf() const;
+  int long_sender_sndbuf() const;
+
  private:
   internal::Configuration config_;
   std::string local_address_;

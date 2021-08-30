@@ -25,21 +25,21 @@ class NetworkedModule : public Module {
    */
   NetworkedModule(const std::shared_ptr<zmq::context_t>& context, const ConfigurationPtr& config, Channel channel,
                   const MetricsRepositoryManagerPtr& metrics_manager,
-                  std::optional<std::chrono::milliseconds> poll_timeout);
+                  std::optional<std::chrono::milliseconds> poll_timeout, bool is_long_sender);
 
   /**
    * Use broker to receive external messages.
    */
   NetworkedModule(const std::shared_ptr<Broker>& broker, Broker::ChannelOption chopt,
                   const MetricsRepositoryManagerPtr& metrics_manager,
-                  std::optional<std::chrono::milliseconds> poll_timeout);
+                  std::optional<std::chrono::milliseconds> poll_timeout, bool is_long_sender = false);
 
   /**
    * Use owned socket to receive external messages.
    */
   NetworkedModule(const std::shared_ptr<zmq::context_t>& context, const ConfigurationPtr& config, uint32_t port,
                   Channel channel, const MetricsRepositoryManagerPtr& metrics_manager,
-                  std::optional<std::chrono::milliseconds> poll_timeout);
+                  std::optional<std::chrono::milliseconds> poll_timeout, bool is_long_sender = false);
 
   MetricsRepositoryManager& metrics_manager() { return *metrics_manager_; }
 
