@@ -136,53 +136,56 @@ message Configuration {
     uint64 sequencer_batch_duration = 16;
     // How big can a batch be in number of txns
     int32 sequencer_batch_size = 17;
+    // By default, a sequencer sticks to a single partition of a region to send the batch to.
+    // If this option is true, the partitions are selected in a round-robin manner (rrr: round-robin replication).
+    bool sequencer_rrr = 18;
     // Number of replicas that need to be synchronously replicated to
-    uint32 replication_factor = 18;
+    uint32 replication_factor = 19;
     // Order of replicas for synchronous replication. This is a list of strings each of which corresponds
     // to a replica. Each string is an ordered comma-separated list of replica ids that the current replica
     // will synchronously replicate to based on replication order. The current replica will be ignored if exists
     // in the list. For example, ['1,2', '2,1,0', ''] means that, with a replication factor of 3, replica 0 will
     // synchronously replicate to 1 and 2, replica 1 will replicate to 2 and 0, and replica 2 will not synchronously
     // replicate to anywhere.
-    repeated string replication_order = 19;
+    repeated string replication_order = 20;
     // Replication of txn batches will be delayed to simulate uneven network latency
-    ReplicationDelayExperiment replication_delay = 20;
+    ReplicationDelayExperiment replication_delay = 21;
     // Do not record specified events
-    repeated TransactionEvent enabled_events = 21;
+    repeated TransactionEvent enabled_events = 22;
     // For multi-home txn, send lock-only txns directly to the regions, skipping the global orderer
-    bool bypass_mh_orderer = 22;
+    bool bypass_mh_orderer = 23;
     // Skip check when bypass mh orderer
-    bool force_bypass_mh_orderer = 23;
+    bool force_bypass_mh_orderer = 24;
     // Deadlock checking/resolving interval in ms. Set to 0 to disable deadlock resolving thread
-    uint64 ddr_interval = 24;
+    uint64 ddr_interval = 25;
     // Pin each module to a cpu
-    repeated CpuPinning cpu_pinnings = 25;
+    repeated CpuPinning cpu_pinnings = 26;
     // Return dummy txns back to the client instead of full results
-    bool return_dummy_txn = 26;
+    bool return_dummy_txn = 27;
     // Number of retries after calling zmq::recv something
-    int32 recv_retries = 27;
+    int32 recv_retries = 28;
     // Transaction execution type 
-    ExecutionType execution_type = 28;
+    ExecutionType execution_type = 29;
     // For each MH transaction, the involved regions will wait in such a way that their respective lock-only 
     // txns are put into the batches at approximately the same time
-    bool synchronized_batching = 29;
+    bool synchronized_batching = 30;
     // Options for metrics
-    MetricOptions metric_options = 30;
+    MetricOptions metric_options = 31;
     // The forwarder sends probes to the sequencer to measure latency between current region and other regions on a set
     // interval. This interval is in ms.
-    uint64 fs_latency_interval = 31;
+    uint64 fs_latency_interval = 32;
     // Interval in ms for clock synchronizer to send messages
-    uint64 clock_sync_interval = 32;
+    uint64 clock_sync_interval = 33;
     // A txn is assigned a future timestamp, which will be equal to current time + latency to the furthest
     // region. When a txn arrives at a region, we want it to wait for a bit so that it can see other txns with
     // lower timestamp and get ordered after them. However, clocks are not perfectly synchronized and latency 
     // estimation may be off. The txn may arrive at a region A when time at A has already passed the txn's
     // timestamp. This value is thus used to extend the time a txn might be buffered at a region.
-    int64 timestamp_buffer_us = 33;
+    int64 timestamp_buffer_us = 34;
     // Rolling window size used to average the latency measurement
-    uint32 avg_latency_window_size = 34;
+    uint32 avg_latency_window_size = 35;
     // Kernel receiving buffer size (bytes) of a broker socket
-    int32 broker_rcvbuf = 35;
+    int32 broker_rcvbuf = 36;
     // Kernel sending buffer size (bytes) of long-distance sockets (e.g. those in the Forwarder and Sequencer)
-    int32 long_sender_sndbuf = 36;
+    int32 long_sender_sndbuf = 37;
 }
