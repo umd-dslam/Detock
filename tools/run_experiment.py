@@ -84,7 +84,9 @@ class Experiment:
         ])
 
     NAME = ""
+    # ARGS are the arguments of the benchmark tool other than the 'params' argument
     VARYING_ARGS = []
+    # PARAMS are the parameters of a workload specified in the 'params' argument of the benchmark tool
     VARYING_PARAMS = []
 
     def run(self, args):
@@ -132,6 +134,8 @@ class Experiment:
                 tag_keys = [k for k in varying_keys if len(workload_setting[k]) > 1]
 
             for v in values:
+                if self.__is_excluded(v):
+                    continue
                 for t in range(trials):
                     tag = config_name
                     tag_suffix = ''.join([f"{k}{v[k]}" for k in tag_keys])
@@ -169,6 +173,39 @@ class Experiment:
                         p.start()
                     for p in collectors:
                         p.join()
+
+    def __is_excluded(self, val):
+        workload_settings = self.settings[self.NAME]
+        if "exclude" not in workload_settings:
+            return False
+
+        for cond in workload_settings["exclude"]:
+            if self.__eval_cond_and(cond, val):
+                return True
+        return False
+
+    def __eval_cond_and(self, cond, val):
+        for op in cond:
+            if not self.__eval_op(op, cond[op], val):
+                return False
+        return True
+
+    def __eval_cond_or(self, cond, val):
+        for op in cond:
+            if self.__eval_op(op, cond[op], val):
+                return True
+        return False
+
+    def __eval_op(self, op, op_val, val):
+        if op == "or":
+            return self.__eval_cond_or(op_val, val)
+        if op == "and":
+            return self.__eval_cond_and(op_val, val)
+        not_in = op.endswith("~")
+        key = op[:-1] if not_in else op
+        if key not in val:
+            raise KeyError(f"Invalid key in condition: \"{key}\"")
+        return (not_in and val[key] not in op_val) or (not not_in and val[key] in op_val)
 
 
 class YCSBExperiment(Experiment):
@@ -210,7 +247,6 @@ if __name__ == "__main__":
     if args.dry_run:
         def noop(args):
             print('\t' + ' '.join(args))
-            print()
         admin.main = noop
 
     EXPERIMENTS[args.experiment].run(args)
