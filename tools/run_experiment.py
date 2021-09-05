@@ -134,7 +134,9 @@ class Experiment:
                 tag_keys = [k for k in varying_keys if len(workload_setting[k]) > 1]
 
             for v in values:
-                if self.__is_excluded(v):
+                v = self.__apply_filters(v)
+                print(v)
+                if v is None:
                     continue
                 for t in range(trials):
                     tag = config_name
@@ -174,15 +176,35 @@ class Experiment:
                     for p in collectors:
                         p.join()
 
-    def __is_excluded(self, val):
+    def __apply_filters(self, val):
         workload_settings = self.settings[self.NAME]
-        if "exclude" not in workload_settings:
-            return False
+        if "filters" not in workload_settings:
+            return val
 
-        for cond in workload_settings["exclude"]:
+        for filter in workload_settings["filters"]:
+            v, changed = self.__filter(filter, val)
+            if changed:
+                return v
+
+        return val
+
+    def __filter(self, filter, val):
+        matched = False
+        for cond in filter["match"]:
             if self.__eval_cond_and(cond, val):
-                return True
-        return False
+                matched = True
+                break
+        if matched:
+            action = filter["action"]
+            if action == "change":
+                v = self.__action_change(filter["args"], val)
+                return v, True
+            elif action == "remove":
+                return None, True
+            else:
+                raise Exception(f"Invalid action: {action}")
+        
+        return val, False
 
     def __eval_cond_and(self, cond, val):
         for op in cond:
@@ -203,9 +225,13 @@ class Experiment:
             return self.__eval_cond_and(op_val, val)
         not_in = op.endswith("~")
         key = op[:-1] if not_in else op
-        if key not in val:
-            raise KeyError(f"Invalid key in condition: \"{key}\"")
         return (not_in and val[key] not in op_val) or (not not_in and val[key] in op_val)
+
+    def __action_change(self, args, val):
+        new_val = dict.copy(val)
+        for k, v in args.items():
+            new_val[k] = v
+        return new_val
 
 
 class YCSBExperiment(Experiment):
@@ -246,7 +272,8 @@ if __name__ == "__main__":
 
     if args.dry_run:
         def noop(args):
-            print('\t' + ' '.join(args))
+            pass
+            # print('\t' + ' '.join(args))
         admin.main = noop
 
     EXPERIMENTS[args.experiment].run(args)
