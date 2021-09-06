@@ -73,6 +73,8 @@ class DeadlockResolver;
  */
 class DDRLockManager {
  public:
+  DDRLockManager();
+
   /**
    * Initializes the deadlock resolver
    * @param broker       A broker to help the resolver to send/receive external messages

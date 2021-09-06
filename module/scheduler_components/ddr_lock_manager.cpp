@@ -486,6 +486,11 @@ vector<TxnId> LockQueueTail::AcquireWriteLock(TxnId txn_id) {
   return deps;
 }
 
+DDRLockManager::DDRLockManager() {
+  lock_table_.reserve(25000000);
+  txn_info_.reserve(1000000);
+}
+
 void DDRLockManager::InitializeDeadlockResolver(const shared_ptr<Broker>& broker,
                                                 const MetricsRepositoryManagerPtr& metrics_manager, Channel signal_chan,
                                                 optional<milliseconds> poll_timeout) {
