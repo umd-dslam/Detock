@@ -133,10 +133,10 @@ class Experiment:
             else:
                 tag_keys = [k for k in varying_keys if len(workload_setting[k]) > 1]
 
-            for v in values:
-                v = self.__apply_filters(v)
-                print(v)
+            for val in values:
+                v = self.__apply_filters(val)
                 if v is None:
+                    print(f"SKIP {val}")
                     continue
                 for t in range(trials):
                     tag = config_name
@@ -272,8 +272,7 @@ if __name__ == "__main__":
 
     if args.dry_run:
         def noop(args):
-            pass
-            # print('\t' + ' '.join(args))
+            print('\t' + ' '.join(args))
         admin.main = noop
 
     EXPERIMENTS[args.experiment].run(args)
