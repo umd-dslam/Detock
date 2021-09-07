@@ -39,7 +39,8 @@ NetworkedModule::NetworkedModule(const std::shared_ptr<zmq::context_t>& context,
 NetworkedModule::NetworkedModule(const std::shared_ptr<Broker>& broker, Broker::ChannelOption chopt,
                                  const MetricsRepositoryManagerPtr& metrics_manager,
                                  optional<std::chrono::milliseconds> poll_timeout, bool is_long_sender)
-    : NetworkedModule(broker->context(), broker->config(), chopt.channel, metrics_manager, poll_timeout, is_long_sender) {
+    : NetworkedModule(broker->context(), broker->config(), chopt.channel, metrics_manager, poll_timeout,
+                      is_long_sender) {
   broker->AddChannel(chopt);
 }
 
