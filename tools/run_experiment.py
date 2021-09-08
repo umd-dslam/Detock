@@ -157,6 +157,7 @@ class Experiment:
                         "--generators", f"{GENERATORS}",
                         "--txns", f"{v['txns']}",
                         "--duration", f"{v['duration']}",
+                        "--startup-spacing", f"{v['startup_spacing']}",
                         "--sample", f"{sample}",
                         "--seed", "0",
                         "--params", params,
@@ -236,7 +237,7 @@ class Experiment:
 
 class YCSBExperiment(Experiment):
     NAME = "ycsb"
-    VARYING_ARGS = ["clients", "txns", "duration"]
+    VARYING_ARGS = ["clients", "txns", "duration", "startup_spacing"]
     VARYING_PARAMS = ["writes", "records", "hot_records", "mp_parts", "mh_homes", "mh_zipf", "hot", "mp", "mh"]
 
 
@@ -271,8 +272,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.dry_run:
-        def noop(args):
-            print('\t' + ' '.join(args))
+        def noop(cmd):
+            print('\t' + ' '.join(cmd))
         admin.main = noop
 
     EXPERIMENTS[args.experiment].run(args)

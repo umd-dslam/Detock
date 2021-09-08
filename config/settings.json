@@ -159,6 +159,7 @@
     "txns": [2000000],
     "duration": [30],
     "clients": [500],
+    "startup_spacing": [10000],
     "writes": [10],
     "records": [10],
     "hot_records": [2],
