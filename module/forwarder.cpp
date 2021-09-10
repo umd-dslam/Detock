@@ -246,11 +246,16 @@ void Forwarder::UpdateLatency(EnvelopePtr&& env) {
   auto now = std::chrono::steady_clock::now().time_since_epoch().count();
   const auto& pong = env->response().pong();
   auto& latency_ns = latencies_ns_[pong.dst()];
+  int64_t new_latency = (now - pong.src_send_time()) / 2;
 
-  latency_ns.Add((now - pong.src_send_time()) / 2);
+  if (config()->fs_latency_dev()) {
+    new_latency -= pong.dev() - 1000000;
+  }
+
+  latency_ns.Add(new_latency);
 
   if (per_thread_metrics_repo != nullptr) {
-    per_thread_metrics_repo->RecordForwSequLatency(pong.dst(), pong.src_send_time(), now, latency_ns.avg());
+    per_thread_metrics_repo->RecordForwSequLatency(pong.dst(), pong.src_send_time(), now, latency_ns.avg(), pong.dev());
   }
 }
 

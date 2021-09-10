@@ -232,6 +232,8 @@ const internal::MetricOptions& Configuration::metric_options() const { return co
 
 milliseconds Configuration::fs_latency_interval() const { return milliseconds(config_.fs_latency_interval()); }
 
+bool Configuration::fs_latency_dev() const { return config_.fs_latency_dev(); }
+
 milliseconds Configuration::clock_sync_interval() const { return milliseconds(config_.clock_sync_interval()); }
 
 int64_t Configuration::timestamp_buffer_us() const { return config_.timestamp_buffer_us(); }

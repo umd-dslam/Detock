@@ -184,7 +184,8 @@ message Response {
 message Pong {
     int64 src_send_time = 1;
     int64 dst_send_time = 2;
-    uint32 dst = 3;
+    int64 dev = 3;
+    uint32 dst = 4;
 }
 
 message KeyMasterMetadata {

@@ -8,6 +8,7 @@
 #include "common/metrics.h"
 #include "common/types.h"
 #include "connection/broker.h"
+#include "data_structure/rolling_window.h"
 #include "module/base/networked_module.h"
 #include "module/sequencer_components/batcher.h"
 
@@ -43,6 +44,7 @@ class Sequencer : public NetworkedModule {
 
   std::shared_ptr<Batcher> batcher_;
   ModuleRunner batcher_runner_;
+  std::vector<RollingWindow<int64_t>> deviations_;
 };
 
 }  // namespace slog
