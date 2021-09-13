@@ -265,10 +265,9 @@ class ForwSequLatencyMetrics {
  public:
   ForwSequLatencyMetrics(int sample_rate) : sampler_(sample_rate, 1) {}
 
-  void Record(uint32_t dst, int64_t send_time, int64_t recv_time, int64_t avg_latency, int dev) {
+  void Record(uint32_t dst, int64_t send_time, int64_t recv_time, int64_t avg_latency) {
     if (sampler_.IsChosen(0)) {
-      data_.push_back(
-          {.dst = dst, .send_time = send_time, .recv_time = recv_time, .avg_latency = avg_latency, .dev = dev});
+      data_.push_back({.dst = dst, .send_time = send_time, .recv_time = recv_time, .avg_latency = avg_latency});
     }
   }
 
@@ -277,15 +276,13 @@ class ForwSequLatencyMetrics {
     int64_t send_time;
     int64_t recv_time;
     int64_t avg_latency;
-    int64_t dev;
   };
   list<Data>& data() { return data_; }
 
   static void WriteToDisk(const std::string& dir, const list<Data>& data) {
-    CSVWriter forw_sequ_latency_csv(dir + "/forw_sequ_latency.csv",
-                                    {"dst", "send_time", "recv_time", "avg_latency", "dev"});
+    CSVWriter forw_sequ_latency_csv(dir + "/forw_sequ_latency.csv", {"dst", "send_time", "recv_time", "avg_latency"});
     for (const auto& d : data) {
-      forw_sequ_latency_csv << d.dst << d.send_time << d.recv_time << d.avg_latency << d.dev << csvendl;
+      forw_sequ_latency_csv << d.dst << d.send_time << d.recv_time << d.avg_latency << csvendl;
     }
   }
 
@@ -416,9 +413,9 @@ void MetricsRepository::RecordLogManagerEntry(uint32_t replica, BatchId batch_id
 }
 
 void MetricsRepository::RecordForwSequLatency(uint32_t replica, int64_t send_time, int64_t recv_time,
-                                              int64_t avg_latency, int64_t dev) {
+                                              int64_t avg_latency) {
   std::lock_guard<SpinLatch> guard(latch_);
-  return metrics_->forw_sequ_latency_metrics.Record(replica, send_time, recv_time, avg_latency, dev);
+  return metrics_->forw_sequ_latency_metrics.Record(replica, send_time, recv_time, avg_latency);
 }
 
 void MetricsRepository::RecordClockSync(uint32_t dst, int64_t src_send_time, int64_t dst_send_time,
