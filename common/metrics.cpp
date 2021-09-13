@@ -265,24 +265,24 @@ class ForwSequLatencyMetrics {
  public:
   ForwSequLatencyMetrics(int sample_rate) : sampler_(sample_rate, 1) {}
 
-  void Record(uint32_t dst, int64_t send_time, int64_t recv_time, int64_t avg_latency) {
+  void Record(uint32_t dst, int64_t src_time, int64_t dst_time, int64_t src_recv_time) {
     if (sampler_.IsChosen(0)) {
-      data_.push_back({.dst = dst, .send_time = send_time, .recv_time = recv_time, .avg_latency = avg_latency});
+      data_.push_back({.dst = dst, .src_time = src_time, .dst_time = dst_time, .src_recv_time = src_recv_time});
     }
   }
 
   struct Data {
     uint32_t dst;
-    int64_t send_time;
-    int64_t recv_time;
-    int64_t avg_latency;
+    int64_t src_time;
+    int64_t dst_time;
+    int64_t src_recv_time;
   };
   list<Data>& data() { return data_; }
 
   static void WriteToDisk(const std::string& dir, const list<Data>& data) {
-    CSVWriter forw_sequ_latency_csv(dir + "/forw_sequ_latency.csv", {"dst", "send_time", "recv_time", "avg_latency"});
+    CSVWriter forw_sequ_latency_csv(dir + "/forw_sequ_latency.csv", {"dst", "src_time", "dst_time", "src_recv_time"});
     for (const auto& d : data) {
-      forw_sequ_latency_csv << d.dst << d.send_time << d.recv_time << d.avg_latency << csvendl;
+      forw_sequ_latency_csv << d.dst << d.src_time << d.dst_time << d.src_recv_time << csvendl;
     }
   }
 
@@ -295,12 +295,12 @@ class ClockSyncMetrics {
  public:
   ClockSyncMetrics(int sample_rate) : sampler_(sample_rate, 1) {}
 
-  void Record(uint32_t dst, int64_t src_send_time, int64_t dst_send_time, int64_t src_recv_time,
-              int64_t local_slog_time, int64_t avg_latency, int64_t new_offset) {
+  void Record(uint32_t dst, int64_t src_time, int64_t dst_time, int64_t src_recv_time, int64_t local_slog_time,
+              int64_t avg_latency, int64_t new_offset) {
     if (sampler_.IsChosen(0)) {
       data_.push_back({.dst = dst,
-                       .src_send_time = src_send_time,
-                       .dst_send_time = dst_send_time,
+                       .src_time = src_time,
+                       .dst_time = dst_time,
                        .src_recv_time = src_recv_time,
                        .local_slog_time = local_slog_time,
                        .avg_latency = avg_latency,
@@ -310,8 +310,8 @@ class ClockSyncMetrics {
 
   struct Data {
     uint32_t dst;
-    int64_t src_send_time;
-    int64_t dst_send_time;
+    int64_t src_time;
+    int64_t dst_time;
     int64_t src_recv_time;
     int64_t local_slog_time;
     int64_t avg_latency;
@@ -320,11 +320,11 @@ class ClockSyncMetrics {
   list<Data>& data() { return data_; }
 
   static void WriteToDisk(const std::string& dir, const list<Data>& data) {
-    CSVWriter clock_sync_csv(dir + "/clock_sync.csv", {"dst", "src_send_time", "dst_send_time", "src_recv_time",
+    CSVWriter clock_sync_csv(dir + "/clock_sync.csv", {"dst", "src_time", "dst_time", "src_recv_time",
                                                        "local_slog_time", "avg_latency", "new_offset"});
     for (const auto& d : data) {
-      clock_sync_csv << d.dst << d.src_send_time << d.dst_send_time << d.src_recv_time << d.local_slog_time
-                     << d.avg_latency << d.new_offset << csvendl;
+      clock_sync_csv << d.dst << d.src_time << d.dst_time << d.src_recv_time << d.local_slog_time << d.avg_latency
+                     << d.new_offset << csvendl;
     }
   }
 
@@ -412,18 +412,17 @@ void MetricsRepository::RecordLogManagerEntry(uint32_t replica, BatchId batch_id
                                            mh_arrive_at_home_time, mh_enter_local_batch_time);
 }
 
-void MetricsRepository::RecordForwSequLatency(uint32_t replica, int64_t send_time, int64_t recv_time,
-                                              int64_t avg_latency) {
+void MetricsRepository::RecordForwSequLatency(uint32_t replica, int64_t src_time, int64_t dst_time,
+                                              int64_t src_recv_time) {
   std::lock_guard<SpinLatch> guard(latch_);
-  return metrics_->forw_sequ_latency_metrics.Record(replica, send_time, recv_time, avg_latency);
+  return metrics_->forw_sequ_latency_metrics.Record(replica, src_time, dst_time, src_recv_time);
 }
 
-void MetricsRepository::RecordClockSync(uint32_t dst, int64_t src_send_time, int64_t dst_send_time,
-                                        int64_t src_recv_time, int64_t local_slog_time, int64_t avg_latency,
-                                        int64_t new_offset) {
+void MetricsRepository::RecordClockSync(uint32_t dst, int64_t src_time, int64_t dst_time, int64_t src_recv_time,
+                                        int64_t local_slog_time, int64_t avg_latency, int64_t new_offset) {
   std::lock_guard<SpinLatch> guard(latch_);
-  return metrics_->clock_sync_metrics.Record(dst, src_send_time, dst_send_time, src_recv_time, local_slog_time,
-                                             avg_latency, new_offset);
+  return metrics_->clock_sync_metrics.Record(dst, src_time, dst_time, src_recv_time, local_slog_time, avg_latency,
+                                             new_offset);
 }
 
 void MetricsRepository::RecordForwarderBatch(size_t batch_size, int64_t batch_duration) {

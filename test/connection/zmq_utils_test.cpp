@@ -21,12 +21,12 @@ TEST(ZmqUtilsTest, SendAndReceiveProto) {
   pull.connect("inproc://test");
 
   Request req;
-  req.mutable_ping()->set_src_send_time(99);
+  req.mutable_ping()->set_src_time(99);
   SendSerializedProto(push, req);
 
   Request req2;
   ASSERT_TRUE(RecvDeserializedProto(pull, req2));
-  ASSERT_EQ(req2.ping().src_send_time(), 99);
+  ASSERT_EQ(req2.ping().src_time(), 99);
 }
 
 TEST(ZmqUtilsTest, SendAndReceiveProtoDealerRouter) {
@@ -39,22 +39,22 @@ TEST(ZmqUtilsTest, SendAndReceiveProtoDealerRouter) {
 
   // First send from dealer and receive at router
   Request req;
-  req.mutable_ping()->set_src_send_time(99);
+  req.mutable_ping()->set_src_time(99);
   SendSerializedProtoWithEmptyDelim(dealer, req);
 
   zmq::message_t identity;
   (void)router.recv(identity);
   Request req2;
   ASSERT_TRUE(RecvDeserializedProtoWithEmptyDelim(router, req2));
-  ASSERT_EQ(req2.ping().src_send_time(), 99);
+  ASSERT_EQ(req2.ping().src_time(), 99);
 
   // Then send from router and receive at dealer
-  req2.mutable_ping()->set_src_send_time(99);
+  req2.mutable_ping()->set_src_time(99);
   router.send(identity, zmq::send_flags::sndmore);
   SendSerializedProtoWithEmptyDelim(router, req2);
 
   ASSERT_TRUE(RecvDeserializedProtoWithEmptyDelim(dealer, req));
-  ASSERT_EQ(req.ping().src_send_time(), 99);
+  ASSERT_EQ(req.ping().src_time(), 99);
 }
 
 TEST(ZmqUtilsTest, SendAndReceiveWrongProto) {
@@ -66,7 +66,7 @@ TEST(ZmqUtilsTest, SendAndReceiveWrongProto) {
   pull.connect("inproc://test");
 
   Request req;
-  req.mutable_ping()->set_src_send_time(99);
+  req.mutable_ping()->set_src_time(99);
   SendSerializedProto(push, req);
 
   Response res;
@@ -94,7 +94,7 @@ TEST(ZmqUtilsTest, SendWithMachineIdAndChannel) {
   pull.connect("inproc://test");
 
   Request req;
-  req.mutable_ping()->set_src_send_time(99);
+  req.mutable_ping()->set_src_time(99);
   SendSerializedProto(push, req, 1, 9);
 
   zmq::message_t msg;

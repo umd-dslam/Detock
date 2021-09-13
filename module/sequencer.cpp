@@ -91,9 +91,11 @@ void Sequencer::ProcessForwardRequest(EnvelopePtr&& env) {
 }
 
 void Sequencer::ProcessPingRequest(EnvelopePtr&& env) {
+  auto now = slog_clock::now().time_since_epoch().count();
   auto pong_env = NewEnvelope();
   auto pong = pong_env->mutable_response()->mutable_pong();
-  pong->set_src_send_time(env->request().ping().src_send_time());
+  pong->set_src_time(env->request().ping().src_time());
+  pong->set_dst_time(now);
   pong->set_dst(env->request().ping().dst());
   Send(move(pong_env), env->from(), kForwarderChannel);
 }
