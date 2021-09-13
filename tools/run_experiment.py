@@ -14,7 +14,7 @@ from proto.configuration_pb2 import Configuration, Replica
 
 LOG = logging.getLogger("experiment")
 
-GENERATORS = 5
+GENERATORS = 2
 
 class Experiment:
 
@@ -241,6 +241,12 @@ class YCSBExperiment(Experiment):
     VARYING_PARAMS = ["writes", "records", "hot_records", "mp_parts", "mh_homes", "mh_zipf", "hot", "mp", "mh"]
 
 
+class YCSBLatencyExperiment(Experiment):
+    NAME = "ycsb-latency"
+    VARYING_ARGS = ["clients", "txns", "duration", "startup_spacing"]
+    VARYING_PARAMS = ["writes", "records", "hot_records", "mp_parts", "mh_homes", "mh_zipf", "hot", "mp", "mh"]
+
+
 class TPCCExperiment(Experiment):
     NAME = "tpcc"
     VARYING_ARGS = ["clients", "txns", "duration"]
@@ -251,6 +257,7 @@ if __name__ == "__main__":
 
     EXPERIMENTS = {
         "ycsb": YCSBExperiment(),
+        "ycsb-latency": YCSBLatencyExperiment(),
         "tpcc": TPCCExperiment()
     }
 
