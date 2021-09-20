@@ -59,7 +59,7 @@ void Forwarder::ScheduleNextLatencyProbe() {
     for (uint32_t r = 0; r < config()->num_replicas(); r++) {
       auto env = NewEnvelope();
       auto ping = env->mutable_request()->mutable_ping();
-      ping->set_src_time(std::chrono::steady_clock::now().time_since_epoch().count());
+      ping->set_src_time(slog_clock::now().time_since_epoch().count());
       ping->set_dst(r);
       Send(move(env), config()->MakeMachineId(r, p), kSequencerChannel);
     }
@@ -243,11 +243,11 @@ void Forwarder::UpdateMasterInfo(EnvelopePtr&& env) {
 }
 
 void Forwarder::UpdateLatency(EnvelopePtr&& env) {
-  auto now = std::chrono::steady_clock::now().time_since_epoch().count();
+  auto now = slog_clock::now().time_since_epoch().count();
   const auto& pong = env->response().pong();
   auto& latency_ns = latencies_ns_[pong.dst()];
 
-  latency_ns.Add(pong.dst_time() - pong.src_time() + 1000000);
+  latency_ns.Add(pong.dst_time() - pong.src_time());
 
   if (per_thread_metrics_repo != nullptr) {
     per_thread_metrics_repo->RecordForwSequLatency(pong.dst(), pong.src_time(), pong.dst_time(), now);

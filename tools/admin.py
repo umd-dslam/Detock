@@ -1114,6 +1114,7 @@ class GenNetEmCommand(AdminCommand):
             default=USER,
             help="Username of the target machines"
         )
+        parser.add_argument("--out", "-o", default="netem.sh")
         parser.add_argument("--dev", default="ens5")
         parser.add_argument("--jitter", type=int, default=1, help="Delay jitter in ms")
         parser.add_argument("--dry-run", action="store_true")
@@ -1151,7 +1152,7 @@ class GenNetEmCommand(AdminCommand):
             preview.append((i, script))
             for ip in public_addresses(r_from):
                 commands.append(
-                    f'({SSH} {args.user}@{ip} "echo \\"{script}\\" > netem.sh && chmod +x netem.sh") & '
+                    f'({SSH} {args.user}@{ip} "echo \\"{script}\\" > {args.out} && chmod +x {args.out}") & '
                 )
 
         for r, script in preview:
