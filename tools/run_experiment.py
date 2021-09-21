@@ -149,7 +149,7 @@ class Experiment:
                     params = ','.join(f"{k}={v[k]}" for k in self.VARYING_PARAMS)
 
                     LOG.info("RUN BENCHMARK")
-                    admin.main([
+                    benchmark_args = [
                         "benchmark",
                         *common_args,
                         "--workload", workload_setting['workload'],
@@ -157,14 +157,18 @@ class Experiment:
                         "--generators", f"{GENERATORS}",
                         "--txns", f"{v['txns']}",
                         "--duration", f"{v['duration']}",
-                        "--startup-spacing", f"{v['startup_spacing']}",
                         "--sample", f"{sample}",
                         "--seed", "0",
                         "--params", params,
                         "--tag", tag,
                         # The image has already been pulled in the cleanup step
                         "--no-pull"
-                    ])
+                    ]
+
+                    if 'startup_spacing' in v:
+                        benchmark_args.extend(["--startup-spacing", f"{v['startup_spacing']}"])
+
+                    admin.main(benchmark_args)
 
                     LOG.info("COLLECT DATA")
                     collectors = []
