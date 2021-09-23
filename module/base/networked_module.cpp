@@ -69,8 +69,9 @@ void NetworkedModule::SetUp() {
   if (port_.has_value()) {
     outproc_socket_ = zmq::socket_t(*context_, ZMQ_PULL);
     auto addr = MakeRemoteAddress(config_->protocol(), config_->local_address(), port_.value(), true /* binding */);
-    outproc_socket_.bind(addr);
     outproc_socket_.set(zmq::sockopt::rcvhwm, 0);
+    outproc_socket_.set(zmq::sockopt::rcvbuf, config_->broker_rcvbuf());
+    outproc_socket_.bind(addr);
     poller_.PushSocket(outproc_socket_);
 
     LOG(INFO) << "Bound " << name() << " to \"" << addr << "\"";

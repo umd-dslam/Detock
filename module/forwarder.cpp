@@ -56,10 +56,11 @@ void Forwarder::Initialize() {
 void Forwarder::ScheduleNextLatencyProbe() {
   NewTimedCallback(config()->fs_latency_interval(), [this] {
     auto p = config()->leader_partition_for_multi_home_ordering();
+    auto now = slog_clock::now().time_since_epoch().count();
     for (uint32_t r = 0; r < config()->num_replicas(); r++) {
       auto env = NewEnvelope();
       auto ping = env->mutable_request()->mutable_ping();
-      ping->set_src_time(slog_clock::now().time_since_epoch().count());
+      ping->set_src_time(now);
       ping->set_dst(r);
       Send(move(env), config()->MakeMachineId(r, p), kSequencerChannel);
     }
