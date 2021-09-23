@@ -38,6 +38,7 @@ class MetricsRepository {
   void RecordForwarderBatch(size_t batch_size, int64_t batch_duration);
   void RecordSequencerBatch(BatchId batch_id, size_t batch_size, int64_t batch_duration);
   void RecordMHOrdererBatch(BatchId batch_id, size_t batch_size, int64_t batch_duration);
+  void RecordTxnTimestamp(TxnId txn_id, uint32_t from, int64_t txn_timestamp, int64_t server_time);
   void RecordGeneric(int type, int64_t time, int64_t data);
 
   std::unique_ptr<AllMetrics> Reset();

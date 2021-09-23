@@ -52,6 +52,10 @@ void Sequencer::ProcessForwardRequest(EnvelopePtr&& env) {
 
   txn_internal->set_mh_arrive_at_home_time(now);
 
+  if (config()->bypass_mh_orderer() && per_thread_metrics_repo != nullptr) {
+    per_thread_metrics_repo->RecordTxnTimestamp(txn_internal->id(), env->from(), txn_internal->timestamp(), now);
+  }
+
   if (config()->bypass_mh_orderer() && config()->synchronized_batching()) {
     if (txn_internal->timestamp() <= now) {
       VLOG(3) << "Txn " << txn_internal->id() << " has a timestamp " << (now - txn_internal->timestamp()) / 1000

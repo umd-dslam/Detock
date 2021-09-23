@@ -84,46 +84,10 @@ class TransactionEventMetrics {
   list<Data> txn_events_;
 };
 
-class GenericMetrics {
- public:
-  GenericMetrics(int sample_rate, uint32_t local_replica, uint32_t local_partition)
-      : sampler_(sample_rate, 1), local_replica_(local_replica), local_partition_(local_partition) {}
-
-  void Record(int type, int64_t time, int64_t data) {
-    if (sampler_.IsChosen(0)) {
-      data_.push_back(
-          {.time = time, .data = data, .type = type, .replica = local_replica_, .partition = local_partition_});
-    }
-  }
-
-  struct Data {
-    int64_t time;  // nanosecond since epoch
-    int64_t data;
-    int type;
-    uint32_t replica;
-    uint32_t partition;
-  };
-
-  list<Data>& data() { return data_; }
-
-  static void WriteToDisk(const std::string& dir, const list<Data>& data) {
-    CSVWriter generic_csv(dir + "/generic.csv", {"type", "time", "data", "partition", "replica"});
-    for (const auto& d : data) {
-      generic_csv << d.type << d.time << d.data << d.partition << d.replica << csvendl;
-    }
-  }
-
- private:
-  Sampler sampler_;
-  uint32_t local_replica_;
-  uint32_t local_partition_;
-  list<Data> data_;
-};
-
 class DeadlockResolverRunMetrics {
  public:
   DeadlockResolverRunMetrics(int sample_rate, uint32_t local_replica, uint32_t local_partition)
-      : sampler_(sample_rate, 2), local_replica_(local_replica), local_partition_(local_partition) {}
+      : sampler_(sample_rate, 1), local_replica_(local_replica), local_partition_(local_partition) {}
 
   void Record(int64_t runtime, size_t unstable_graph_sz, size_t stable_graph_sz, size_t deadlocks_resolved,
               int64_t graph_update_time) {
@@ -173,13 +137,13 @@ class DeadlockResolverDeadlockMetrics {
 
  public:
   DeadlockResolverDeadlockMetrics(int sample_rate, bool with_details, uint32_t local_replica, uint32_t local_partition)
-      : sampler_(sample_rate, 2),
+      : sampler_(sample_rate, 1),
         with_details_(with_details),
         local_replica_(local_replica),
         local_partition_(local_partition) {}
 
   void Record(int num_vertices, const vector<edge_t>& edges_removed, const vector<edge_t>& edges_added) {
-    if (sampler_.IsChosen(1)) {
+    if (sampler_.IsChosen(0)) {
       data_.push_back({.time = system_clock::now().time_since_epoch().count(),
                        .partition = local_partition_,
                        .replica = local_replica_,
@@ -362,6 +326,72 @@ class BatchMetrics {
   list<Data> data_;
 };
 
+class TxnTimestampMetrics {
+ public:
+  TxnTimestampMetrics(int sample_rate) : sampler_(sample_rate, 1) {}
+
+  void Record(TxnId txn_id, uint32_t from, int64_t txn_timestamp, int64_t server_time) {
+    if (sampler_.IsChosen(0)) {
+      data_.push_back({.txn_id = txn_id, .from = from, .txn_timestamp = txn_timestamp, .server_time = server_time});
+    }
+  }
+
+  struct Data {
+    TxnId txn_id;
+    uint32_t from;
+    int64_t txn_timestamp;
+    int64_t server_time;
+  };
+  list<Data>& data() { return data_; }
+
+  static void WriteToDisk(const std::string& dir, const list<Data>& data) {
+    CSVWriter txn_timestamps_csv(dir + "/txn_timestamps.csv", {"txn_id", "from", "txn_timestamp", "server_time"});
+    for (const auto& d : data) {
+      txn_timestamps_csv << d.txn_id << d.from << d.txn_timestamp << d.server_time << csvendl;
+    }
+  }
+
+ private:
+  Sampler sampler_;
+  list<Data> data_;
+};
+
+class GenericMetrics {
+ public:
+  GenericMetrics(int sample_rate, uint32_t local_replica, uint32_t local_partition)
+      : sampler_(sample_rate, 1), local_replica_(local_replica), local_partition_(local_partition) {}
+
+  void Record(int type, int64_t time, int64_t data) {
+    if (sampler_.IsChosen(0)) {
+      data_.push_back(
+          {.time = time, .data = data, .type = type, .replica = local_replica_, .partition = local_partition_});
+    }
+  }
+
+  struct Data {
+    int64_t time;  // nanosecond since epoch
+    int64_t data;
+    int type;
+    uint32_t replica;
+    uint32_t partition;
+  };
+
+  list<Data>& data() { return data_; }
+
+  static void WriteToDisk(const std::string& dir, const list<Data>& data) {
+    CSVWriter generic_csv(dir + "/generic.csv", {"type", "time", "data", "partition", "replica"});
+    for (const auto& d : data) {
+      generic_csv << d.type << d.time << d.data << d.partition << d.replica << csvendl;
+    }
+  }
+
+ private:
+  Sampler sampler_;
+  uint32_t local_replica_;
+  uint32_t local_partition_;
+  list<Data> data_;
+};
+
 struct AllMetrics {
   TransactionEventMetrics txn_event_metrics;
   DeadlockResolverRunMetrics deadlock_resolver_run_metrics;
@@ -372,6 +402,7 @@ struct AllMetrics {
   BatchMetrics forwarder_batch_metrics;
   BatchMetrics sequencer_batch_metrics;
   BatchMetrics mhorderer_batch_metrics;
+  TxnTimestampMetrics txn_timestamp_metrics;
   GenericMetrics generic_metrics;
 };
 
@@ -440,6 +471,11 @@ void MetricsRepository::RecordMHOrdererBatch(BatchId batch_id, size_t batch_size
   return metrics_->mhorderer_batch_metrics.Record(batch_id, batch_size, batch_duration);
 }
 
+void MetricsRepository::RecordTxnTimestamp(TxnId txn_id, uint32_t from, int64_t txn_timestamp, int64_t server_time) {
+  std::lock_guard<SpinLatch> guard(latch_);
+  return metrics_->txn_timestamp_metrics.Record(txn_id, from, txn_timestamp, server_time);
+}
+
 void MetricsRepository::RecordGeneric(int type, int64_t time, int64_t data) {
   std::lock_guard<SpinLatch> guard(latch_);
   return metrics_->generic_metrics.Record(type, time, data);
@@ -462,6 +498,7 @@ std::unique_ptr<AllMetrics> MetricsRepository::Reset() {
        .forwarder_batch_metrics = BatchMetrics(config_->metric_options().forwarder_batch_sample()),
        .sequencer_batch_metrics = BatchMetrics(config_->metric_options().sequencer_batch_sample()),
        .mhorderer_batch_metrics = BatchMetrics(config_->metric_options().mhorderer_batch_sample()),
+       .txn_timestamp_metrics = TxnTimestampMetrics(config_->metric_options().txn_timestamp_sample()),
        .generic_metrics = GenericMetrics(config_->metric_options().generic_sample(), local_replica, local_partition)}));
 
   std::lock_guard<SpinLatch> guard(latch_);
@@ -495,6 +532,7 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
   list<ForwSequLatencyMetrics::Data> forw_sequ_latency_data;
   list<ClockSyncMetrics::Data> clock_sync_data;
   list<BatchMetrics::Data> forwarder_batch_data, sequencer_batch_data, mhorderer_batch_data;
+  list<TxnTimestampMetrics::Data> txn_timestamp_data;
   list<GenericMetrics::Data> generic_data;
   {
     std::lock_guard<std::mutex> guard(mut_);
@@ -514,6 +552,7 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
       forwarder_batch_data.splice(forwarder_batch_data.end(), metrics->forwarder_batch_metrics.data());
       sequencer_batch_data.splice(sequencer_batch_data.end(), metrics->sequencer_batch_metrics.data());
       mhorderer_batch_data.splice(mhorderer_batch_data.end(), metrics->mhorderer_batch_metrics.data());
+      txn_timestamp_data.splice(txn_timestamp_data.end(), metrics->txn_timestamp_metrics.data());
       generic_data.splice(generic_data.end(), metrics->generic_metrics.data());
     }
   }
@@ -533,6 +572,7 @@ void MetricsRepositoryManager::AggregateAndFlushToDisk(const std::string& dir) {
     BatchMetrics::WriteToDisk(dir + "/forwarder_batch.csv", forwarder_batch_data);
     BatchMetrics::WriteToDisk(dir + "/sequencer_batch.csv", sequencer_batch_data);
     BatchMetrics::WriteToDisk(dir + "/mhorderer_batch.csv", mhorderer_batch_data);
+    TxnTimestampMetrics::WriteToDisk(dir, txn_timestamp_data);
     GenericMetrics::WriteToDisk(dir, generic_data);
     LOG(INFO) << "Metrics written to: \"" << dir << "/\"";
   } catch (std::runtime_error& e) {
