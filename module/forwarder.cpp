@@ -250,7 +250,7 @@ void Forwarder::UpdateLatency(EnvelopePtr&& env) {
   latency_ns.Add(pong.dst_time() - pong.src_time());
 
   if (per_thread_metrics_repo != nullptr) {
-    per_thread_metrics_repo->RecordForwSequLatency(pong.dst(), pong.src_time(), pong.dst_time(), now);
+    per_thread_metrics_repo->RecordForwSequLatency(pong.dst(), pong.src_time(), pong.dst_time(), now, latency_ns.avg());
   }
 }
 
