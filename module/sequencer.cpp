@@ -66,26 +66,21 @@ void Sequencer::ProcessForwardRequest(EnvelopePtr&& env) {
       txn->set_status(TransactionStatus::ABORTED);
       txn->set_abort_reason("restarted");
 #endif
-
-      // Put to batch immediately
-      txn_internal->set_mh_enter_local_batch_time(now);
-      Send(move(env), kBatcherChannel);
     } else {
       VLOG(3) << "Txn " << txn_internal->id() << " has a timestamp " << (txn_internal->timestamp() - now) / 1000
               << " us into the future";
 
       RECORD_WITH_TIME(txn_internal, TransactionEvent::EXPECTED_WAIT_TIME_UNTIL_ENTER_LOCAL_BATCH,
                        txn_internal->timestamp() - now);
-
-      // Put into a sorted buffer and wait until local clock reaches the txn's timestamp.
-      // Send a signal to the batcher if the earliest time in the buffer has changed, so that
-      // the batcher is rescheduled to wake up at this ealier time
-      bool signal_needed = batcher_->BufferFutureTxn(env->mutable_request()->mutable_forward_txn()->release_txn());
-      if (signal_needed) {
-        auto env = NewEnvelope();
-        env->mutable_request()->mutable_signal();
-        Send(move(env), kBatcherChannel);
-      }
+    }
+    // Put into a sorted buffer and wait until local clock reaches the txn's timestamp.
+    // Send a signal to the batcher if the earliest time in the buffer has changed, so that
+    // the batcher is rescheduled to wake up at this ealier time
+    bool signal_needed = batcher_->BufferFutureTxn(env->mutable_request()->mutable_forward_txn()->release_txn());
+    if (signal_needed) {
+      auto env = NewEnvelope();
+      env->mutable_request()->mutable_signal();
+      Send(move(env), kBatcherChannel);
     }
   } else {
     // Put to batch immediately

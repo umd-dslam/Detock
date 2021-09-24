@@ -231,7 +231,11 @@ class ForwSequLatencyMetrics {
 
   void Record(uint32_t dst, int64_t src_time, int64_t dst_time, int64_t src_recv_time, int64_t avg_time) {
     if (sampler_.IsChosen(0)) {
-      data_.push_back({.dst = dst, .src_time = src_time, .dst_time = dst_time, .src_recv_time = src_recv_time, .avg_time = avg_time});
+      data_.push_back({.dst = dst,
+                       .src_time = src_time,
+                       .dst_time = dst_time,
+                       .src_recv_time = src_recv_time,
+                       .avg_time = avg_time});
     }
   }
 
@@ -245,7 +249,8 @@ class ForwSequLatencyMetrics {
   list<Data>& data() { return data_; }
 
   static void WriteToDisk(const std::string& dir, const list<Data>& data) {
-    CSVWriter forw_sequ_latency_csv(dir + "/forw_sequ_latency.csv", {"dst", "src_time", "dst_time", "src_recv_time", "avg_time"});
+    CSVWriter forw_sequ_latency_csv(dir + "/forw_sequ_latency.csv",
+                                    {"dst", "src_time", "dst_time", "src_recv_time", "avg_time"});
     for (const auto& d : data) {
       forw_sequ_latency_csv << d.dst << d.src_time << d.dst_time << d.src_recv_time << d.avg_time << csvendl;
     }
