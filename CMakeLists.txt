@@ -312,6 +312,9 @@ target_link_libraries(scheduler_benchmark
     gflags::gflags
 )
 
+add_executable(slog_postgres service/slog_postgres service/service_utils.h)
+target_link_libraries(slog_postgres PRIVATE slog-core gflags::gflags)
+
 #========================================
 #                Tests
 #========================================
