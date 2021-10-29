@@ -1,9 +1,11 @@
 target_sources(slog-core
   PRIVATE
-    basic_workload.cpp
-    basic_workload.h
-    remastering_workload.cpp
-    remastering_workload.h
-    tpcc_workload.cpp
-    tpcc_workload.h
+    basic.cpp
+    basic.h
+    cockroach.cpp
+    cockroach.h
+    remastering.cpp
+    remastering.h
+    tpcc.cpp
+    tpcc.h
     workload.h)
