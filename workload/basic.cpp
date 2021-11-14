@@ -56,9 +56,9 @@ constexpr char SP_PARTITION[] = "sp_partition";
 // The NEAREST parameter is ignored if this is positive
 constexpr char SH_HOME[] = "sh_home";
 
-const RawParamMap DEFAULT_PARAMS = {{MH_PCT, "0"},   {MH_HOMES, "2"},    {MH_ZIPF, "0"},  {MP_PCT, "0"},
-                                    {MP_PARTS, "2"}, {HOT, "0"},         {RECORDS, "10"}, {HOT_RECORDS, "0"},
-                                    {WRITES, "10"},  {VALUE_SIZE, "50"}, {NEAREST, "1"},  {SP_PARTITION, "-1"},
+const RawParamMap DEFAULT_PARAMS = {{MH_PCT, "0"},   {MH_HOMES, "2"},     {MH_ZIPF, "0"},  {MP_PCT, "0"},
+                                    {MP_PARTS, "2"}, {HOT, "0"},          {RECORDS, "10"}, {HOT_RECORDS, "0"},
+                                    {WRITES, "10"},  {VALUE_SIZE, "100"}, {NEAREST, "1"},  {SP_PARTITION, "-1"},
                                     {SH_HOME, "-1"}};
 
 }  // namespace
@@ -155,19 +155,27 @@ std::pair<Transaction*, TransactionProfile> BasicWorkload::NextTransaction() {
   vector<uint32_t> selected_partitions;
   if (pro.is_multi_partition) {
     CHECK_GE(num_partitions, 2) << "There must be at least 2 partitions for MP txns";
+
+    // Generate a permuation of 0..num_partitions-1
     selected_partitions.resize(num_partitions);
     iota(selected_partitions.begin(), selected_partitions.end(), 0);
     shuffle(selected_partitions.begin(), selected_partitions.end(), rg_);
+
+    // Compute number of needed partitions
     auto max_num_partitions = std::min(num_partitions, params_.GetUInt32(MP_PARTS));
     CHECK_GE(max_num_partitions, 2) << "At least 2 partitions must be selected for MP txns";
+
+    // Select the first max_num_partitions
     std::uniform_int_distribution num_partitions(2U, max_num_partitions);
     selected_partitions.resize(num_partitions(rg_));
   } else {
     auto sp_partition = params_.GetInt32(SP_PARTITION);
     if (sp_partition < 0) {
+      // Pick a random partition if no specific partition is given
       std::uniform_int_distribution<uint32_t> dis(0, num_partitions - 1);
       selected_partitions.push_back(dis(rg_));
     } else {
+      // Use the given partition
       CHECK_LT(static_cast<uint32_t>(sp_partition), num_partitions)
           << "Selected single-partition partition does not exist";
       selected_partitions.push_back(sp_partition);
@@ -185,6 +193,7 @@ std::pair<Transaction*, TransactionProfile> BasicWorkload::NextTransaction() {
   if (pro.is_multi_home) {
     CHECK_GE(num_replicas, 2) << "There must be at least 2 regions for MH txns";
     auto max_num_homes = std::min(params_.GetUInt32(MH_HOMES), num_replicas);
+
     CHECK_GE(max_num_homes, 2) << "At least 2 regions must be selected for MH txns";
     auto num_homes = std::uniform_int_distribution{2U, max_num_homes}(rg_);
     selected_homes.reserve(num_homes);
@@ -219,12 +228,15 @@ std::pair<Transaction*, TransactionProfile> BasicWorkload::NextTransaction() {
   CHECK_LE(writes, records) << "Number of writes cannot exceed number of records in a transaction!";
   CHECK_LE(hot_records, records) << "Number of hot records cannot exceed number of records in a transaction!";
 
+  // Randomly decide which records are hot or not
   std::vector<bool> is_hot(hot_records, true);
   is_hot.resize(records);
   std::shuffle(is_hot.begin(), is_hot.end(), rg_);
 
   for (size_t i = 0; i < records; i++) {
+    // Round-robin the partitions
     auto partition = selected_partitions[i % selected_partitions.size()];
+    // Evenly divide the records to the selected homes
     auto home = selected_homes[i / ((records + 1) / selected_homes.size())];
     for (;;) {
       Key key;
