@@ -41,6 +41,15 @@ class SimpleSharder : public Sharder {
   uint32_t compute_partition(const Key& key) const final;
 };
 
+class SimpleSharder2 : public Sharder {
+ public:
+  SimpleSharder2(const ConfigurationPtr& config);
+  uint32_t compute_partition(const Key& key) const final;
+
+ private:
+  uint32_t num_replicas_;
+};
+
 class TPCCSharder : public Sharder {
  public:
   TPCCSharder(const ConfigurationPtr& config);
