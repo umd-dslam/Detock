@@ -263,6 +263,12 @@ class TPCCExperiment(Experiment):
     VARYING_PARAMS = ["mh_zipf", "sh_only"]
 
 
+class CockroachExperiment(Experiment):
+    NAME = "cockroach"
+    VARYING_ARGS = ["clients", "txns", "duration", "startup_spacing"]
+    VARYING_PARAMS = ["records", "hot", "mh"]
+
+
 if __name__ == "__main__":
 
     EXPERIMENTS = {
