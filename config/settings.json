@@ -253,22 +253,5 @@
     "clients": [1, 25, 50, 75, 100, 125, 150, 175, 200, 225],
     "sh_only": [0],
     "mh_zipf": [1]
-  },
-  "cockroach": {
-    "servers": [
-      {
-        "config": "cockroach/ddr_ts.conf",
-        "image": "ctring/slog:ddr-b7a5976"
-      }
-    ],
-    "workload": "cockroach",
-    "txns": [2000000],
-    "duration": [60],
-    "clients": [3000],
-    "startup_spacing": [3333],
-    "writes": [10],
-    "records": [10],
-    "hot": [1000000, 100000, 10000, 1000, 100, 10],
-    "mh": [0, 50, 100]
   }
 }
