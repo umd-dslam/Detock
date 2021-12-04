@@ -24,8 +24,10 @@ constexpr char HOT[] = "hot";
 constexpr char RECORDS[] = "records";
 // Size of a written value in bytes
 constexpr char VALUE_SIZE[] = "value_size";
+// Sort the keys
+constexpr char SORT_KEYS[] = "sort_keys";
 
-const RawParamMap DEFAULT_PARAMS = {{MH_PCT, "0"}, {HOT, "100"}, {RECORDS, "10"}, {VALUE_SIZE, "100"}};
+const RawParamMap DEFAULT_PARAMS = {{MH_PCT, "0"}, {HOT, "100"}, {RECORDS, "10"}, {VALUE_SIZE, "100"}, {SORT_KEYS, "0"}};
 
 long long NumKeysPerRegion(const ConfigurationPtr& config) {
   auto simple_partitioning = config->proto_config().simple_partitioning2();
@@ -47,6 +49,7 @@ CockroachWorkload::CockroachWorkload(const ConfigurationPtr& config, uint32_t re
   hot_ = params_.GetInt32(HOT);
   records_ = params_.GetInt32(RECORDS);
   value_size_ = params_.GetInt32(VALUE_SIZE);
+  sort_keys_ = params_.GetInt32(SORT_KEYS) > 0;
 
   CHECK_LE(hot_, NumKeysPerRegion(config)) << "Number of hot records cannot exceed number of records per region!";
 }
@@ -105,6 +108,11 @@ std::pair<Transaction*, TransactionProfile> CockroachWorkload::NextTransaction()
   vector<vector<string>> code;
 
   int last_partition = -1;
+
+  if (sort_keys_) {
+    sort(numeric_keys.begin(), numeric_keys.end());
+  }
+
   for (size_t i = 0; i < numeric_keys.size(); i++) {
     Key key = std::to_string(numeric_keys[i]);
     keys.emplace_back(key, KeyType::WRITE);

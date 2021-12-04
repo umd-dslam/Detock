@@ -266,7 +266,13 @@ class TPCCExperiment(Experiment):
 class CockroachExperiment(Experiment):
     NAME = "cockroach"
     VARYING_ARGS = ["clients", "txns", "duration", "startup_spacing"]
-    VARYING_PARAMS = ["records", "hot", "mh"]
+    VARYING_PARAMS = ["records", "hot", "mh", "sort_keys"]
+
+
+class CockroachLatencyExperiment(Experiment):
+    NAME = "cockroach-latency"
+    VARYING_ARGS = ["clients", "txns", "duration", "startup_spacing"]
+    VARYING_PARAMS = ["records", "hot", "mh", "sort_keys"]
 
 
 if __name__ == "__main__":
@@ -275,7 +281,9 @@ if __name__ == "__main__":
         "ycsb": YCSBExperiment(),
         "ycsb-latency": YCSBLatencyExperiment(),
         "ycsb-asymmetry": YCSBAsymmetryExperiment(),
-        "tpcc": TPCCExperiment()
+        "tpcc": TPCCExperiment(),
+        "cockroach": CockroachExperiment(),
+        "cockroach-latency": CockroachLatencyExperiment(),
     }
 
     parser = argparse.ArgumentParser(description="Run an experiment")

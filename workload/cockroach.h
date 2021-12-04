@@ -22,6 +22,7 @@ class CockroachWorkload : public Workload {
   int hot_;
   int records_;
   int value_size_;
+  bool sort_keys_;
 
   std::mt19937 rg_;
   RandomStringGenerator rnd_str_;
