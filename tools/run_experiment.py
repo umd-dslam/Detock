@@ -17,7 +17,56 @@ LOG = logging.getLogger("experiment")
 GENERATORS = 2
 
 class Experiment:
+    '''
+    A base class for an experiment.
 
+    An experiment consists of a settings.json file and config files. 
+    
+    A settings.json file has the following format:
+    {
+        "username": string,  // Username to ssh to the machines
+        "sample": int,       // Sample rate, in percentage, of the measurements
+        "regions": [string], // Regions involved in the experiment
+        "distance_ranking": { string: [string] }, // Rank of distance to all other regions from closest to farthest for each region
+        "servers_public": { string: [string] },   // Public IP addresses of all servers in each region
+        "servers_private": { string: [string] },  // Private IP addresses of all servers in each region
+        "clients": { string: [string] },          // Private IP addresses of all clients in each region
+
+        // The objects from this point correspond to the experiments. Each object contains parameters
+        // to run for an experiment. The experiment is run for all cross-combinations of all these parameters.
+        <experiment name>: {
+            "servers": [ { "config": string, "image": string } ], // A list of objects containing path to a config file and the Docker image used
+            "workload": string,                                   // Name of the workload to use in this experiment
+            <parameters>: [<parameter value>]                     // Parameters of the experiment
+            "filters": [{                                         // A list of "if 'match' then do 'action'" over the parameter combinations. 
+                                                                  // The evaluation stops at the first match
+                "match": [{<parameter>}],                         // A list of conditions that AND together. Each condition is an object listing
+                                                                  // the values that need to match for some parameter. If a parameter name ends
+                                                                  // with "~" then it is a NOT condition. An "or" object can be used for OR-ing the
+                                                                  // conditions.
+                "action": <"change" or "remove">                  // Action to perform on match
+                "args": {}                                        // Arguments for the "change" action
+            }],
+        }
+    }
+
+    Example filters:
+        "filters": [
+            {
+                // Remove every combination where hot is not 10000 or mh is not 50
+                "match": [{"or": {"hot~": [10000], "mh~": [50]}}],
+                "action": "remove"
+            },
+            {
+                // Changes duration to 20 for all combinations with clients equals to 200 
+                "match": [{"clients": [200]}],
+                "action": "change",
+                "args": {
+                    "duration": 20
+                }
+            }
+        ]
+    '''
     def __init__(self):
         self.settings = {}
 
@@ -266,13 +315,13 @@ class TPCCExperiment(Experiment):
 class CockroachExperiment(Experiment):
     NAME = "cockroach"
     VARYING_ARGS = ["clients", "txns", "duration", "startup_spacing"]
-    VARYING_PARAMS = ["records", "hot", "mh", "sort_keys"]
+    VARYING_PARAMS = ["records", "hot", "mh"]
 
 
 class CockroachLatencyExperiment(Experiment):
     NAME = "cockroach-latency"
     VARYING_ARGS = ["clients", "txns", "duration", "startup_spacing"]
-    VARYING_PARAMS = ["records", "hot", "mh", "sort_keys"]
+    VARYING_PARAMS = ["records", "hot", "mh"]
 
 
 if __name__ == "__main__":
