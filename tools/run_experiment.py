@@ -16,12 +16,97 @@ LOG = logging.getLogger("experiment")
 
 GENERATORS = 2
 
+
+def generate_config(settings: object, template_path: str):
+    config = Configuration()
+    with open(template_path, "r") as f:
+        text_format.Parse(f.read(), config)
+
+    regions_ids = {name: id for id, name in enumerate(settings["regions"])}
+    for r in settings["regions"]:
+        replica = Replica()
+        servers_private = [addr.encode() for addr in settings["servers_private"][r]]
+        replica.addresses.extend(servers_private)
+        servers_public = [addr.encode() for addr in settings["servers_public"][r]]
+        replica.public_addresses.extend(servers_public)
+        clients = [addr.encode() for addr in settings["clients"][r]]
+        replica.client_addresses.extend(clients)
+        distance_ranking = [
+            str(regions_ids[other_r]) for other_r in settings["distance_ranking"][r]
+        ]
+        replica.distance_ranking = ",".join(distance_ranking)
+        config.replicas.append(replica)
+        config.num_partitions = len(replica.addresses)
+
+    config_path = os.path.join(gettempdir(), os.path.basename(template_path))
+    with open(config_path, "w") as f:
+        text_format.PrintMessage(config, f)
+
+    return config_path
+
+
+def collect_client_data(username: str, config_path: str, out_dir: str, tag: str):
+    admin.main(
+        ["collect_client", config_path, tag, "--user", username, "--out-dir", out_dir]
+    )
+
+
+def collect_server_data(
+    username: str, config_path: str, image: str, out_dir: str, tag: str
+):
+    admin.main(
+        [
+            "collect_server",
+            config_path,
+            "--tag",
+            tag,
+            "--user",
+            username,
+            "--image",
+            image,
+            "--out-dir",
+            out_dir,
+            # The image has already been pulled when starting the servers
+            "--no-pull",
+        ]
+    )
+
+
+def collect_data(
+    username: str,
+    config_path: str,
+    image: str,
+    out_dir: str,
+    tag: str,
+    no_client_data: bool,
+    no_server_data: bool,
+):
+    collectors = []
+    if not no_client_data:
+        collectors.append(
+            Process(
+                target=collect_client_data, args=(username, config_path, out_dir, tag)
+            )
+        )
+    if not no_server_data:
+        collectors.append(
+            Process(
+                target=collect_server_data,
+                args=(username, config_path, image, out_dir, tag),
+            )
+        )
+    for p in collectors:
+        p.start()
+    for p in collectors:
+        p.join()
+
+
 class Experiment:
-    '''
+    """
     A base class for an experiment.
 
-    An experiment consists of a settings.json file and config files. 
-    
+    An experiment consists of a settings.json file and config files.
+
     A settings.json file has the following format:
     {
         "username": string,  // Username to ssh to the machines
@@ -38,7 +123,7 @@ class Experiment:
             "servers": [ { "config": string, "image": string } ], // A list of objects containing path to a config file and the Docker image used
             "workload": string,                                   // Name of the workload to use in this experiment
             <parameters>: [<parameter value>]                     // Parameters of the experiment
-            "filters": [{                                         // A list of "if 'match' then do 'action'" over the parameter combinations. 
+            "filters": [{                                         // A list of "if 'match' then do 'action'" over the parameter combinations.
                                                                   // The evaluation stops at the first match
                 "match": [{<parameter>}],                         // A list of conditions that AND together. Each condition is an object listing
                                                                   // the values that need to match for some parameter. If a parameter name ends
@@ -58,7 +143,7 @@ class Experiment:
                 "action": "remove"
             },
             {
-                // Changes duration to 20 for all combinations with clients equals to 200 
+                // Changes duration to 20 for all combinations with clients equals to 200
                 "match": [{"clients": [200]}],
                 "action": "change",
                 "args": {
@@ -66,75 +151,31 @@ class Experiment:
                 }
             }
         ]
-    '''
+    """
+
     def __init__(self):
         self.settings = {}
 
-    def generate_config(self, template_path: str):
-        config = Configuration()
-        with open(template_path, "r") as f:
-            text_format.Parse(f.read(), config)
-
-        regions_ids = {
-            name : id for id, name in enumerate(self.settings['regions'])
-        }
-        for r in self.settings['regions']:
-            replica = Replica()
-            servers_private = [addr.encode() for addr in self.settings['servers_private'][r]]
-            replica.addresses.extend(servers_private)
-            servers_public = [addr.encode() for addr in self.settings['servers_public'][r]]
-            replica.public_addresses.extend(servers_public)
-            clients = [addr.encode() for addr in self.settings['clients'][r]]
-            replica.client_addresses.extend(clients)
-            distance_ranking = [str(regions_ids[other_r]) for other_r in self.settings['distance_ranking'][r]]
-            replica.distance_ranking = ','.join(distance_ranking)
-            config.replicas.append(replica)
-            config.num_partitions = len(replica.addresses)
-        
-        config_path = os.path.join(gettempdir(), os.path.basename(template_path))
-        with open(config_path, "w") as f:
-            text_format.PrintMessage(config, f)
-        
-        return config_path
-
-
     def cleanup(self, config, image):
-        admin.main([
-            "benchmark",
-            config,
-            "--user", self.settings['username'],
-            "--image", image,
-            "--cleanup",
-            "--clients", "0",
-            "--txns", "0"
-        ])
-
-
-    def collect_client_data(self, config, out_dir, tag):
-        admin.main([
-            "collect_client",
-            config,
-            tag,
-            "--user", self.settings['username'],
-            "--out-dir", out_dir
-        ])
-
-
-    def collect_server_data(self, config, image, out_dir, tag):
-        admin.main([
-            "collect_server",
-            config,
-            "--tag", tag,
-            "--user", self.settings['username'],
-            "--image", image,
-            "--out-dir", out_dir,
-            # The image has already been pulled when starting the servers
-            "--no-pull",
-        ])
+        admin.main(
+            [
+                "benchmark",
+                config,
+                "--user",
+                self.settings["username"],
+                "--image",
+                image,
+                "--cleanup",
+                "--clients",
+                "0",
+                "--txns",
+                "0",
+            ]
+        )
 
     NAME = ""
     # ARGS are the arguments of the benchmark tool other than the 'params' argument
-    VARYING_ARGS = []
+    VARYING_ARGS = ["clients", "txns", "duration", "startup_spacing"]
     # PARAMS are the parameters of a workload specified in the 'params' argument of the benchmark tool
     VARYING_PARAMS = []
 
@@ -145,26 +186,38 @@ class Experiment:
         sample = self.settings.get("sample", 10)
         trials = self.settings.get("trials", 1)
         workload_setting = self.settings[self.NAME]
-        out_dir = os.path.join(args.out_dir, self.NAME if args.name is None else args.name)
+        out_dir = os.path.join(
+            args.out_dir, self.NAME if args.name is None else args.name
+        )
 
         for server in workload_setting["servers"]:
-            config = self.generate_config(os.path.join(args.config_dir, server['config']))
+            config_path = generate_config(
+                self.settings, os.path.join(args.config_dir, server["config"])
+            )
 
-            LOG.info('============ GENERATED CONFIG "%s" ============', config)
+            LOG.info('============ GENERATED CONFIG "%s" ============', config_path)
 
-            config_name = os.path.splitext(os.path.basename(server['config']))[0]
-            image = server['image']
-            common_args = [config, "--user", self.settings['username'], "--image", image]
+            config_name = os.path.splitext(os.path.basename(server["config"]))[0]
+            image = server["image"]
+            common_args = [
+                config_path,
+                "--user",
+                self.settings["username"],
+                "--image",
+                image,
+            ]
 
             LOG.info("STOP ANY RUNNING EXPERIMENT")
-            self.cleanup(config, image)
+            self.cleanup(config_path, image)
 
             if not args.skip_starting_server:
                 LOG.info("START SERVERS")
                 admin.main(["start", *common_args])
-        
+
                 LOG.info("WAIT FOR ALL SERVERS TO BE ONLINE")
-                admin.main(["collect_server", *common_args, "--flush-only", "--no-pull"])
+                admin.main(
+                    ["collect_server", *common_args, "--flush-only", "--no-pull"]
+                )
 
             # Compute the Cartesian product of all varying values
             varying_keys = self.VARYING_ARGS + self.VARYING_PARAMS
@@ -189,46 +242,57 @@ class Experiment:
                     continue
                 for t in range(trials):
                     tag = config_name
-                    tag_suffix = ''.join([f"{k}{v[k]}" for k in tag_keys])
+                    tag_suffix = "".join([f"{k}{v[k]}" for k in tag_keys])
                     if tag_suffix:
                         tag += "-" + tag_suffix
                     if trials > 1:
                         tag += f"-{t}"
 
-                    params = ','.join(f"{k}={v[k]}" for k in self.VARYING_PARAMS)
+                    params = ",".join(f"{k}={v[k]}" for k in self.VARYING_PARAMS)
 
                     LOG.info("RUN BENCHMARK")
                     benchmark_args = [
                         "benchmark",
                         *common_args,
-                        "--workload", workload_setting['workload'],
-                        "--clients", f"{v['clients']}",
-                        "--generators", f"{GENERATORS}",
-                        "--txns", f"{v['txns']}",
-                        "--duration", f"{v['duration']}",
-                        "--sample", f"{sample}",
-                        "--seed", "0",
-                        "--params", params,
-                        "--tag", tag,
+                        "--workload",
+                        workload_setting["workload"],
+                        "--clients",
+                        f"{v['clients']}",
+                        "--generators",
+                        f"{GENERATORS}",
+                        "--txns",
+                        f"{v['txns']}",
+                        "--duration",
+                        f"{v['duration']}",
+                        "--sample",
+                        f"{sample}",
+                        "--seed",
+                        "0",
+                        "--params",
+                        params,
+                        "--tag",
+                        tag,
                         # The image has already been pulled in the cleanup step
-                        "--no-pull"
+                        "--no-pull",
                     ]
 
-                    if 'startup_spacing' in v:
-                        benchmark_args.extend(["--startup-spacing", f"{v['startup_spacing']}"])
+                    if "startup_spacing" in v:
+                        benchmark_args.extend(
+                            ["--startup-spacing", f"{v['startup_spacing']}"]
+                        )
 
                     admin.main(benchmark_args)
 
                     LOG.info("COLLECT DATA")
-                    collectors = []
-                    if not args.no_client_data:
-                        collectors.append(Process(target=self.collect_client_data, args=(config, out_dir, tag)))
-                    if not args.no_server_data:
-                        collectors.append(Process(target=self.collect_server_data, args=(config, image, out_dir, tag)))
-                    for p in collectors:
-                        p.start()
-                    for p in collectors:
-                        p.join()
+                    collect_data(
+                        self.settings["username"],
+                        config_path,
+                        image,
+                        out_dir,
+                        tag,
+                        args.no_client_data,
+                        args.no_server_data,
+                    )
 
     def __apply_filters(self, val):
         workload_settings = self.settings[self.NAME]
@@ -257,7 +321,7 @@ class Experiment:
                 return None, True
             else:
                 raise Exception(f"Invalid action: {action}")
-        
+
         return val, False
 
     def __eval_cond_and(self, cond, val):
@@ -279,7 +343,9 @@ class Experiment:
             return self.__eval_cond_and(op_val, val)
         not_in = op.endswith("~")
         key = op[:-1] if not_in else op
-        return (not_in and val[key] not in op_val) or (not not_in and val[key] in op_val)
+        return (not_in and val[key] not in op_val) or (
+            not not_in and val[key] in op_val
+        )
 
     def __action_change(self, args, val):
         new_val = dict.copy(val)
@@ -290,37 +356,61 @@ class Experiment:
 
 class YCSBExperiment(Experiment):
     NAME = "ycsb"
-    VARYING_ARGS = ["clients", "txns", "duration", "startup_spacing"]
-    VARYING_PARAMS = ["writes", "records", "hot_records", "mp_parts", "mh_homes", "mh_zipf", "hot", "mp", "mh"]
+    VARYING_PARAMS = [
+        "writes",
+        "records",
+        "hot_records",
+        "mp_parts",
+        "mh_homes",
+        "mh_zipf",
+        "hot",
+        "mp",
+        "mh",
+    ]
 
 
 class YCSBLatencyExperiment(Experiment):
     NAME = "ycsb-latency"
-    VARYING_ARGS = ["clients", "txns", "duration", "startup_spacing"]
-    VARYING_PARAMS = ["writes", "records", "hot_records", "mp_parts", "mh_homes", "mh_zipf", "hot", "mp", "mh"]
+    VARYING_PARAMS = [
+        "writes",
+        "records",
+        "hot_records",
+        "mp_parts",
+        "mh_homes",
+        "mh_zipf",
+        "hot",
+        "mp",
+        "mh",
+    ]
 
 
-class YCSBAsymmetryExperiment(Experiment):
-    NAME = "ycsb-asymmetry"
-    VARYING_ARGS = ["clients", "txns", "duration", "startup_spacing"]
-    VARYING_PARAMS = ["writes", "records", "hot_records", "mp_parts", "mh_homes", "mh_zipf", "hot", "mp", "mh"]
+class YCSBNetworkExperiment(Experiment):
+    NAME = "ycsb-network"
+    VARYING_PARAMS = [
+        "writes",
+        "records",
+        "hot_records",
+        "mp_parts",
+        "mh_homes",
+        "mh_zipf",
+        "hot",
+        "mp",
+        "mh",
+    ]
 
 
 class TPCCExperiment(Experiment):
     NAME = "tpcc"
-    VARYING_ARGS = ["clients", "txns", "duration"]
     VARYING_PARAMS = ["mh_zipf", "sh_only"]
 
 
 class CockroachExperiment(Experiment):
     NAME = "cockroach"
-    VARYING_ARGS = ["clients", "txns", "duration", "startup_spacing"]
     VARYING_PARAMS = ["records", "hot", "mh"]
 
 
 class CockroachLatencyExperiment(Experiment):
     NAME = "cockroach-latency"
-    VARYING_ARGS = ["clients", "txns", "duration", "startup_spacing"]
     VARYING_PARAMS = ["records", "hot", "mh"]
 
 
@@ -329,32 +419,51 @@ if __name__ == "__main__":
     EXPERIMENTS = {
         "ycsb": YCSBExperiment(),
         "ycsb-latency": YCSBLatencyExperiment(),
-        "ycsb-asymmetry": YCSBAsymmetryExperiment(),
+        "ycsb-network": YCSBNetworkExperiment(),
         "tpcc": TPCCExperiment(),
         "cockroach": CockroachExperiment(),
         "cockroach-latency": CockroachLatencyExperiment(),
     }
 
     parser = argparse.ArgumentParser(description="Run an experiment")
-    parser.add_argument("experiment", choices=EXPERIMENTS.keys(),
-                        help="Name of the experiment to run")
-    parser.add_argument("--config-dir", "-c", default="config", help="Path to the configuration files")
-    parser.add_argument("--out-dir", "-o", default=".", help="Path to the output directory")
-    parser.add_argument("--name", "-n", help="Override name of the experiment directory")
-    parser.add_argument("--tag-keys", nargs="*", help="Keys to include in the tag. If empty, only include")
+    parser.add_argument(
+        "experiment", choices=EXPERIMENTS.keys(), help="Name of the experiment to run"
+    )
+    parser.add_argument(
+        "--config-dir", "-c", default="config", help="Path to the configuration files"
+    )
+    parser.add_argument(
+        "--out-dir", "-o", default=".", help="Path to the output directory"
+    )
+    parser.add_argument(
+        "--name", "-n", help="Override name of the experiment directory"
+    )
+    parser.add_argument(
+        "--tag-keys",
+        nargs="*",
+        help="Keys to include in the tag. If empty, only include",
+    )
     parser.add_argument(
         "--dry-run",
-        action='store_true',
-        help="Check the settings and generate configs without running the experiment"
+        action="store_true",
+        help="Check the settings and generate configs without running the experiment",
     )
-    parser.add_argument("--skip-starting-server", action="store_true", help="Skip starting server step")
-    parser.add_argument("--no-client-data", action="store_true", help="Don't collect client data")
-    parser.add_argument("--no-server-data", action="store_true", help="Don't collect server data")
+    parser.add_argument(
+        "--skip-starting-server", action="store_true", help="Skip starting server step"
+    )
+    parser.add_argument(
+        "--no-client-data", action="store_true", help="Don't collect client data"
+    )
+    parser.add_argument(
+        "--no-server-data", action="store_true", help="Don't collect server data"
+    )
     args = parser.parse_args()
 
     if args.dry_run:
+
         def noop(cmd):
-            print('\t' + ' '.join(cmd))
+            print("\t" + " ".join(cmd))
+
         admin.main = noop
 
     EXPERIMENTS[args.experiment].run(args)
