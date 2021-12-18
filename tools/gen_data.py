@@ -27,15 +27,15 @@ from proto.offline_data_pb2 import Datum
 
 ALPHABET = np.array(list(string.ascii_lowercase + string.digits))
 MULTIPLIERS = {
-    "b" : 1024 ** 0,
+    "b": 1024 ** 0,
     "kb": 1024 ** 1,
     "mb": 1024 ** 2,
     "gb": 1024 ** 3,
 }
 
-KEY_SIZE = 12   # 8 bytes + overhead from base64 encoding
+KEY_SIZE = 12  # 8 bytes + overhead from base64 encoding
 MASTER_SIZE = 2
-FILE_EXTENSION = '.dat'
+FILE_EXTENSION = ".dat"
 
 LOG = logging.getLogger("gen_data")
 LOG_EVERY_SEC = 1
@@ -45,13 +45,10 @@ def encode_key(key: int) -> bytes:
     """
     Encodes an integer key into a fixed length string
     """
-    return base64.b64encode(
-        key.to_bytes(8, byteorder='little')
-    )
+    return base64.b64encode(key.to_bytes(8, byteorder="little"))
 
 
 class DataGenerator:
-
     def __init__(
         self,
         data_dir: str,
@@ -91,7 +88,7 @@ class DataGenerator:
 
         LOG.info(
             "Partitioning %d keys into %d partitions using "
-            "the first %d bytes of each key...", 
+            "the first %d bytes of each key...",
             self.num_records,
             self.num_partitions,
             self.partition_bytes,
@@ -106,7 +103,8 @@ class DataGenerator:
         # Compute the number of jobs
         num_jobs = (
             min(len(partition_to_keys), self.max_jobs)
-            if self.max_jobs > 0 else len(partition_to_keys)
+            if self.max_jobs > 0
+            else len(partition_to_keys)
         )
         LOG.info("Spawning %d jobs...", num_jobs)
         func = partial(
@@ -119,7 +117,7 @@ class DataGenerator:
             pool.starmap(func, partition_to_keys.items())
 
         LOG.info("Done. Elapsed time: %.2f seconds", time.time() - start_time)
-    
+
     @staticmethod
     def gen_data_per_partition(
         partition: int,
@@ -139,17 +137,16 @@ class DataGenerator:
         keys: list,
         as_text: bool,
     ) -> None:
-        # Set per-partition seed so that partitions have 
+        # Set per-partition seed so that partitions have
         # different data. Keys and master are not randomly
         # generated so this seed only affects records
         np.random.seed(partition)
 
         file_name = os.path.join(
-            self.data_dir,
-            self.prefix + str(partition) + FILE_EXTENSION
+            self.data_dir, self.prefix + str(partition) + FILE_EXTENSION
         )
         LOG.info("Generating data for %s", file_name)
-        mode = 'w' if as_text else 'wb'
+        mode = "w" if as_text else "wb"
         part_file = open(file_name, mode)
 
         # Write number of keys in this partition
@@ -175,7 +172,8 @@ class DataGenerator:
                     i + 1,
                     len(keys),
                     pct,
-                    rate)
+                    rate,
+                )
                 last_time = now
                 last_index = i
 
@@ -183,17 +181,12 @@ class DataGenerator:
 
     def __gen_datum(self, key: int, as_text=False):
         encoded_key = encode_key(key)
-        record = ''.join(
-            np.random.choice(
-                ALPHABET,
-                size=self.record_size
-            )
-        )
+        record = "".join(np.random.choice(ALPHABET, size=self.record_size))
         master = key % self.num_replicas
 
         if as_text:
             datum_tuple = map(str, (encoded_key.decode(), record, master))
-            datum = ','.join(datum_tuple) + '\n'
+            datum = ",".join(datum_tuple) + "\n"
         else:
             datum_proto = Datum()
             datum_proto.key = encoded_key.decode()
@@ -201,10 +194,9 @@ class DataGenerator:
             datum_proto.master = master
             # Size of the datum and the serialized datum
             datum = (
-                _VarintBytes(datum_proto.ByteSize()) +
-                datum_proto.SerializeToString()
+                _VarintBytes(datum_proto.ByteSize()) + datum_proto.SerializeToString()
             )
-        
+
         return datum
 
 
@@ -214,78 +206,83 @@ def add_exported_gen_data_arguments(parser):
     them by importing this function.
     """
     parser.add_argument(
-        "-p", "--partition",
+        "-p",
+        "--partition",
         default=-1,
         type=int,
         help="Generate data for this partition only. Use -1 (default) to "
-             "generate data for all partitions"
+        "generate data for all partitions",
     )
     parser.add_argument(
-        "-s", "--size",
+        "-s",
+        "--size",
         default=1,
         type=int,
-        help="Total size of the generated data across all partitions")
-    parser.add_argument(
-        "-su", "--size-unit",
-        choices=['gb', 'mb', 'kb', 'b'],
-        default="mb",
-        type=str.lower,
-        help="Unit for the option --size"
+        help="Total size of the generated data across all partitions",
     )
     parser.add_argument(
-        "-rs", "--record-size",
+        "-su",
+        "--size-unit",
+        choices=["gb", "mb", "kb", "b"],
+        default="mb",
+        type=str.lower,
+        help="Unit for the option --size",
+    )
+    parser.add_argument(
+        "-rs",
+        "--record-size",
         default=100,
         type=int,
-        help="Size of each record, in bytes."
+        help="Size of each record, in bytes.",
     )
     parser.add_argument(
         "--max-jobs",
         type=int,
         default=0,
         help="Maximum number of jobs spawned to do work. For unlimited number "
-             "of jobs, use 0."
+        "of jobs, use 0.",
     )
     parser.add_argument(
         "--partition-bytes",
         type=int,
         default=0,
         help="Number of prefix bytes of a key used for computing its partition."
-             "Set to 0 (default) to use the whole key. If --config is used, "
-             "this option will not be used."
+        "Set to 0 (default) to use the whole key. If --config is used, "
+        "this option will not be used.",
     )
 
 
 if __name__ == "__main__":
-    parser = ArgumentParser(
-        "gen_data",
-        description="Generates initial data for SLOG"
-    )
+    parser = ArgumentParser("gen_data", description="Generates initial data for SLOG")
     parser.add_argument(
         "data_dir",
         help="Directory where the generated data files are located",
     )
     parser.add_argument(
-        "-c", "--config",
+        "-c",
+        "--config",
         help="Generate data based on information provided by the config file",
     )
     parser.add_argument(
-        "-np", "--num-partitions",
+        "-np",
+        "--num-partitions",
         default=1,
         type=int,
         help="Number of partitions. If --config is used, this option will "
-             "not be used."
+        "not be used.",
     )
     parser.add_argument(
-        "-nr", "--num-replicas",
+        "-nr",
+        "--num-replicas",
         default=1,
         type=int,
         help="Number of replicas. If --config is used, this option will "
-             "not be used."
+        "not be used.",
     )
     parser.add_argument(
         "--as-text",
-        action='store_true',
-        help="Generate data as human-readable text files"
+        action="store_true",
+        help="Generate data as human-readable text files",
     )
     add_exported_gen_data_arguments(parser)
 

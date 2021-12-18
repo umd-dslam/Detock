@@ -46,16 +46,15 @@ max_len = 10
 for line in sys.stdin:
     log = line.strip()
     max_len = max(max_len, len(log))
-    tokens = re.split('\s+', log)
+    tokens = re.split("\s+", log)
     if len(tokens) > 3:
         thread_id = tokens[2]
         logs_per_thread.setdefault(thread_id, []).append(log)
 
 print()
-print('='*max_len)
+print("=" * max_len)
 for thread_id in logs_per_thread:
     print(f'Thread "{thread_id}"')
     for log in logs_per_thread[thread_id]:
         print(log)
     print()
-

@@ -4,6 +4,7 @@ import logging
 LOG_FORMAT = "%(asctime)s %(name)10s %(levelname)s: %(message)s"
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 
+
 class Command:
     """Base class for a command"""
 
@@ -13,7 +14,8 @@ class Command:
 
     def create_subparser(self, subparsers):
         parser = subparsers.add_parser(
-            self.NAME, description=self.DESCRIPTION, help=self.HELP)
+            self.NAME, description=self.DESCRIPTION, help=self.HELP
+        )
         parser.set_defaults(run=self.initialize_and_do_command)
         self.add_arguments(parser)
         return parser
