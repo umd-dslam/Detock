@@ -280,6 +280,11 @@ class InstallDockerCommand(AWSCommand):
             "--clients", type=int, default=1, help="Number of client machines"
         )
         parser.add_argument(
+            "--type",
+            nargs="*",
+            help="Filter instances by type"
+        )
+        parser.add_argument(
             "--dry-run", action="store_true", help="List the instances to install Docker"
         )
 
@@ -295,12 +300,14 @@ class InstallDockerCommand(AWSCommand):
             instance_public_ips["addresses"] = args.addresses
             instance_private_ips["addresses"] = []
         else:
+            filters = [{'Name': 'instance-state-name', 'Values': ['running']}]
+            if args.type :
+                filters.append({'Name': 'instance-type', 'Values': args.type})
+
             for region in args.regions:
                 ec2 = boto3.client('ec2', region_name=region)
                 try:
-                    running_instances = ec2.describe_instances(
-                        Filters=[{'Name': 'instance-state-name', 'Values': ['running']}]
-                    )
+                    running_instances = ec2.describe_instances(Filters=filters)
                     LOG.info("%s: Collecting IP addresses", region)
                     instance_public_ips[region] = []
                     instance_private_ips[region] = []
@@ -334,6 +341,11 @@ class ListInstancesCommand(AWSCommand):
             nargs="*",
             help="Filter instances by state"
         )
+        parser.add_argument(
+            "--type",
+            nargs="*",
+            help="Filter instances by type"
+        )
 
     def initialize_and_do_command(self, args):
         if not args.regions:
@@ -343,6 +355,9 @@ class ListInstancesCommand(AWSCommand):
         filters = []
         if args.state:
             filters.append({'Name': 'instance-state-name', 'Values': args.state})
+        
+        if args.type:
+            filters.append({'Name': 'instance-type', 'Values': args.type})
 
         info = []
         for region in args.regions:
