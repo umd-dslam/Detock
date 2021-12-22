@@ -62,7 +62,7 @@ void Forwarder::ScheduleNextLatencyProbe() {
       auto ping = env->mutable_request()->mutable_ping();
       ping->set_src_time(now);
       ping->set_dst(r);
-      Send(move(env), config()->MakeMachineId(r, p), kSequencerChannel);
+      Send(move(env), config()->MakeMachineId(r, p), kForwarderChannel);
     }
     ScheduleNextLatencyProbe();
   });
@@ -75,6 +75,9 @@ void Forwarder::OnInternalRequestReceived(EnvelopePtr&& env) {
       break;
     case Request::kLookupMaster:
       ProcessLookUpMasterRequest(move(env));
+      break;
+    case Request::kPing:
+      ProcessPingRequest(move(env));
       break;
     case Request::kStats:
       ProcessStatsRequest(env->request().stats());
@@ -193,6 +196,16 @@ void Forwarder::ProcessLookUpMasterRequest(EnvelopePtr&& env) {
     }
   }
   Send(lookup_env, env->from(), kForwarderChannel);
+}
+
+void Forwarder::ProcessPingRequest(EnvelopePtr&& env) {
+  auto now = slog_clock::now().time_since_epoch().count();
+  auto pong_env = NewEnvelope();
+  auto pong = pong_env->mutable_response()->mutable_pong();
+  pong->set_src_time(env->request().ping().src_time());
+  pong->set_dst_time(now);
+  pong->set_dst(env->request().ping().dst());
+  Send(move(pong_env), env->from(), kForwarderChannel);
 }
 
 void Forwarder::OnInternalResponseReceived(EnvelopePtr&& env) {
