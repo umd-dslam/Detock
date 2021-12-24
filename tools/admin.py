@@ -1081,7 +1081,7 @@ class GenNetEmCommand(AdminCommand):
         )
         parser.add_argument("--out", "-o", default="netem.sh")
         parser.add_argument("--dev", default="ens5")
-        parser.add_argument("--jitter", type=int, default=1, help="Delay jitter in ms")
+        parser.add_argument("--jitter", type=float, default=1, help="Delay jitter in ms")
         parser.add_argument(
             "--offset", type=int, default=0, help="Extra delay added to all links ms"
         )

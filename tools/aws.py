@@ -294,6 +294,7 @@ class InstallDockerCommand(AWSCommand):
             "--clients", type=int, default=1, help="Number of client machines"
         )
         parser.add_argument("--type", nargs="*", help="Filter instances by type")
+        parser.add_argument("--role", nargs="*", help="Filter instances by tagged role")
         parser.add_argument(
             "--dry-run",
             action="store_true",
@@ -315,6 +316,8 @@ class InstallDockerCommand(AWSCommand):
             filters = [{"Name": "instance-state-name", "Values": ["running"]}]
             if args.type:
                 filters.append({"Name": "instance-type", "Values": args.type})
+            if args.role:
+                filters.append({"Name": "tag:role", "Values": args.role})
 
             for region in args.regions:
                 ec2 = boto3.client("ec2", region_name=region)
@@ -379,6 +382,7 @@ class ListInstancesCommand(AWSCommand):
                     for i in r["Instances"]:
                         info.append(
                             [
+                                i["InstanceId"],
                                 i.get("PublicIpAddress", ""),
                                 i.get("PrivateIpAddress", ""),
                                 i["State"]["Name"],
@@ -397,6 +401,7 @@ class ListInstancesCommand(AWSCommand):
             tabulate(
                 info,
                 headers=[
+                    "ID",
                     "Public IP",
                     "Private IP",
                     "State",

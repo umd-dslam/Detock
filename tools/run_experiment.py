@@ -1,9 +1,14 @@
 import argparse
+import boto3
+import copy
+import csv
 import itertools
 import json
 import os
 import logging
+import random
 from tempfile import gettempdir
+from time import sleep
 from multiprocessing import Process
 
 import google.protobuf.text_format as text_format
@@ -104,7 +109,9 @@ def eval_cond_and(cond, val):
 
 
 def eval_cond_or(cond, val):
+    print(cond, val)
     for op in cond:
+        print(op)
         if eval_op(op, cond[op], val):
             return True
     return False
@@ -234,10 +241,22 @@ class Experiment:
     """
 
     NAME = ""
-    # ARGS are the arguments of the benchmark tool other than the 'params' argument
-    VARYING_ARGS = ["clients", "txns", "duration", "startup_spacing"]
-    # PARAMS are the parameters of a workload specified in the 'params' argument of the benchmark tool
-    VARYING_PARAMS = []
+    # Parameters of the workload
+    WORKLOAD_PARAMS = []
+    # Parameters of the benchmark tool and the environment other than the 'params' argument of the workload
+    OTHER_PARAMS = ["clients", "txns", "duration", "startup_spacing"]
+
+    @classmethod
+    def pre_run_hook(cls, _settings: dict, _dry_run: bool):
+        pass
+
+    @classmethod
+    def post_config_gen_hook(cls, _settings: dict, _config_path: str, _dry_run: bool):
+        pass
+
+    @classmethod
+    def pre_run_per_val_hook(cls, _val: dict, _dry_run: bool):
+        pass
 
     @classmethod
     def run(cls, args):
@@ -251,12 +270,16 @@ class Experiment:
             args.out_dir, cls.NAME if args.name is None else args.name
         )
 
+        cls.pre_run_hook(settings, args.dry_run)
+
         for server in workload_setting["servers"]:
             config_path = generate_config(
                 settings, os.path.join(args.config_dir, server["config"])
             )
 
             LOG.info('============ GENERATED CONFIG "%s" ============', config_path)
+
+            cls.post_config_gen_hook(settings, config_path, args.dry_run)
 
             config_name = os.path.splitext(os.path.basename(server["config"]))[0]
             image = server["image"]
@@ -281,7 +304,7 @@ class Experiment:
                 )
 
             # Compute the Cartesian product of all varying values
-            varying_keys = cls.VARYING_ARGS + cls.VARYING_PARAMS
+            varying_keys = cls.OTHER_PARAMS + cls.WORKLOAD_PARAMS
             ordered_value_lists = []
             for k in varying_keys:
                 if k not in workload_setting:
@@ -301,6 +324,9 @@ class Experiment:
                 if v is None:
                     print(f"SKIP {val}")
                     continue
+
+                cls.pre_run_per_val_hook(val, args.dry_run)
+
                 for t in range(trials):
                     tag = config_name
                     tag_suffix = "".join([f"{k}{v[k]}" for k in tag_keys])
@@ -309,7 +335,7 @@ class Experiment:
                     if trials > 1:
                         tag += f"-{t}"
 
-                    params = ",".join(f"{k}={v[k]}" for k in cls.VARYING_PARAMS)
+                    params = ",".join(f"{k}={v[k]}" for k in cls.WORKLOAD_PARAMS)
 
                     LOG.info("RUN BENCHMARK")
                     # fmt: off
@@ -323,7 +349,7 @@ class Experiment:
                         "--duration", f"{v['duration']}",
                         "--startup-spacing", f"{v['startup_spacing']}",
                         "--sample", f"{sample}",
-                        "--seed", "0",
+                        "--seed", f"{args.seed}",
                         "--params", params,
                         "--tag", tag,
                         # The image has already been pulled in the cleanup step
@@ -346,7 +372,7 @@ class Experiment:
 
 class YCSBExperiment(Experiment):
     NAME = "ycsb"
-    VARYING_PARAMS = [
+    WORKLOAD_PARAMS = [
         "writes",
         "records",
         "hot_records",
@@ -361,7 +387,7 @@ class YCSBExperiment(Experiment):
 
 class YCSBLatencyExperiment(Experiment):
     NAME = "ycsb-latency"
-    VARYING_PARAMS = [
+    WORKLOAD_PARAMS = [
         "writes",
         "records",
         "hot_records",
@@ -375,8 +401,51 @@ class YCSBLatencyExperiment(Experiment):
 
 
 class YCSBNetworkExperiment(Experiment):
-    NAME = "ycsb-network"
-    VARYING_PARAMS = [
+    ec2_region = ""
+
+    DELAY = [
+        [0.1, 6, 33, 38, 74, 87, 106, 99],
+        [6, 0.1, 38, 43, 66, 80, 99, 94],
+        [33, 38, 0.1, 6, 101, 114, 92, 127],
+        [38, 43, 6, 0.1, 105, 118, 86, 132],
+        [74, 66, 101, 105, 0.1, 16, 36, 64],
+        [87, 80, 114, 118, 16, 0.1, 36, 74],
+        [106, 99, 92, 86, 36, 36, 0.1, 46],
+        [99, 94, 127, 132, 64, 74, 46, 0.1],
+    ]
+
+    @classmethod
+    def pre_run_hook(cls, _: dict, _dry_run: bool):
+        cls.ec2_region = input("Enter AWS region: ")
+
+    @classmethod
+    def run_netem_script(cls, file_name):
+        ssm_client = boto3.client("ssm", region_name=cls.ec2_region)
+        res = ssm_client.send_command(
+            Targets=[{"Key": "tag:role", "Values": ["server"]}],
+            DocumentName="AWS-RunShellScript",
+            Parameters={"commands": [f"sudo /home/ubuntu/{file_name}.sh"]},
+        )
+        command_id = res["Command"]["CommandId"]
+
+        sleep(1)
+
+        invocations = ssm_client.list_command_invocations(CommandId=command_id)
+        instances = [inv["InstanceId"] for inv in invocations["CommandInvocations"]]
+
+        waiter = ssm_client.get_waiter("command_executed")
+        for instance in instances:
+            waiter.wait(
+                CommandId=command_id,
+                InstanceId=instance,
+                PluginName="aws:RunShellScript",
+            )
+            print(f"Executed netem script {file_name}.sh for {instance}")
+
+
+class YCSBAsymmetryExperiment(YCSBNetworkExperiment):
+    NAME = "ycsb-asym"
+    WORKLOAD_PARAMS = [
         "writes",
         "records",
         "hot_records",
@@ -387,21 +456,118 @@ class YCSBNetworkExperiment(Experiment):
         "mp",
         "mh",
     ]
+    OTHER_PARAMS = Experiment.OTHER_PARAMS + ["asym_ratio"]
+
+    FILE_NAME = "netem_asym_{}"
+
+    @classmethod
+    def post_config_gen_hook(cls, settings: dict, config_path: str, dry_run: bool):
+        delay = copy.deepcopy(cls.DELAY)
+
+        workload_setting = settings[cls.NAME]
+        if "asym_ratio" not in workload_setting:
+            raise KeyError(f"Missing required key: asym_ratio")
+
+        ratios = workload_setting["asym_ratio"]
+        for r in ratios:
+            for i in range(len(delay)):
+                for j in range(i + 1, len(delay[i])):
+                    total = delay[i][j] + delay[j][i]
+                    delay[i][j] = total * r / 100
+                    delay[j][i] = total * (100 - r) / 100
+                    if random.randint(0, 1):
+                        delay[i][j], delay[j][i] = delay[j][i], delay[i][j]
+
+            file_name = cls.FILE_NAME.format(r)
+            delay_path = os.path.join(gettempdir(), file_name + ".csv")
+            with open(delay_path, "w") as f:
+                writer = csv.writer(f)
+                writer.writerows(delay)
+
+            # fmt: off
+            admin.main(
+                [
+                    "gen_netem",
+                    config_path,
+                    delay_path,
+                    "--user", settings["username"],
+                    "--out", file_name + ".sh",
+                ]
+            )
+            # fmt: on
+
+    @classmethod
+    def pre_run_per_val_hook(cls, val: dict, dry_run: bool):
+        ratio = val["asym_ratio"]
+        if not dry_run:
+            cls.run_netem_script(cls.FILE_NAME.format(ratio))
+            sleep(5)
+
+
+class YCSBJitterExperiment(YCSBNetworkExperiment):
+    NAME = "ycsb-jitter"
+    WORKLOAD_PARAMS = [
+        "writes",
+        "records",
+        "hot_records",
+        "mp_parts",
+        "mh_homes",
+        "mh_zipf",
+        "hot",
+        "mp",
+        "mh",
+    ]
+    OTHER_PARAMS = Experiment.OTHER_PARAMS + ["jitter"]
+
+    FILE_NAME = "netem_jitter"
+
+    @classmethod
+    def post_config_gen_hook(cls, settings: dict, config_path: str, dry_run: bool):
+        workload_setting = settings[cls.NAME]
+        if "jitter" not in workload_setting:
+            raise KeyError(f"Missing required key: jitter")
+
+        delay_path = os.path.join(gettempdir(), cls.FILE_NAME + ".csv")
+        with open(delay_path, "w") as f:
+            writer = csv.writer(f)
+            writer.writerows(cls.DELAY)
+
+        jitters = workload_setting["jitter"]
+        for j in jitters:
+            # fmt: off
+            admin.main(
+                [
+                    "gen_netem",
+                    config_path,
+                    delay_path,
+                    "--user", settings["username"],
+                    "--out", f"{cls.FILE_NAME}_{j}.sh",
+                    "--jitter", str(j/2),
+                ]
+            )
+            # fmt: on
+
+    @classmethod
+    def pre_run_per_val_hook(cls, val: dict, dry_run: bool):
+        jitter = val["jitter"]
+        if not dry_run:
+            cls.run_netem_script(f"{cls.FILE_NAME}_{jitter}")
+            sleep(5)
 
 
 class TPCCExperiment(Experiment):
     NAME = "tpcc"
-    VARYING_PARAMS = ["mh_zipf", "sh_only"]
+    WORKLOAD_PARAMS = ["mh_zipf", "sh_only"]
 
 
 class CockroachExperiment(Experiment):
     NAME = "cockroach"
-    VARYING_PARAMS = ["records", "hot", "mh"]
+    WORKLOAD_PARAMS = ["records", "hot", "mh"]
 
 
 class CockroachLatencyExperiment(Experiment):
     NAME = "cockroach-latency"
-    VARYING_PARAMS = ["records", "hot", "mh"]
+    WORKLOAD_PARAMS = ["records", "hot", "mh"]
 
 
 if __name__ == "__main__":
@@ -409,7 +575,8 @@ if __name__ == "__main__":
     EXPERIMENTS = {
         "ycsb": YCSBExperiment(),
         "ycsb-latency": YCSBLatencyExperiment(),
-        "ycsb-network": YCSBNetworkExperiment(),
+        "ycsb-asym": YCSBAsymmetryExperiment(),
+        "ycsb-jitter": YCSBJitterExperiment(),
         "tpcc": TPCCExperiment(),
         "cockroach": CockroachExperiment(),
         "cockroach-latency": CockroachLatencyExperiment(),
@@ -447,6 +614,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--no-server-data", action="store_true", help="Don't collect server data"
     )
+    parser.add_argument("--seed", default=0, help="Seed for the random engine")
     args = parser.parse_args()
 
     if args.dry_run:
