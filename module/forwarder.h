@@ -52,7 +52,6 @@ class Forwarder : public NetworkedModule {
   void ScheduleNextLatencyProbe();
   void ProcessForwardTxn(EnvelopePtr&& env);
   void ProcessLookUpMasterRequest(EnvelopePtr&& env);
-  void ProcessPingRequest(EnvelopePtr&& env);
   void ProcessStatsRequest(const internal::StatsRequest& stats_request);
 
   void SendLookupMasterRequestBatch();
