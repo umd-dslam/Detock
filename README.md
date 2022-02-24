@@ -1,19 +1,16 @@
-# SLOG
+# Detock
 
-[![Build Status](https://github.com/ctring/SLOG/workflows/Build%20and%20Test/badge.svg)](https://github.com/ctring/SLOG/actions)
+[![Build Status](https://github.com/ctring/Detock/workflows/Build%20and%20Test/badge.svg)](https://github.com/ctring/Detock/actions)
 
-# What is SLOG?
 
-SLOG is a geographically distributed data store that achieves high-throughput and low-latency transactions while guaranteeing strict serializability. 
-For more details, see this [blog post](http://dbmsmusings.blogspot.com/2019/10/introducing-slog-cheating-low-latency.html) or the [SLOG paper](http://www.vldb.org/pvldb/vol12/p1747-ren.pdf).
+Detock is a descendant of [SLOG](https://github.com/ctring/SLOG) - a geographically distributed data store. Like SLOG, Detock employs a deterministic execution framework to move most of intra- and inter-region coordination out of transactional execution. As a result, it can achieve high throughput, even for high contention workloads. Unlike SLOG, it obviates the need for a global ordering service that adds more latency to transactions accessing data from multiple regions.
 
-This repository contains an experimental implementation of the system, which is not suitable for use in production.
+This repository contains an experimental implementations of the system. 
 
-# Getting Started 
+## How to Build
 
-The following guide has been tested on Ubuntu 20.04 with GCC 9.3.0 and CMake 3.16.3. Additional docs are in [the Wiki](https://github.com/ctring/SLOG/wiki).
+The following guide has been tested on Ubuntu 20.04 with GCC 9.3.0 and CMake 3.16.3. Additional docs are in [the SLOG's wiki](https://github.com/ctring/SLOG/wiki).
 
-## Build SLOG
 
 First, install the build tools:
 ```
@@ -29,9 +26,12 @@ $ cmake .. -DCMAKE_BUILD_TYPE=release
 $ make -j$(nproc)
 ```
 
-## Run SLOG on a single machine
+## How to Run
+<details>
 
-The following command starts SLOG using the example configuration for a single-node cluster.
+<summary>Run Detock on a single machine</summary>
+
+The following command starts Detock using the example configuration for a single-node cluster.
 ```
 $ build/slog -config examples/single.conf -address /tmp/slog 
 ```
@@ -141,13 +141,16 @@ Involved partitions: 0
 Involved replicas: 0
 ```
 
-## Run SLOG on a cluster
+</details>
 
-The following guide shows how to manually run SLOG on a cluster of multiple machines. This can be time-consuming when the number of machines is large so you should use the [Admin tool](https://github.com/ctring/SLOG/wiki/Using-the-Admin-tool) instead.
+<details>
+<summary>Run Detock on a cluster</summary>
 
-In this example, we start SLOG on a cluster using the configuration in `examples/cluster.conf`. You need to change the IP addresses in this file to match with the addresses of your machines. You can add more machines by increasing either the number of replicas or the number of partitions in a replica. The number of machines in a replica must be the same across all replicas and equal to `num_partitions`.
+The following guide shows how to manually run Detock on a cluster of multiple machines. This can be time-consuming when the number of machines is large so you should use the [Admin tool](https://github.com/ctring/SLOG/wiki/Using-the-Admin-tool) instead.
 
-After cloning and building SLOG, run the following command on each machine.
+In this example, we start Detock on a cluster using the configuration in `examples/cluster.conf`. You need to change the IP addresses in this file to match with the addresses of your machines. You can add more machines by increasing either the number of replicas or the number of partitions in a replica. The number of machines in a replica must be the same across all replicas and equal to `num_partitions`.
+
+After cloning and building Detock, run the following command on each machine.
 ```
 $ build/slog -config examples/cluster.conf -address <ip-address> -replica <replica-id> -partition <partition-id>
 ```
@@ -285,3 +288,4 @@ Coordinating server: 2
 Involved partitions: 0 1
 Involved replicas: 0 1
 ```
+</details>
