@@ -3,7 +3,7 @@
 [![Build Status](https://github.com/ctring/Detock/workflows/Build%20and%20Test/badge.svg)](https://github.com/ctring/Detock/actions)
 
 
-Detock is a descendant of [SLOG](https://github.com/ctring/SLOG) - a geographically distributed data store. Like SLOG, Detock employs a deterministic execution framework to move most of intra- and inter-region coordination out of transactional execution. As a result, it can achieve high throughput, even for high contention workloads. Unlike SLOG, it obviates the need for a global ordering service that adds more latency to transactions accessing data from multiple regions.
+Detock is a descendant of [SLOG](https://github.com/ctring/SLOG), a geographically distributed data store. Like SLOG, Detock employs a deterministic execution framework to move most of intra- and inter-region coordination out of transactional execution. As a result, it can achieve high throughput, even for high contention workloads. Unlike SLOG, it obviates the need for a global ordering service that adds more latency to transactions accessing data from multiple regions.
 
 This repository contains an experimental implementations of the system. 
 
