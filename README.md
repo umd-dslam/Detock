@@ -293,3 +293,7 @@ Involved partitions: 0 1
 Involved replicas: 0 1
 ```
 </details>
+
+## Experiments
+        
+Experiment data and code to generate the figures in the paper can be found in https://github.com/ctring/DetockAnalysis
