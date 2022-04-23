@@ -19,7 +19,7 @@ MultiHomeOrderer::MultiHomeOrderer(const shared_ptr<Broker>& broker, const Metri
                                    std::chrono::milliseconds poll_timeout)
     : NetworkedModule(broker, kMultiHomeOrdererChannel, metrics_manager, poll_timeout, true /* is_long_sender */),
       batch_id_counter_(0) {
-  batch_per_rep_.resize(config()->num_replicas());
+  batch_per_rep_.resize(config()->num_regions());
   NewBatch();
 }
 
@@ -108,12 +108,12 @@ void MultiHomeOrderer::AddToBatch(Transaction* txn) {
   DCHECK(txn->internal().type() == TransactionType::MULTI_HOME_OR_LOCK_ONLY)
       << "Multi-home orderer batch can only contain multi-home txn. ";
 
-  auto& replicas = txn->internal().involved_replicas();
-  for (int i = 0; i < replicas.size() - 1; i++) {
-    batch_per_rep_[replicas[i]]->add_transactions()->CopyFrom(*txn);
+  auto& regions = txn->internal().involved_regions();
+  for (int i = 0; i < regions.size() - 1; i++) {
+    batch_per_rep_[regions[i]]->add_transactions()->CopyFrom(*txn);
   }
   // Add the last one directly instead of copying
-  batch_per_rep_[replicas[replicas.size() - 1]]->mutable_transactions()->AddAllocated(txn);
+  batch_per_rep_[regions[regions.size() - 1]]->mutable_transactions()->AddAllocated(txn);
 
   ++batch_size_;
 
@@ -139,11 +139,11 @@ void MultiHomeOrderer::SendBatch() {
   auto paxos_env = NewEnvelope();
   auto paxos_propose = paxos_env->mutable_request()->mutable_paxos_propose();
   paxos_propose->set_value(batch_id());
-  Send(move(paxos_env), config()->MakeMachineId(config()->leader_replica_for_multi_home_ordering(), 0), kGlobalPaxos);
+  Send(move(paxos_env), config()->MakeMachineId(config()->leader_region_for_multi_home_ordering(), 0), kGlobalPaxos);
 
   // Replicate new batch to other regions
   auto part = config()->leader_partition_for_multi_home_ordering();
-  for (uint32_t rep = 0; rep < config()->num_replicas(); rep++) {
+  for (uint32_t rep = 0; rep < config()->num_regions(); rep++) {
     auto env = NewEnvelope();
     auto forward_batch = env->mutable_request()->mutable_forward_batch_data();
     forward_batch->mutable_batch_data()->AddAllocated(batch_per_rep_[rep].release());

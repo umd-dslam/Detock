@@ -12,21 +12,21 @@ class MetadataInitializer {
 
 class SimpleMetadataInitializer : public MetadataInitializer {
  public:
-  SimpleMetadataInitializer(uint32_t num_replicas, uint32_t num_partitions);
+  SimpleMetadataInitializer(uint32_t num_regions, uint32_t num_partitions);
   Metadata Compute(const Key& key) override;
 
  private:
-  uint32_t num_replicas_;
+  uint32_t num_regions_;
   uint32_t num_partitions_;
 };
 
 class SimpleMetadataInitializer2 : public MetadataInitializer {
  public:
-  SimpleMetadataInitializer2(uint32_t num_replicas, uint32_t num_partitions);
+  SimpleMetadataInitializer2(uint32_t num_regions, uint32_t num_partitions);
   Metadata Compute(const Key& key) override;
 
  private:
-  uint32_t num_replicas_;
+  uint32_t num_regions_;
   uint32_t num_partitions_;
 };
 class ConstantMetadataInitializer : public MetadataInitializer {

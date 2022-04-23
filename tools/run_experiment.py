@@ -28,24 +28,24 @@ def generate_config(settings: dict, template_path: str):
 
     regions_ids = {name: id for id, name in enumerate(settings["regions"])}
     for r in settings["regions"]:
-        replica = Replica()
+        region = Region()
 
         servers_private = [addr.encode() for addr in settings["servers_private"][r]]
-        replica.addresses.extend(servers_private)
+        region.addresses.extend(servers_private)
 
         servers_public = [addr.encode() for addr in settings["servers_public"][r]]
-        replica.public_addresses.extend(servers_public)
+        region.public_addresses.extend(servers_public)
 
         clients = [addr.encode() for addr in settings["clients"][r]]
-        replica.client_addresses.extend(clients)
+        region.client_addresses.extend(clients)
 
         distance_ranking = [
             str(regions_ids[other_r]) for other_r in settings["distance_ranking"][r]
         ]
-        replica.distance_ranking = ",".join(distance_ranking)
+        region.distance_ranking = ",".join(distance_ranking)
 
-        config.replicas.append(replica)
-        config.num_partitions = len(replica.addresses)
+        config.regions.append(region)
+        config.num_partitions = len(region.addresses)
 
     config_path = os.path.join(gettempdir(), os.path.basename(template_path))
     with open(config_path, "w") as f:

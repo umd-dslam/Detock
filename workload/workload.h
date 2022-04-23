@@ -146,7 +146,7 @@ struct TransactionProfile {
 
   std::map<Key, Record> records;
 
-  std::set<uint32_t> involved_replicas() const {
+  std::set<uint32_t> involved_regions() const {
     std::set<uint32_t> r;
     for (const auto& entry : records) {
       r.insert(entry.second.home);
@@ -203,8 +203,8 @@ class KeyList {
     auto simple_partitioning = config->proto_config().simple_partitioning();
     auto num_records = static_cast<long long>(simple_partitioning.num_records());
     num_partitions_ = config->num_partitions();
-    num_replicas_ = config->num_replicas();
-    num_keys_ = std::max(1LL, ((num_records - partition) / num_partitions_ - master) / num_replicas_);
+    num_regions_ = config->num_regions();
+    num_keys_ = std::max(1LL, ((num_records - partition) / num_partitions_ - master) / num_regions_);
   }
 
   void AddKey(Key key) {
@@ -224,7 +224,7 @@ class KeyList {
     }
     if (is_simple_) {
       std::uniform_int_distribution<uint64_t> dis(0, std::min(num_hot_keys_, num_keys_) - 1);
-      uint64_t key = num_partitions_ * (dis(rg) * num_replicas_ + master_) + partition_;
+      uint64_t key = num_partitions_ * (dis(rg) * num_regions_ + master_) + partition_;
       return std::to_string(key);
     }
     std::uniform_int_distribution<uint32_t> dis(0, hot_keys_.size() - 1);
@@ -237,7 +237,7 @@ class KeyList {
         throw std::runtime_error("There is no cold key to pick from. Please check your params.");
       }
       std::uniform_int_distribution<uint64_t> dis(num_hot_keys_, num_keys_ - 1);
-      uint64_t key = num_partitions_ * (dis(rg) * num_replicas_ + master_) + partition_;
+      uint64_t key = num_partitions_ * (dis(rg) * num_regions_ + master_) + partition_;
       return std::to_string(key);
     }
     if (cold_keys_.empty()) {
@@ -252,7 +252,7 @@ class KeyList {
   int partition_;
   int master_;
   int num_partitions_;
-  int num_replicas_;
+  int num_regions_;
   long long num_keys_;
   long long num_hot_keys_;
   std::vector<Key> cold_keys_;

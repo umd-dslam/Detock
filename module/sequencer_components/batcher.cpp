@@ -111,7 +111,7 @@ void Batcher::BatchTxn(Transaction* txn) {
   RECORD(txn->mutable_internal(), TransactionEvent::ENTER_LOCAL_BATCH);
 
   if (txn->internal().type() == TransactionType::MULTI_HOME_OR_LOCK_ONLY) {
-    txn = GenerateLockOnlyTxn(txn, config()->local_replica(), true /* in_place */);
+    txn = GenerateLockOnlyTxn(txn, config()->local_region(), true /* in_place */);
   }
 
   auto& current_batch = batches_.back();
@@ -153,9 +153,9 @@ void Batcher::SendBatches() {
                                                   (std::chrono::steady_clock::now() - batch_starting_time_).count());
   }
 
-  auto local_replica = config()->local_replica();
+  auto local_region = config()->local_region();
   auto local_partition = config()->local_partition();
-  auto num_replicas = config()->num_replicas();
+  auto num_regions = config()->num_regions();
   auto num_partitions = config()->num_partitions();
 
   int home_position = batch_id_counter_ - batches_.size();
@@ -176,23 +176,23 @@ void Batcher::SendBatches() {
       RECORD(batch_partition, TransactionEvent::EXIT_SEQUENCER_IN_BATCH);
 
       auto env = NewBatchForwardingMessage({batch_partition}, home_position);
-      Send(*env, config()->MakeMachineId(local_replica, p), LogManager::MakeTag(local_replica));
-      // Collect back the batch partition to send to other replicas
+      Send(*env, config()->MakeMachineId(local_region, p), LogManager::MakeTag(local_region));
+      // Collect back the batch partition to send to other regions
       batch_partitions.push_back(
           env->mutable_request()->mutable_forward_batch_data()->mutable_batch_data()->ReleaseLast());
     }
 
-    // Distribute the batch data to other replicas. All partitions of current batch are contained in a single message
+    // Distribute the batch data to other regions. All partitions of current batch are contained in a single message
     auto env = NewBatchForwardingMessage(move(batch_partitions), home_position);
     std::vector<MachineId> destinations;
-    destinations.reserve(num_replicas);
-    for (uint32_t rep = 0; rep < num_replicas; rep++) {
-      if (rep != local_replica) {
+    destinations.reserve(num_regions);
+    for (uint32_t rep = 0; rep < num_regions; rep++) {
+      if (rep != local_region) {
         uint32_t part = 0;
         if (config()->sequencer_rrr()) {
           part = home_position % num_partitions;
         } else {
-          part = (rep + num_replicas - local_replica) % num_replicas % num_partitions;
+          part = (rep + num_regions - local_region) % num_regions % num_partitions;
         }
         destinations.push_back(config()->MakeMachineId(rep, part));
       }
@@ -207,9 +207,9 @@ void Batcher::SendBatches() {
         VLOG(3) << "Delay batch " << batch_id << " for " << delay_ms << " ms";
 
         NewTimedCallback(milliseconds(delay_ms),
-                         [this, destinations, local_replica, batch_id, delayed_env = env.release()]() {
+                         [this, destinations, local_region, batch_id, delayed_env = env.release()]() {
                            VLOG(3) << "Sending delayed batch " << batch_id;
-                           Send(*delayed_env, destinations, LogManager::MakeTag(local_replica));
+                           Send(*delayed_env, destinations, LogManager::MakeTag(local_region));
                            delete delayed_env;
                          });
 
@@ -217,7 +217,7 @@ void Batcher::SendBatches() {
       }
     }
 
-    Send(*env, destinations, LogManager::MakeTag(local_replica));
+    Send(*env, destinations, LogManager::MakeTag(local_region));
 
     home_position++;
   }
@@ -226,7 +226,7 @@ void Batcher::SendBatches() {
 EnvelopePtr Batcher::NewBatchForwardingMessage(std::vector<internal::Batch*>&& batch, int home_position) {
   auto env = NewEnvelope();
   auto forward_batch = env->mutable_request()->mutable_forward_batch_data();
-  forward_batch->set_home(config()->local_replica());
+  forward_batch->set_home(config()->local_region());
   forward_batch->set_home_position(home_position);
   for (auto b : batch) {
     forward_batch->mutable_batch_data()->AddAllocated(b);

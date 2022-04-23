@@ -81,8 +81,8 @@ uint32_t SimpleSharder::compute_partition(const Key& key) const { return std::st
  * Then, taking the modulo of the column number by the number of partitions gives the partition
  * of the key.
  */
-SimpleSharder2::SimpleSharder2(const ConfigurationPtr& config) : Sharder(config), num_replicas_(config->num_replicas()) {}
-uint32_t SimpleSharder2::compute_partition(const Key& key) const { return (std::stoll(key) / num_replicas_) % num_partitions_; }
+SimpleSharder2::SimpleSharder2(const ConfigurationPtr& config) : Sharder(config), num_regions_(config->num_regions()) {}
+uint32_t SimpleSharder2::compute_partition(const Key& key) const { return (std::stoll(key) / num_regions_) % num_partitions_; }
 
 /**
  * TPC-C Sharder

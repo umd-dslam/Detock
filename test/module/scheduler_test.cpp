@@ -11,10 +11,10 @@ using namespace slog;
 class SchedulerTest : public ::testing::Test {
  protected:
   static const size_t kNumMachines = 6;
-  static const uint32_t kNumReplicas = 2;
+  static const uint32_t kNumRegions = 2;
   static const uint32_t kNumPartitions = 3;
 
-  virtual ConfigVec MakeConfigs() { return MakeTestConfigurations("scheduler", kNumReplicas, kNumPartitions); }
+  virtual ConfigVec MakeConfigs() { return MakeTestConfigurations("scheduler", kNumRegions, kNumPartitions); }
 
   void SetUp() {
     ConfigVec configs = MakeConfigs();
@@ -38,7 +38,7 @@ class SchedulerTest : public ::testing::Test {
     test_slogs[2]->Data("E", {"valueE", 0, 1});
     test_slogs[2]->Data("Z", {"valueZ", 1, 1});
 
-    // Replica 1
+    // Region 1
     test_slogs[3]->Data("A", {"valueA", 0, 1});
     test_slogs[3]->Data("D", {"valueD", 0, 1});
     test_slogs[3]->Data("Y", {"valueY", 1, 1});
@@ -93,7 +93,7 @@ class SchedulerTest : public ::testing::Test {
     return txn;
   }
 
-  MachineId MakeMachineId(int replica, int partition) { return replica * kNumPartitions + partition; }
+  MachineId MakeMachineId(int region, int partition) { return region * kNumPartitions + partition; }
 
   unique_ptr<TestSlog> test_slogs[kNumMachines];
   unique_ptr<Sender> sender[kNumMachines];
@@ -393,13 +393,13 @@ TEST_F(SchedulerTest, AbortMultiHomeMultiPartition2Active) {
 class SchedulerTestWithDeadlockResolver : public SchedulerTest {
  protected:
   static const size_t kNumMachines = 6;
-  static const uint32_t kNumReplicas = 2;
+  static const uint32_t kNumRegions = 2;
   static const uint32_t kNumPartitions = 3;
 
   ConfigVec MakeConfigs() final {
     internal::Configuration add_on;
     add_on.set_ddr_interval(10);
-    return MakeTestConfigurations("scheduler", kNumReplicas, kNumPartitions, add_on);
+    return MakeTestConfigurations("scheduler", kNumRegions, kNumPartitions, add_on);
   }
 };
 

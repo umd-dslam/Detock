@@ -22,7 +22,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=None,
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\x19proto/configuration.proto\x12\rslog.internal\x1a\x13proto/modules.proto\x1a\x17proto/transaction.proto\"j\n\x07Replica\x12\x11\n\taddresses\x18\x01 \x03(\t\x12\x18\n\x10public_addresses\x18\x02 \x03(\t\x12\x18\n\x10\x63lient_addresses\x18\x03 \x03(\t\x12\x18\n\x10\x64istance_ranking\x18\x04 \x01(\t\"H\n\x1aReplicationDelayExperiment\x12\x11\n\tdelay_pct\x18\x01 \x01(\r\x12\x17\n\x0f\x64\x65lay_amount_ms\x18\x02 \x01(\r\"3\n\x10HashPartitioning\x12\x1f\n\x17partition_key_num_bytes\x18\x01 \x01(\r\"D\n\x12SimplePartitioning\x12\x13\n\x0bnum_records\x18\x01 \x01(\x04\x12\x19\n\x11record_size_bytes\x18\x02 \x01(\r\"E\n\x13SimplePartitioning2\x12\x13\n\x0bnum_records\x18\x01 \x01(\x04\x12\x19\n\x11record_size_bytes\x18\x02 \x01(\r\"&\n\x10TPCCPartitioning\x12\x12\n\nwarehouses\x18\x01 \x01(\x05\"9\n\nCpuPinning\x12\x1e\n\x06module\x18\x01 \x01(\x0e\x32\x0e.slog.ModuleId\x12\x0b\n\x03\x63pu\x18\x02 \x01(\r\"\x8a\x03\n\rMetricOptions\x12\x19\n\x11txn_events_sample\x18\x01 \x01(\r\x12%\n\x1d\x64\x65\x61\x64lock_resolver_runs_sample\x18\x02 \x01(\r\x12*\n\"deadlock_resolver_deadlocks_sample\x18\x03 \x01(\r\x12*\n\"deadlock_resolver_deadlock_details\x18\x04 \x01(\x08\x12 \n\x18\x66orw_sequ_latency_sample\x18\x05 \x01(\r\x12\x19\n\x11\x63lock_sync_sample\x18\x06 \x01(\r\x12\x0c\n\x04logs\x18\x07 \x01(\x08\x12\x1e\n\x16\x66orwarder_batch_sample\x18\x08 \x01(\r\x12\x1e\n\x16sequencer_batch_sample\x18\t \x01(\r\x12\x1e\n\x16mhorderer_batch_sample\x18\n \x01(\r\x12\x1c\n\x14txn_timestamp_sample\x18\x0b \x01(\r\x12\x16\n\x0egeneric_sample\x18\x0c \x01(\r\"\xd2\n\n\rConfiguration\x12\x10\n\x08protocol\x18\x01 \x01(\t\x12(\n\x08replicas\x18\x02 \x03(\x0b\x32\x16.slog.internal.Replica\x12\x14\n\x0c\x62roker_ports\x18\x03 \x03(\r\x12\x13\n\x0bserver_port\x18\x04 \x01(\r\x12\x16\n\x0e\x66orwarder_port\x18\x05 \x01(\r\x12\x16\n\x0esequencer_port\x18\x06 \x01(\r\x12\x1f\n\x17\x63lock_synchronizer_port\x18\x07 \x01(\r\x12\x16\n\x0enum_partitions\x18\x08 \x01(\r\x12<\n\x11hash_partitioning\x18\t \x01(\x0b\x32\x1f.slog.internal.HashPartitioningH\x00\x12@\n\x13simple_partitioning\x18\n \x01(\x0b\x32!.slog.internal.SimplePartitioningH\x00\x12\x42\n\x14simple_partitioning2\x18\x0b \x01(\x0b\x32\".slog.internal.SimplePartitioning2H\x00\x12<\n\x11tpcc_partitioning\x18\x0c \x01(\x0b\x32\x1f.slog.internal.TPCCPartitioningH\x00\x12\x13\n\x0bnum_workers\x18\r \x01(\r\x12\x18\n\x10num_log_managers\x18\x0e \x01(\r\x12!\n\x19mh_orderer_batch_duration\x18\x0f \x01(\x04\x12 \n\x18\x66orwarder_batch_duration\x18\x10 \x01(\x04\x12 \n\x18sequencer_batch_duration\x18\x11 \x01(\x04\x12\x1c\n\x14sequencer_batch_size\x18\x12 \x01(\x05\x12\x15\n\rsequencer_rrr\x18\x13 \x01(\x08\x12\x1a\n\x12replication_factor\x18\x14 \x01(\r\x12\x19\n\x11replication_order\x18\x15 \x03(\t\x12\x44\n\x11replication_delay\x18\x16 \x01(\x0b\x32).slog.internal.ReplicationDelayExperiment\x12.\n\x0e\x65nabled_events\x18\x17 \x03(\x0e\x32\x16.slog.TransactionEvent\x12\x19\n\x11\x62ypass_mh_orderer\x18\x18 \x01(\x08\x12\x1f\n\x17\x66orce_bypass_mh_orderer\x18\x19 \x01(\x08\x12\x14\n\x0c\x64\x64r_interval\x18\x1a \x01(\x04\x12/\n\x0c\x63pu_pinnings\x18\x1b \x03(\x0b\x32\x19.slog.internal.CpuPinning\x12\x18\n\x10return_dummy_txn\x18\x1c \x01(\x08\x12\x14\n\x0crecv_retries\x18\x1d \x01(\x05\x12\x34\n\x0e\x65xecution_type\x18\x1e \x01(\x0e\x32\x1c.slog.internal.ExecutionType\x12\x1d\n\x15synchronized_batching\x18\x1f \x01(\x08\x12\x34\n\x0emetric_options\x18  \x01(\x0b\x32\x1c.slog.internal.MetricOptions\x12\x1b\n\x13\x66s_latency_interval\x18! \x01(\x04\x12\x1b\n\x13\x63lock_sync_interval\x18\" \x01(\x04\x12\x1b\n\x13timestamp_buffer_us\x18# \x01(\x03\x12\x1f\n\x17\x61vg_latency_window_size\x18$ \x01(\r\x12\x15\n\rbroker_rcvbuf\x18% \x01(\x05\x12\x1a\n\x12long_sender_sndbuf\x18& \x01(\x05\x42\x0e\n\x0cpartitioning*3\n\rExecutionType\x12\r\n\tKEY_VALUE\x10\x00\x12\x08\n\x04NOOP\x10\x01\x12\t\n\x05TPC_C\x10\x02\x62\x06proto3'
+  serialized_pb=b'\n\x19proto/configuration.proto\x12\rslog.internal\x1a\x13proto/modules.proto\x1a\x17proto/transaction.proto\"i\n\x06Region\x12\x11\n\taddresses\x18\x01 \x03(\t\x12\x18\n\x10public_addresses\x18\x02 \x03(\t\x12\x18\n\x10\x63lient_addresses\x18\x03 \x03(\t\x12\x18\n\x10\x64istance_ranking\x18\x04 \x01(\t\"H\n\x1aReplicationDelayExperiment\x12\x11\n\tdelay_pct\x18\x01 \x01(\r\x12\x17\n\x0f\x64\x65lay_amount_ms\x18\x02 \x01(\r\"3\n\x10HashPartitioning\x12\x1f\n\x17partition_key_num_bytes\x18\x01 \x01(\r\"D\n\x12SimplePartitioning\x12\x13\n\x0bnum_records\x18\x01 \x01(\x04\x12\x19\n\x11record_size_bytes\x18\x02 \x01(\r\"E\n\x13SimplePartitioning2\x12\x13\n\x0bnum_records\x18\x01 \x01(\x04\x12\x19\n\x11record_size_bytes\x18\x02 \x01(\r\"&\n\x10TPCCPartitioning\x12\x12\n\nwarehouses\x18\x01 \x01(\x05\"9\n\nCpuPinning\x12\x1e\n\x06module\x18\x01 \x01(\x0e\x32\x0e.slog.ModuleId\x12\x0b\n\x03\x63pu\x18\x02 \x01(\r\"\x8a\x03\n\rMetricOptions\x12\x19\n\x11txn_events_sample\x18\x01 \x01(\r\x12%\n\x1d\x64\x65\x61\x64lock_resolver_runs_sample\x18\x02 \x01(\r\x12*\n\"deadlock_resolver_deadlocks_sample\x18\x03 \x01(\r\x12*\n\"deadlock_resolver_deadlock_details\x18\x04 \x01(\x08\x12 \n\x18\x66orw_sequ_latency_sample\x18\x05 \x01(\r\x12\x19\n\x11\x63lock_sync_sample\x18\x06 \x01(\r\x12\x0c\n\x04logs\x18\x07 \x01(\x08\x12\x1e\n\x16\x66orwarder_batch_sample\x18\x08 \x01(\r\x12\x1e\n\x16sequencer_batch_sample\x18\t \x01(\r\x12\x1e\n\x16mhorderer_batch_sample\x18\n \x01(\r\x12\x1c\n\x14txn_timestamp_sample\x18\x0b \x01(\r\x12\x16\n\x0egeneric_sample\x18\x0c \x01(\r\"\xd0\n\n\rConfiguration\x12\x10\n\x08protocol\x18\x01 \x01(\t\x12&\n\x07regions\x18\x02 \x03(\x0b\x32\x15.slog.internal.Region\x12\x14\n\x0c\x62roker_ports\x18\x03 \x03(\r\x12\x13\n\x0bserver_port\x18\x04 \x01(\r\x12\x16\n\x0e\x66orwarder_port\x18\x05 \x01(\r\x12\x16\n\x0esequencer_port\x18\x06 \x01(\r\x12\x1f\n\x17\x63lock_synchronizer_port\x18\x07 \x01(\r\x12\x16\n\x0enum_partitions\x18\x08 \x01(\r\x12<\n\x11hash_partitioning\x18\t \x01(\x0b\x32\x1f.slog.internal.HashPartitioningH\x00\x12@\n\x13simple_partitioning\x18\n \x01(\x0b\x32!.slog.internal.SimplePartitioningH\x00\x12\x42\n\x14simple_partitioning2\x18\x0b \x01(\x0b\x32\".slog.internal.SimplePartitioning2H\x00\x12<\n\x11tpcc_partitioning\x18\x0c \x01(\x0b\x32\x1f.slog.internal.TPCCPartitioningH\x00\x12\x13\n\x0bnum_workers\x18\r \x01(\r\x12\x18\n\x10num_log_managers\x18\x0e \x01(\r\x12!\n\x19mh_orderer_batch_duration\x18\x0f \x01(\x04\x12 \n\x18\x66orwarder_batch_duration\x18\x10 \x01(\x04\x12 \n\x18sequencer_batch_duration\x18\x11 \x01(\x04\x12\x1c\n\x14sequencer_batch_size\x18\x12 \x01(\x05\x12\x15\n\rsequencer_rrr\x18\x13 \x01(\x08\x12\x1a\n\x12replication_factor\x18\x14 \x01(\r\x12\x19\n\x11replication_order\x18\x15 \x03(\t\x12\x44\n\x11replication_delay\x18\x16 \x01(\x0b\x32).slog.internal.ReplicationDelayExperiment\x12.\n\x0e\x65nabled_events\x18\x17 \x03(\x0e\x32\x16.slog.TransactionEvent\x12\x19\n\x11\x62ypass_mh_orderer\x18\x18 \x01(\x08\x12\x1f\n\x17\x66orce_bypass_mh_orderer\x18\x19 \x01(\x08\x12\x14\n\x0c\x64\x64r_interval\x18\x1a \x01(\x04\x12/\n\x0c\x63pu_pinnings\x18\x1b \x03(\x0b\x32\x19.slog.internal.CpuPinning\x12\x18\n\x10return_dummy_txn\x18\x1c \x01(\x08\x12\x14\n\x0crecv_retries\x18\x1d \x01(\x05\x12\x34\n\x0e\x65xecution_type\x18\x1e \x01(\x0e\x32\x1c.slog.internal.ExecutionType\x12\x1d\n\x15synchronized_batching\x18\x1f \x01(\x08\x12\x34\n\x0emetric_options\x18  \x01(\x0b\x32\x1c.slog.internal.MetricOptions\x12\x1b\n\x13\x66s_latency_interval\x18! \x01(\x04\x12\x1b\n\x13\x63lock_sync_interval\x18\" \x01(\x04\x12\x1b\n\x13timestamp_buffer_us\x18# \x01(\x03\x12\x1f\n\x17\x61vg_latency_window_size\x18$ \x01(\r\x12\x15\n\rbroker_rcvbuf\x18% \x01(\x05\x12\x1a\n\x12long_sender_sndbuf\x18& \x01(\x05\x42\x0e\n\x0cpartitioning*3\n\rExecutionType\x12\r\n\tKEY_VALUE\x10\x00\x12\x08\n\x04NOOP\x10\x01\x12\t\n\x05TPC_C\x10\x02\x62\x06proto3'
   ,
   dependencies=[proto_dot_modules__pb2.DESCRIPTOR,proto_dot_transaction__pb2.DESCRIPTOR,])
 
@@ -51,8 +51,8 @@ _EXECUTIONTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=2327,
-  serialized_end=2378,
+  serialized_start=2324,
+  serialized_end=2375,
 )
 _sym_db.RegisterEnumDescriptor(_EXECUTIONTYPE)
 
@@ -63,37 +63,37 @@ TPC_C = 2
 
 
 
-_REPLICA = _descriptor.Descriptor(
-  name='Replica',
-  full_name='slog.internal.Replica',
+_REGION = _descriptor.Descriptor(
+  name='Region',
+  full_name='slog.internal.Region',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   create_key=_descriptor._internal_create_key,
   fields=[
     _descriptor.FieldDescriptor(
-      name='addresses', full_name='slog.internal.Replica.addresses', index=0,
+      name='addresses', full_name='slog.internal.Region.addresses', index=0,
       number=1, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
     _descriptor.FieldDescriptor(
-      name='public_addresses', full_name='slog.internal.Replica.public_addresses', index=1,
+      name='public_addresses', full_name='slog.internal.Region.public_addresses', index=1,
       number=2, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
     _descriptor.FieldDescriptor(
-      name='client_addresses', full_name='slog.internal.Replica.client_addresses', index=2,
+      name='client_addresses', full_name='slog.internal.Region.client_addresses', index=2,
       number=3, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
     _descriptor.FieldDescriptor(
-      name='distance_ranking', full_name='slog.internal.Replica.distance_ranking', index=3,
+      name='distance_ranking', full_name='slog.internal.Region.distance_ranking', index=3,
       number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=b"".decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -112,7 +112,7 @@ _REPLICA = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=90,
-  serialized_end=196,
+  serialized_end=195,
 )
 
 
@@ -150,8 +150,8 @@ _REPLICATIONDELAYEXPERIMENT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=198,
-  serialized_end=270,
+  serialized_start=197,
+  serialized_end=269,
 )
 
 
@@ -182,8 +182,8 @@ _HASHPARTITIONING = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=272,
-  serialized_end=323,
+  serialized_start=271,
+  serialized_end=322,
 )
 
 
@@ -221,8 +221,8 @@ _SIMPLEPARTITIONING = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=325,
-  serialized_end=393,
+  serialized_start=324,
+  serialized_end=392,
 )
 
 
@@ -260,8 +260,8 @@ _SIMPLEPARTITIONING2 = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=395,
-  serialized_end=464,
+  serialized_start=394,
+  serialized_end=463,
 )
 
 
@@ -292,8 +292,8 @@ _TPCCPARTITIONING = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=466,
-  serialized_end=504,
+  serialized_start=465,
+  serialized_end=503,
 )
 
 
@@ -331,8 +331,8 @@ _CPUPINNING = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=506,
-  serialized_end=563,
+  serialized_start=505,
+  serialized_end=562,
 )
 
 
@@ -440,8 +440,8 @@ _METRICOPTIONS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=566,
-  serialized_end=960,
+  serialized_start=565,
+  serialized_end=959,
 )
 
 
@@ -461,7 +461,7 @@ _CONFIGURATION = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
     _descriptor.FieldDescriptor(
-      name='replicas', full_name='slog.internal.Configuration.replicas', index=1,
+      name='regions', full_name='slog.internal.Configuration.regions', index=1,
       number=2, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -736,12 +736,12 @@ _CONFIGURATION = _descriptor.Descriptor(
       create_key=_descriptor._internal_create_key,
     fields=[]),
   ],
-  serialized_start=963,
-  serialized_end=2325,
+  serialized_start=962,
+  serialized_end=2322,
 )
 
 _CPUPINNING.fields_by_name['module'].enum_type = proto_dot_modules__pb2._MODULEID
-_CONFIGURATION.fields_by_name['replicas'].message_type = _REPLICA
+_CONFIGURATION.fields_by_name['regions'].message_type = _REGION
 _CONFIGURATION.fields_by_name['hash_partitioning'].message_type = _HASHPARTITIONING
 _CONFIGURATION.fields_by_name['simple_partitioning'].message_type = _SIMPLEPARTITIONING
 _CONFIGURATION.fields_by_name['simple_partitioning2'].message_type = _SIMPLEPARTITIONING2
@@ -763,7 +763,7 @@ _CONFIGURATION.fields_by_name['simple_partitioning2'].containing_oneof = _CONFIG
 _CONFIGURATION.oneofs_by_name['partitioning'].fields.append(
   _CONFIGURATION.fields_by_name['tpcc_partitioning'])
 _CONFIGURATION.fields_by_name['tpcc_partitioning'].containing_oneof = _CONFIGURATION.oneofs_by_name['partitioning']
-DESCRIPTOR.message_types_by_name['Replica'] = _REPLICA
+DESCRIPTOR.message_types_by_name['Region'] = _REGION
 DESCRIPTOR.message_types_by_name['ReplicationDelayExperiment'] = _REPLICATIONDELAYEXPERIMENT
 DESCRIPTOR.message_types_by_name['HashPartitioning'] = _HASHPARTITIONING
 DESCRIPTOR.message_types_by_name['SimplePartitioning'] = _SIMPLEPARTITIONING
@@ -775,12 +775,12 @@ DESCRIPTOR.message_types_by_name['Configuration'] = _CONFIGURATION
 DESCRIPTOR.enum_types_by_name['ExecutionType'] = _EXECUTIONTYPE
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
-Replica = _reflection.GeneratedProtocolMessageType('Replica', (_message.Message,), {
-  'DESCRIPTOR' : _REPLICA,
+Region = _reflection.GeneratedProtocolMessageType('Region', (_message.Message,), {
+  'DESCRIPTOR' : _REGION,
   '__module__' : 'proto.configuration_pb2'
-  # @@protoc_insertion_point(class_scope:slog.internal.Replica)
+  # @@protoc_insertion_point(class_scope:slog.internal.Region)
   })
-_sym_db.RegisterMessage(Replica)
+_sym_db.RegisterMessage(Region)
 
 ReplicationDelayExperiment = _reflection.GeneratedProtocolMessageType('ReplicationDelayExperiment', (_message.Message,), {
   'DESCRIPTOR' : _REPLICATIONDELAYEXPERIMENT,

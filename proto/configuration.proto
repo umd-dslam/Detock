@@ -5,7 +5,7 @@ import "proto/transaction.proto";
 
 package slog.internal;
 
-message Replica {
+message Region {
     // List of all server addresses in the system.
     // This list must have the size equal to number of partitions
     // If protocol is "tcp", these are IP addresses.
@@ -16,8 +16,8 @@ message Replica {
     repeated string public_addresses = 2;
     // List of machines used for benchmarking. This field is only used by the admin tool
     repeated string client_addresses = 3;
-    // Comma-separated string of replica id (e.g "1,3,2") ordered from closest replica to
-    // furthest replica, not including this replica. This field is only used by the admin tool.
+    // Comma-separated string of region id (e.g "1,3,2") ordered from closest region to
+    // furthest region, not including this region. This field is only used by the admin tool.
     string distance_ranking = 4;
 }
 
@@ -127,9 +127,9 @@ message Configuration {
     // Protocol for the zmq sockets in the broker. Use "tcp" for
     // normal running and "icp" for unit and integration tests
     string protocol = 1;
-    // Replica groups. Each group has a list of machine addresses
+    // Region groups. Each group has a list of machine addresses
     // with the size equal to number of partitions
-    repeated Replica replicas = 2;
+    repeated Region regions = 2;
     // Port for the zmq sockets in the broker. Each value will create a new broker thread
     repeated uint32 broker_ports = 3;
     // Port for the server
@@ -164,13 +164,13 @@ message Configuration {
     // By default, a sequencer sticks to a single partition of a region to send the batch to.
     // If this option is true, the partitions are selected in a round-robin manner (rrr: round-robin replication).
     bool sequencer_rrr = 19;
-    // Number of replicas that need to be synchronously replicated to
+    // Number of regions that need to be synchronously replicated to
     uint32 replication_factor = 20;
-    // Order of replicas for synchronous replication. This is a list of strings each of which corresponds
-    // to a replica. Each string is an ordered comma-separated list of replica ids that the current replica
-    // will synchronously replicate to based on replication order. The current replica will be ignored if exists
-    // in the list. For example, ['1,2', '2,1,0', ''] means that, with a replication factor of 3, replica 0 will
-    // synchronously replicate to 1 and 2, replica 1 will replicate to 2 and 0, and replica 2 will not synchronously
+    // Order of regions for synchronous replication. This is a list of strings each of which corresponds
+    // to a region. Each string is an ordered comma-separated list of region ids that the current replica
+    // will synchronously replicate to based on replication order. The current region will be ignored if exists
+    // in the list. For example, ['1,2', '2,1,0', ''] means that, with a replication factor of 3, region 0 will
+    // synchronously replicate to 1 and 2, region 1 will replicate to 2 and 0, and region 2 will not synchronously
     // replicate to anywhere.
     repeated string replication_order = 21;
     // Replication of txn batches will be delayed to simulate uneven network latency

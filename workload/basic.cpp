@@ -35,7 +35,7 @@ constexpr char MP_PARTS[] = "mp_parts";
 // Number of hot keys per partition. The actual number of
 // hot keys won't match exactly the specified number but will be close.
 // Precisely, it will be:
-//        floor(hot / num_replicas) * num_replicas
+//        floor(hot / num_regions) * num_regions
 constexpr char HOT[] = "hot";
 // Number of records in a transaction
 constexpr char RECORDS[] = "records";
@@ -75,12 +75,12 @@ BasicWorkload::BasicWorkload(const ConfigurationPtr& config, uint32_t region, co
       rnd_str_(seed),
       client_txn_id_counter_(0) {
   name_ = "basic";
-  auto num_replicas = config->num_replicas();
+  auto num_regions = config->num_regions();
   auto num_partitions = config->num_partitions();
-  auto hot_keys_per_list = std::max(1U, params_.GetUInt32(HOT) / num_replicas);
+  auto hot_keys_per_list = std::max(1U, params_.GetUInt32(HOT) / num_regions);
   const auto& proto_config = config->proto_config();
   for (uint32_t part = 0; part < num_partitions; part++) {
-    for (uint32_t rep = 0; rep < num_replicas; rep++) {
+    for (uint32_t rep = 0; rep < num_regions; rep++) {
       // Initialize hot keys limit for each key list. When keys are added to a list,
       // the first keys are considered hot keys until this limit is reached and any new
       // keys from there are cold keys.
@@ -101,7 +101,7 @@ BasicWorkload::BasicWorkload(const ConfigurationPtr& config, uint32_t region, co
   }
 
   if (distance_ranking_.empty()) {
-    for (size_t i = 0; i < num_replicas; i++) {
+    for (size_t i = 0; i < num_regions; i++) {
       if (i != local_region_) {
         distance_ranking_.push_back(i);
       }
@@ -112,7 +112,7 @@ BasicWorkload::BasicWorkload(const ConfigurationPtr& config, uint32_t region, co
     }
   }
 
-  CHECK_EQ(distance_ranking_.size(), num_replicas - 1) << "Distance ranking size must match the number of regions";
+  CHECK_EQ(distance_ranking_.size(), num_regions - 1) << "Distance ranking size must match the number of regions";
 
   if (!params_.GetInt32(NEAREST)) {
     distance_ranking_.insert(distance_ranking_.begin(), local_region_);
@@ -131,7 +131,7 @@ BasicWorkload::BasicWorkload(const ConfigurationPtr& config, uint32_t region, co
       LOG(INFO) << "Loading " << reader.GetNumDatums() << " datums from " << data_file;
       while (reader.HasNextDatum()) {
         auto datum = reader.GetNextDatum();
-        CHECK_LT(datum.master(), num_replicas) << "Master number exceeds number of replicas";
+        CHECK_LT(datum.master(), num_regions) << "Master number exceeds number of regions";
 
         partition_to_key_lists_[partition][datum.master()].AddKey(datum.key());
       }
@@ -183,7 +183,7 @@ std::pair<Transaction*, TransactionProfile> BasicWorkload::NextTransaction() {
   }
 
   // Decide if this is a multi-home txn or not
-  auto num_replicas = config_->num_replicas();
+  auto num_regions = config_->num_regions();
   auto multi_home_pct = params_.GetDouble(MH_PCT);
   bernoulli_distribution is_mh(multi_home_pct / 100);
   pro.is_multi_home = is_mh(rg_);
@@ -191,8 +191,8 @@ std::pair<Transaction*, TransactionProfile> BasicWorkload::NextTransaction() {
   // Select a number of homes to choose from for each record
   vector<uint32_t> selected_homes;
   if (pro.is_multi_home) {
-    CHECK_GE(num_replicas, 2) << "There must be at least 2 regions for MH txns";
-    auto max_num_homes = std::min(params_.GetUInt32(MH_HOMES), num_replicas);
+    CHECK_GE(num_regions, 2) << "There must be at least 2 regions for MH txns";
+    auto max_num_homes = std::min(params_.GetUInt32(MH_HOMES), num_regions);
 
     CHECK_GE(max_num_homes, 2) << "At least 2 regions must be selected for MH txns";
     auto num_homes = std::uniform_int_distribution{2U, max_num_homes}(rg_);
@@ -211,7 +211,7 @@ std::pair<Transaction*, TransactionProfile> BasicWorkload::NextTransaction() {
       if (params_.GetInt32(NEAREST)) {
         selected_homes.push_back(local_region_);
       } else {
-        std::uniform_int_distribution<uint32_t> dis(0, num_replicas - 1);
+        std::uniform_int_distribution<uint32_t> dis(0, num_regions - 1);
         selected_homes.push_back(dis(rg_));
       }
     }

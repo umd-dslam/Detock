@@ -60,11 +60,11 @@ class LockState {
  * a separate remaster manager.
  *
  * Remastering:
- * Locks are taken on the tuple <key, replica>, using the transaction's
+ * Locks are taken on the tuple <key, region>, using the transaction's
  * master metadata. The masters are checked in the worker, so if two
  * transactions hold separate locks for the same key, then one has an
  * incorrect master and will be aborted. Remaster transactions request the
- * locks for both <key, old replica> and <key, new replica>.
+ * locks for both <key, old region> and <key, new region>.
  */
 class RMALockManager {
  public:
@@ -107,7 +107,7 @@ class RMALockManager {
     std::vector<Key> keys;
   };
   unordered_map<TxnId, TxnInfo> txn_info_;
-  unordered_map<KeyReplica, LockState> lock_table_;
+  unordered_map<KeyRegion, LockState> lock_table_;
   uint32_t num_locked_keys_ = 0;
 };
 

@@ -117,7 +117,7 @@ TEST(RMALockManagerTest, AcquireLocksWithLockOnly2) {
   ASSERT_THAT(result, ElementsAre(200));
 }
 
-TEST(RMALockManagerTest, KeyReplicaLocks) {
+TEST(RMALockManagerTest, KeyRegionLocks) {
   RMALockManager lock_manager;
   auto configs = MakeTestConfigurations("locking", 3, 1);
   auto holder1 = MakeTestTxnHolder(configs[0], 100, {{"writeA", KeyType::WRITE, 2}, {"writeB", KeyType::WRITE, 2}});

@@ -7,11 +7,11 @@ namespace tpcc {
 
 class TPCCMetadataInitializer : public MetadataInitializer {
  public:
-  TPCCMetadataInitializer(uint32_t num_replicas, uint32_t num_partitions);
+  TPCCMetadataInitializer(uint32_t num_regions, uint32_t num_partitions);
   virtual Metadata Compute(const Key& key);
 
  private:
-  uint32_t num_replicas_;
+  uint32_t num_regions_;
   uint32_t num_partitions_;
 };
 

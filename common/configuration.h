@@ -23,7 +23,7 @@ class Configuration {
   const internal::Configuration& proto_config() const;
   const std::string& protocol() const;
   const std::vector<std::string>& all_addresses() const;
-  const std::string& address(uint32_t replica, uint32_t partition) const;
+  const std::string& address(uint32_t region, uint32_t partition) const;
   const std::string& address(MachineId machine_id) const;
   uint32_t broker_ports(int i) const;
   uint32_t broker_ports_size() const;
@@ -31,7 +31,7 @@ class Configuration {
   uint32_t forwarder_port() const;
   uint32_t sequencer_port() const;
   uint32_t clock_synchronizer_port() const;
-  uint32_t num_replicas() const;
+  uint32_t num_regions() const;
   uint32_t num_partitions() const;
   uint32_t num_workers() const;
   uint32_t num_log_managers() const;
@@ -44,13 +44,13 @@ class Configuration {
   uint32_t replication_factor() const;
 
   const std::string& local_address() const;
-  uint32_t local_replica() const;
+  uint32_t local_region() const;
   uint32_t local_partition() const;
   MachineId local_machine_id() const;
-  MachineId MakeMachineId(uint32_t replica, uint32_t partition) const;
+  MachineId MakeMachineId(uint32_t region, uint32_t partition) const;
   std::pair<uint32_t, uint32_t> UnpackMachineId(MachineId machine_id) const;
 
-  uint32_t leader_replica_for_multi_home_ordering() const;
+  uint32_t leader_region_for_multi_home_ordering() const;
   uint32_t leader_partition_for_multi_home_ordering() const;
 
   uint32_t replication_delay_pct() const;
@@ -70,7 +70,7 @@ class Configuration {
   std::chrono::milliseconds clock_sync_interval() const;
   int64_t timestamp_buffer_us() const;
   uint32_t avg_latency_window_size() const;
-  std::vector<int> distance_ranking_from(int replica_id) const;
+  std::vector<int> distance_ranking_from(int region_id) const;
 
   int broker_rcvbuf() const;
   int long_sender_sndbuf() const;
@@ -78,7 +78,7 @@ class Configuration {
  private:
   internal::Configuration config_;
   std::string local_address_;
-  int local_replica_;
+  int local_region_;
   int local_partition_;
 
   std::vector<std::string> all_addresses_;

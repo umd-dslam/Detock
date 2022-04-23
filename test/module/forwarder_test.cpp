@@ -22,7 +22,7 @@ class ForwarderTest : public ::testing::Test {
   static const size_t NUM_MACHINES = 4;
 
   void SetUp() {
-    configs = MakeTestConfigurations("forwarder", 2 /* num_replicas */, 2 /* num_partitions */);
+    configs = MakeTestConfigurations("forwarder", 2 /* num_regions */, 2 /* num_partitions */);
 
     for (size_t i = 0; i < NUM_MACHINES; i++) {
       test_slogs[i] = make_unique<TestSlog>(configs[i]);
@@ -31,12 +31,12 @@ class ForwarderTest : public ::testing::Test {
       test_slogs[i]->AddOutputSocket(kSequencerChannel);
       test_slogs[i]->AddOutputSocket(kMultiHomeOrdererChannel);
     }
-    // Replica 0
+    // Region 0
     test_slogs[0]->Data("A", {"xxxxx", 0, 0});
     test_slogs[0]->Data("C", {"xxxxx", 1, 1});
     test_slogs[1]->Data("B", {"xxxxx", 0, 1});
     test_slogs[1]->Data("X", {"xxxxx", 1, 0});
-    // Replica 1
+    // Region 1
     test_slogs[2]->Data("A", {"xxxxx", 0, 0});
     test_slogs[2]->Data("C", {"xxxxx", 1, 1});
     test_slogs[3]->Data("B", {"xxxxx", 0, 1});
@@ -97,7 +97,7 @@ class ForwarderTest : public ::testing::Test {
 TEST_F(ForwarderTest, ForwardToSameRegion) {
   // This txn needs to lookup from both partitions in a region
   auto txn = MakeTransaction({{"A"}, {"B", KeyType::WRITE}});
-  // Send to partition 0 of replica 0
+  // Send to partition 0 of region 0
   test_slogs[0]->SendTxn(txn);
   auto forwarded_txn = ReceiveOnSequencerChannel({0});
 
@@ -112,18 +112,18 @@ TEST_F(ForwarderTest, ForwardToSameRegion) {
 }
 
 TEST_F(ForwarderTest, ForwardToAnotherRegion) {
-  // Send to partition 1 of replica 0. This txn needs to lookup
-  // from both partitions and later forwarded to replica 1
+  // Send to partition 1 of region 0. This txn needs to lookup
+  // from both partitions and later forwarded to region 1
   test_slogs[1]->SendTxn(MakeTransaction({{"C"}, {"X", KeyType::WRITE}}));
 
-  // Send to partition 0 of replica 1. This txn needs to lookup
-  // from partition 0 only and later forwarded to replica 0
+  // Send to partition 0 of region 1. This txn needs to lookup
+  // from partition 0 only and later forwarded to region 0
   test_slogs[2]->SendTxn(MakeTransaction({{"A"}}));
 
   {
     auto forwarded_txn = ReceiveOnSequencerChannel({2, 3});
     // A txn should be forwarded to one of the two schedulers in
-    // replica 1
+    // region 1
     ASSERT_TRUE(forwarded_txn != nullptr);
     ASSERT_EQ(TransactionType::SINGLE_HOME, forwarded_txn->internal().type());
     ASSERT_EQ(1, forwarded_txn->internal().home());
@@ -136,7 +136,7 @@ TEST_F(ForwarderTest, ForwardToAnotherRegion) {
   {
     auto forwarded_txn = ReceiveOnSequencerChannel({0, 1});
     // A txn should be forwarded to one of the two schedulers in
-    // replica 0
+    // region 0
     ASSERT_TRUE(forwarded_txn != nullptr);
     ASSERT_EQ(TransactionType::SINGLE_HOME, forwarded_txn->internal().type());
     ASSERT_EQ(0, forwarded_txn->internal().home());
@@ -148,7 +148,7 @@ TEST_F(ForwarderTest, ForwardToAnotherRegion) {
 TEST_F(ForwarderTest, TransactionHasNewKeys) {
   // This txn needs to lookup from both partitions in a region
   auto txn = MakeTransaction({{"NEW"}, {"KEY", KeyType::WRITE}});
-  // Send to partition 0 of replica 0
+  // Send to partition 0 of region 0
   test_slogs[3]->SendTxn(txn);
 
   auto forwarded_txn = ReceiveOnSequencerChannel({0, 1, 2, 3});

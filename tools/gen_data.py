@@ -2,7 +2,7 @@
 """Data generation tool
 
 This tool generates data to be loaded at the startup of an SLOG cluster. It is
-designed to generate the same data for each replica even though it runs
+designed to generate the same data for each region even though it runs
 separately on different machines.
 """
 import base64
@@ -53,7 +53,7 @@ class DataGenerator:
         self,
         data_dir: str,
         prefix: str,
-        num_replicas: int,
+        num_regions: int,
         num_partitions: int,
         size: int,
         size_unit: str,
@@ -64,7 +64,7 @@ class DataGenerator:
         self.data_dir = os.path.abspath(data_dir)
         self.prefix = prefix
         self.num_partitions = num_partitions
-        self.num_replicas = num_replicas
+        self.num_regions = num_regions
 
         total_size = MULTIPLIERS[size_unit] * size
         num_records = total_size / (KEY_SIZE + record_size + MASTER_SIZE)
@@ -182,7 +182,7 @@ class DataGenerator:
     def __gen_datum(self, key: int, as_text=False):
         encoded_key = encode_key(key)
         record = "".join(np.random.choice(ALPHABET, size=self.record_size))
-        master = key % self.num_replicas
+        master = key % self.num_regions
 
         if as_text:
             datum_tuple = map(str, (encoded_key.decode(), record, master))
@@ -273,10 +273,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-nr",
-        "--num-replicas",
+        "--num-regions",
         default=1,
         type=int,
-        help="Number of replicas. If --config is used, this option will "
+        help="Number of regions. If --config is used, this option will "
         "not be used.",
     )
     parser.add_argument(
@@ -289,20 +289,20 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     num_partitions = args.num_partitions
-    num_replicas = args.num_replicas
+    num_regions = args.num_regions
     partition_bytes = args.partition_bytes
     if args.config is not None:
         with open(args.config, "r") as f:
             config = Configuration()
             text_format.Parse(f.read(), config)
             num_partitions = config.num_partitions
-            num_replicas = len(config.replicas)
+            num_regions = len(config.regions)
             partition_bytes = config.hash_partitioning.partition_key_num_bytes
 
     DataGenerator(
         args.data_dir,
         "",
-        num_replicas,
+        num_regions,
         num_partitions,
         args.size,
         args.size_unit,

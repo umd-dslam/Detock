@@ -23,7 +23,7 @@ void PreprocessTxn(Transaction* txn) {
   }
   auto txn_internal = txn->mutable_internal();
   txn_internal->set_type(TransactionType::UNKNOWN);
-  txn_internal->clear_involved_replicas();
+  txn_internal->clear_involved_regions();
   txn_internal->clear_involved_partitions();
   txn_internal->clear_active_partitions();
   txn_internal->set_timestamp(0);

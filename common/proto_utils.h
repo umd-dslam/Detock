@@ -65,9 +65,9 @@ Transaction* GeneratePartitionedTxn(const SharderPtr& sharder, Transaction* txn,
                                     bool in_place = false);
 
 /**
- * Populate the involved_replicas field in the transaction
+ * Populate the involved_regions field in the transaction
  */
-void PopulateInvolvedReplicas(Transaction& txn);
+void PopulateInvolvedRegions(Transaction& txn);
 
 /**
  * Populate the involved_partitions field in the transaction

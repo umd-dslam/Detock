@@ -38,9 +38,9 @@ uint32_t NextUnusedPort() {
 
 }  // namespace
 
-ConfigVec MakeTestConfigurations(string&& prefix, int num_replicas, int num_partitions,
+ConfigVec MakeTestConfigurations(string&& prefix, int num_regions, int num_partitions,
                                  internal::Configuration common_config) {
-  int num_machines = num_replicas * num_partitions;
+  int num_machines = num_regions * num_partitions;
   string addr = "/tmp/test_" + prefix;
 
   common_config.set_protocol("ipc");
@@ -53,17 +53,17 @@ ConfigVec MakeTestConfigurations(string&& prefix, int num_replicas, int num_part
   common_config.set_sequencer_batch_duration(1);
   common_config.set_forwarder_batch_duration(1);
   common_config.set_execution_type(internal::ExecutionType::KEY_VALUE);
-  for (int r = 0; r < num_replicas; r++) {
-    auto replica = common_config.add_replicas();
+  for (int r = 0; r < num_regions; r++) {
+    auto region = common_config.add_regions();
     for (int p = 0; p < num_partitions; p++) {
-      replica->add_addresses(addr + to_string(r * num_partitions + p));
+      region->add_addresses(addr + to_string(r * num_partitions + p));
     }
   }
 
   ConfigVec configs;
   configs.reserve(num_machines);
 
-  for (int rep = 0; rep < num_replicas; rep++) {
+  for (int rep = 0; rep < num_regions; rep++) {
     for (int part = 0; part < num_partitions; part++) {
       // Generate different server ports because tests
       // run on the same machine
@@ -94,8 +94,8 @@ TxnHolder MakeTestTxnHolder(const ConfigurationPtr& config, TxnId id, const std:
 
   auto sharder = Sharder::MakeSharder(config);
   vector<Transaction*> lo_txns;
-  for (int i = 0; i < txn->internal().involved_replicas_size(); ++i) {
-    auto lo = GenerateLockOnlyTxn(txn, txn->internal().involved_replicas(i));
+  for (int i = 0; i < txn->internal().involved_regions_size(); ++i) {
+    auto lo = GenerateLockOnlyTxn(txn, txn->internal().involved_regions(i));
     auto partitioned_lo = GeneratePartitionedTxn(sharder, lo, sharder->local_partition(), true);
     if (partitioned_lo != nullptr) {
       lo_txns.push_back(partitioned_lo);
@@ -150,7 +150,7 @@ void TestSlog::AddLogManagers() {
   auto num_log_managers = broker_->config()->num_log_managers();
   for (size_t i = 0; i < num_log_managers; i++) {
     std::vector<uint32_t> regions;
-    for (size_t r = 0; r < broker_->config()->num_replicas(); r++) {
+    for (size_t r = 0; r < broker_->config()->num_regions(); r++) {
       if (r % num_log_managers == i) {
         regions.push_back(r);
       }

@@ -120,14 +120,14 @@ TEST(LocalLogTest, SameOriginOutOfOrder) {
   ASSERT_FALSE(log.HasNextBatch());
 }
 
-const int NUM_REPLICAS = 2;
+const int NUM_REGIONS = 2;
 const int NUM_PARTITIONS = 2;
-constexpr int NUM_MACHINES = NUM_REPLICAS * NUM_PARTITIONS;
+constexpr int NUM_MACHINES = NUM_REGIONS * NUM_PARTITIONS;
 
 class LogManagerTest : public ::testing::Test {
  public:
   void SetUp() {
-    auto configs = MakeTestConfigurations("log_manager", NUM_REPLICAS, NUM_PARTITIONS);
+    auto configs = MakeTestConfigurations("log_manager", NUM_REGIONS, NUM_PARTITIONS);
     for (int i = 0; i < 4; i++) {
       slogs_[i] = make_unique<TestSlog>(configs[i]);
       slogs_[i]->AddLogManagers();

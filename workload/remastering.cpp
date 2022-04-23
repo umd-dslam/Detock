@@ -39,10 +39,10 @@ std::pair<Transaction*, TransactionProfile> RemasteringWorkload::NextRemasterTra
 
   vector<KeyMetadata> keys;
 
-  auto home = uniform_int_distribution<>(0, config_->num_replicas() - 1)(rg_);
+  auto home = uniform_int_distribution<>(0, config_->num_regions() - 1)(rg_);
   auto partition = uniform_int_distribution<>(0, config_->num_partitions() - 1)(rg_);
 
-  auto new_master = (home + 1) % config_->num_replicas();
+  auto new_master = (home + 1) % config_->num_regions();
 
   auto key = partition_to_key_lists_[partition][home].GetRandomColdKey(rg_);
   keys.emplace_back(key, KeyType::WRITE);

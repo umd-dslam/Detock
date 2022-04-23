@@ -2,8 +2,8 @@
 
 namespace slog {
 
-SimpleMetadataInitializer::SimpleMetadataInitializer(uint32_t num_replicas, uint32_t num_partitions)
-    : num_replicas_(num_replicas), num_partitions_(num_partitions) {}
+SimpleMetadataInitializer::SimpleMetadataInitializer(uint32_t num_regions, uint32_t num_partitions)
+    : num_regions_(num_regions), num_partitions_(num_partitions) {}
 
 /**
  * This initializer assumes the following home/partition assignment
@@ -21,11 +21,11 @@ SimpleMetadataInitializer::SimpleMetadataInitializer(uint32_t num_replicas, uint
  * of the key.
  */
 Metadata SimpleMetadataInitializer::Compute(const Key& key) {
-  return Metadata((std::stoull(key) / num_partitions_) % num_replicas_);
+  return Metadata((std::stoull(key) / num_partitions_) % num_regions_);
 }
 
-SimpleMetadataInitializer2::SimpleMetadataInitializer2(uint32_t num_replicas, uint32_t num_partitions)
-    : num_replicas_(num_replicas), num_partitions_(num_partitions) {}
+SimpleMetadataInitializer2::SimpleMetadataInitializer2(uint32_t num_regions, uint32_t num_partitions)
+    : num_regions_(num_regions), num_partitions_(num_partitions) {}
 
 /**
  * This initializer assumes the following home/partition assignment
@@ -41,7 +41,7 @@ SimpleMetadataInitializer2::SimpleMetadataInitializer2(uint32_t num_replicas, ui
  * Taking the modulo of the key by the number of regions gives the home of the key
  */
 Metadata SimpleMetadataInitializer2::Compute(const Key& key) {
-  return Metadata(std::stoull(key) % num_replicas_);
+  return Metadata(std::stoull(key) % num_regions_);
 }
 
 ConstantMetadataInitializer::ConstantMetadataInitializer(uint32_t home) : home_(home) {}

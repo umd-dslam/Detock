@@ -31,7 +31,7 @@ NetworkedModule::NetworkedModule(const std::shared_ptr<zmq::context_t>& context,
       recv_retries_start_(config->recv_retries()),
       recv_retries_(0) {
   std::ostringstream os;
-  os << "rep = " << config->local_replica() << ", part = " << config->local_partition()
+  os << "rep = " << config->local_region() << ", part = " << config->local_partition()
      << ", machine_id = " << config->local_machine_id();
   debug_info_ = os.str();
 }

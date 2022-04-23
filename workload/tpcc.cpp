@@ -62,9 +62,9 @@ TPCCWorkload::TPCCWorkload(const ConfigurationPtr& config, uint32_t region, cons
   name_ = "tpcc";
   CHECK(config_->proto_config().has_tpcc_partitioning()) << "TPC-C workload is only compatible with TPC-C partitioning";
 
-  auto num_replicas = config_->num_replicas();
+  auto num_regions = config_->num_regions();
   if (distance_ranking_.empty()) {
-    for (size_t i = 0; i < num_replicas; i++) {
+    for (size_t i = 0; i < num_regions; i++) {
       if (i != local_region_) {
         distance_ranking_.push_back(i);
       }
@@ -75,17 +75,17 @@ TPCCWorkload::TPCCWorkload(const ConfigurationPtr& config, uint32_t region, cons
     }
   }
 
-  CHECK_EQ(distance_ranking_.size(), num_replicas - 1) << "Distance ranking size must match the number of regions";
+  CHECK_EQ(distance_ranking_.size(), num_regions - 1) << "Distance ranking size must match the number of regions";
 
   auto num_partitions = config_->num_partitions();
   for (size_t i = 0; i < num_partitions; i++) {
-    vector<vector<int>> partitions(num_replicas);
+    vector<vector<int>> partitions(num_regions);
     warehouse_index_.push_back(partitions);
   }
   auto num_warehouses = config_->proto_config().tpcc_partitioning().warehouses();
   for (int i = 0; i < num_warehouses; i++) {
     int partition = i % num_partitions;
-    int home = i / num_partitions % num_replicas;
+    int home = i / num_partitions % num_regions;
     warehouse_index_[partition][home].push_back(i + 1);
   }
   id_generator_ = TPCCIdGenerator(num_warehouses, id_slot.first, id_slot.second);
@@ -299,8 +299,8 @@ std::vector<int> TPCCWorkload::SelectRemoteWarehouses(int partition) {
     return {SampleOnce(rg_, warehouse_index_[partition][local_region_])};
   }
 
-  auto num_replicas = config_->num_replicas();
-  auto max_num_homes = std::min(params_.GetUInt32(HOMES), num_replicas);
+  auto num_regions = config_->num_regions();
+  auto max_num_homes = std::min(params_.GetUInt32(HOMES), num_regions);
   if (max_num_homes < 2) {
     return {};
   }

@@ -30,7 +30,7 @@ class E2ETest : public ::testing::Test {
     custom_config.add_replication_order("0");
     custom_config.set_num_workers(2);
     custom_config.set_num_log_managers(2);
-    configs = MakeTestConfigurations("e2e", 2 /* num_replicas */, 2 /* num_partitions */, custom_config);
+    configs = MakeTestConfigurations("e2e", 2 /* num_regions */, 2 /* num_partitions */, custom_config);
 
     for (size_t i = 0; i < NUM_MACHINES; i++) {
       test_slogs[i] = make_unique<TestSlog>(configs[i]);
@@ -44,17 +44,17 @@ class E2ETest : public ::testing::Test {
       test_slogs[i]->AddLocalPaxos();
 
       // One region is selected to globally order the multihome batches
-      if (configs[i]->leader_replica_for_multi_home_ordering() == configs[i]->local_replica()) {
+      if (configs[i]->leader_region_for_multi_home_ordering() == configs[i]->local_region()) {
         test_slogs[i]->AddGlobalPaxos();
       }
     }
 
-    // Replica 0
+    // Region 0
     test_slogs[0]->Data("A", {"valA", 0, 0});
     test_slogs[0]->Data("C", {"valC", 1, 1});
     test_slogs[1]->Data("B", {"valB", 0, 1});
     test_slogs[1]->Data("X", {"valX", 1, 0});
-    // Replica 1
+    // Region 1
     test_slogs[2]->Data("A", {"valA", 0, 0});
     test_slogs[2]->Data("C", {"valC", 1, 1});
     test_slogs[3]->Data("B", {"valB", 0, 1});

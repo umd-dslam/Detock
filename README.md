@@ -66,7 +66,7 @@ SET 1 World
 SET 2 !!!!!
 Coordinating server: 0
 Involved partitions: 0
-Involved replicas: 0
+Involved regions: 0
 ```
 
 Send a transaction to copy data from the previous keys to different keys:
@@ -104,7 +104,7 @@ COPY 1 4
 COPY 2 5
 Coordinating server: 0
 Involved partitions: 0
-Involved replicas: 0
+Involved regions: 0
 ```
 
 Send a transaction to read the written data.
@@ -142,7 +142,7 @@ GET 4
 GET 5
 Coordinating server: 0
 Involved partitions: 0
-Involved replicas: 0
+Involved regions: 0
 ```
 
 </details>
@@ -152,20 +152,20 @@ Involved replicas: 0
 
 The following guide shows how to manually run Detock on a cluster of multiple machines. This can be time-consuming when the number of machines is large so you should use the [Admin tool](https://github.com/ctring/SLOG/wiki/Using-the-Admin-tool) instead.
 
-In this example, we start Detock on a cluster using the configuration in `examples/cluster.conf`. You need to change the IP addresses in this file to match with the addresses of your machines. You can add more machines by increasing either the number of replicas or the number of partitions in a replica. The number of machines in a replica must be the same across all replicas and equal to `num_partitions`.
+In this example, we start Detock on a cluster using the configuration in `examples/cluster.conf`. You need to change the IP addresses in this file to match with the addresses of your machines. You can add more machines by increasing either the number of regions or the number of partitions in a region. The number of machines in a region must be the same across all regions and equal to `num_partitions`.
 
 After cloning and building Detock, run the following command on each machine.
 ```
-$ build/slog -config examples/cluster.conf -address <ip-address> -replica <replica-id> -partition <partition-id>
+$ build/slog -config examples/cluster.conf -address <ip-address> -region <region-id> -partition <partition-id>
 ```
 
 For example, assuming the machine configuration is
 ```
-replicas: {
+regions: {
     addresses: "192.168.2.11",
     addresses: "192.168.2.12",
 }
-replicas: {
+regions: {
     addresses: "192.168.2.13",
     addresses: "192.168.2.14",
 }
@@ -214,7 +214,7 @@ SET 1 World
 SET 2 !!!!!
 Coordinating server: 0
 Involved partitions: 0 1
-Involved replicas: 0 1
+Involved regions: 0 1
 ```
 
 Send a copy transaction that copies the values from the written keys to new keys.
@@ -252,10 +252,10 @@ COPY 1 4
 COPY 2 5
 Coordinating server: 0
 Involved partitions: 0 1
-Involved replicas: 0 1
+Involved regions: 0 1
 ```
 
-Send a read transaction to read the written data. This time, we read from a different replica to demonstrate that the data has been replicated.
+Send a read transaction to read the written data. This time, we read from a different region to demonstrate that the data has been replicated.
 ```
 $ build/client txn examples/read.json --host 192.168.2.13
 ...
@@ -290,7 +290,7 @@ GET 4
 GET 5
 Coordinating server: 2
 Involved partitions: 0 1
-Involved replicas: 0 1
+Involved regions: 0 1
 ```
 </details>
 

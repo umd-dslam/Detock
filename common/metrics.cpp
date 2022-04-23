@@ -41,9 +41,9 @@ class Sampler {
 
 class TransactionEventMetrics {
  public:
-  TransactionEventMetrics(int sample_rate, uint32_t local_replica, uint32_t local_partition)
+  TransactionEventMetrics(int sample_rate, uint32_t local_region, uint32_t local_partition)
       : sampler_(sample_rate, TransactionEvent_descriptor()->value_count()),
-        local_replica_(local_replica),
+        local_region_(local_region),
         local_partition_(local_partition) {}
 
   system_clock::time_point Record(TxnId txn_id, TransactionEvent event) {
@@ -51,7 +51,7 @@ class TransactionEventMetrics {
     auto sample_index = static_cast<size_t>(event);
     if (sampler_.IsChosen(sample_index)) {
       txn_events_.push_back({.time = now.time_since_epoch().count(),
-                             .replica = local_replica_,
+                             .region = local_region_,
                              .partition = local_partition_,
                              .txn_id = txn_id,
                              .event = event});
@@ -61,7 +61,7 @@ class TransactionEventMetrics {
 
   struct Data {
     int64_t time;  // nanosecond since epoch
-    uint32_t replica;
+    uint32_t region;
     uint32_t partition;
     TxnId txn_id;
     TransactionEvent event;
@@ -70,31 +70,31 @@ class TransactionEventMetrics {
   list<Data>& data() { return txn_events_; }
 
   static void WriteToDisk(const std::string& dir, const list<Data>& data) {
-    CSVWriter txn_events_csv(dir + "/events.csv", {"txn_id", "event", "time", "partition", "replica"});
+    CSVWriter txn_events_csv(dir + "/events.csv", {"txn_id", "event", "time", "partition", "region"});
     for (const auto& d : data) {
-      txn_events_csv << d.txn_id << ENUM_NAME(d.event, TransactionEvent) << d.time << d.partition << d.replica
+      txn_events_csv << d.txn_id << ENUM_NAME(d.event, TransactionEvent) << d.time << d.partition << d.region
                      << csvendl;
     }
   }
 
  private:
   Sampler sampler_;
-  uint32_t local_replica_;
+  uint32_t local_region_;
   uint32_t local_partition_;
   list<Data> txn_events_;
 };
 
 class DeadlockResolverRunMetrics {
  public:
-  DeadlockResolverRunMetrics(int sample_rate, uint32_t local_replica, uint32_t local_partition)
-      : sampler_(sample_rate, 1), local_replica_(local_replica), local_partition_(local_partition) {}
+  DeadlockResolverRunMetrics(int sample_rate, uint32_t local_region, uint32_t local_partition)
+      : sampler_(sample_rate, 1), local_region_(local_region), local_partition_(local_partition) {}
 
   void Record(int64_t runtime, size_t unstable_graph_sz, size_t stable_graph_sz, size_t deadlocks_resolved,
               int64_t graph_update_time) {
     if (sampler_.IsChosen(0)) {
       data_.push_back({.time = system_clock::now().time_since_epoch().count(),
                        .partition = local_partition_,
-                       .replica = local_replica_,
+                       .region = local_region_,
                        .runtime = runtime,
                        .unstable_graph_sz = unstable_graph_sz,
                        .stable_graph_sz = stable_graph_sz,
@@ -106,7 +106,7 @@ class DeadlockResolverRunMetrics {
   struct Data {
     int64_t time;  // nanosecond since epoch
     uint32_t partition;
-    uint32_t replica;
+    uint32_t region;
     int64_t runtime;  // nanosecond
     size_t unstable_graph_sz;
     size_t stable_graph_sz;
@@ -117,17 +117,17 @@ class DeadlockResolverRunMetrics {
 
   static void WriteToDisk(const std::string& dir, const list<Data>& data) {
     CSVWriter deadlock_resolver_csv(dir + "/deadlock_resolver.csv",
-                                    {"time", "partition", "replica", "runtime", "unstable_graph_sz", "stable_graph_sz",
+                                    {"time", "partition", "region", "runtime", "unstable_graph_sz", "stable_graph_sz",
                                      "deadlocks_resolved", "graph_update_time"});
     for (const auto& d : data) {
-      deadlock_resolver_csv << d.time << d.partition << d.replica << d.runtime << d.unstable_graph_sz
+      deadlock_resolver_csv << d.time << d.partition << d.region << d.runtime << d.unstable_graph_sz
                             << d.stable_graph_sz << d.deadlocks_resolved << d.graph_update_time << csvendl;
     }
   }
 
  private:
   Sampler sampler_;
-  uint32_t local_replica_;
+  uint32_t local_region_;
   uint32_t local_partition_;
   list<Data> data_;
 };
@@ -136,17 +136,17 @@ class DeadlockResolverDeadlockMetrics {
   using edge_t = std::pair<uint64_t, uint64_t>;
 
  public:
-  DeadlockResolverDeadlockMetrics(int sample_rate, bool with_details, uint32_t local_replica, uint32_t local_partition)
+  DeadlockResolverDeadlockMetrics(int sample_rate, bool with_details, uint32_t local_region, uint32_t local_partition)
       : sampler_(sample_rate, 1),
         with_details_(with_details),
-        local_replica_(local_replica),
+        local_region_(local_region),
         local_partition_(local_partition) {}
 
   void Record(int num_vertices, const vector<edge_t>& edges_removed, const vector<edge_t>& edges_added) {
     if (sampler_.IsChosen(0)) {
       data_.push_back({.time = system_clock::now().time_since_epoch().count(),
                        .partition = local_partition_,
-                       .replica = local_replica_,
+                       .region = local_region_,
                        .num_vertices = num_vertices,
                        .edges_removed = (with_details_ ? edges_removed : vector<edge_t>{}),
                        .edges_added = (with_details_ ? edges_added : vector<edge_t>{})});
@@ -156,7 +156,7 @@ class DeadlockResolverDeadlockMetrics {
   struct Data {
     int64_t time;  // nanosecond since epoch
     uint32_t partition;
-    uint32_t replica;
+    uint32_t region;
     int num_vertices;
     vector<edge_t> edges_removed;
     vector<edge_t> edges_added;
@@ -165,15 +165,15 @@ class DeadlockResolverDeadlockMetrics {
 
   static void WriteToDisk(const std::string& dir, const list<Data>& data, bool with_details) {
     if (with_details) {
-      CSVWriter deadlocks_csv(dir + "/deadlocks.csv", {"time", "partition", "replica", "vertices", "removed", "added"});
+      CSVWriter deadlocks_csv(dir + "/deadlocks.csv", {"time", "partition", "region", "vertices", "removed", "added"});
       for (const auto& d : data) {
-        deadlocks_csv << d.time << d.partition << d.replica << d.num_vertices << Join(d.edges_removed)
+        deadlocks_csv << d.time << d.partition << d.region << d.num_vertices << Join(d.edges_removed)
                       << Join(d.edges_added) << csvendl;
       }
     } else {
-      CSVWriter deadlocks_csv(dir + "/deadlocks.csv", {"time", "partition", "replica", "vertices"});
+      CSVWriter deadlocks_csv(dir + "/deadlocks.csv", {"time", "partition", "region", "vertices"});
       for (const auto& d : data) {
-        deadlocks_csv << d.time << d.partition << d.replica << d.num_vertices << csvendl;
+        deadlocks_csv << d.time << d.partition << d.region << d.num_vertices << csvendl;
       }
     }
   }
@@ -181,17 +181,17 @@ class DeadlockResolverDeadlockMetrics {
  private:
   Sampler sampler_;
   bool with_details_;
-  uint32_t local_replica_;
+  uint32_t local_region_;
   uint32_t local_partition_;
   list<Data> data_;
 };
 
 class LogManagerLogs {
  public:
-  void Record(uint32_t replica, BatchId batch_id, TxnId txn_id, int64_t txn_timestamp,
+  void Record(uint32_t region, BatchId batch_id, TxnId txn_id, int64_t txn_timestamp,
               int64_t mh_depart_from_coordinator_time, int64_t mh_arrive_at_home_time,
               int64_t mh_enter_local_batch_time) {
-    approx_global_log_.push_back({.replica = replica,
+    approx_global_log_.push_back({.region = region,
                                   .txn_id = txn_id,
                                   .batch_id = batch_id,
                                   .txn_timestamp = txn_timestamp,
@@ -200,7 +200,7 @@ class LogManagerLogs {
                                   .mh_enter_local_batch_time = mh_enter_local_batch_time});
   }
   struct Data {
-    uint32_t replica;
+    uint32_t region;
     TxnId txn_id;
     BatchId batch_id;
     int64_t txn_timestamp;
@@ -212,10 +212,10 @@ class LogManagerLogs {
 
   static void WriteToDisk(const std::string& dir, const vector<Data>& global_log) {
     CSVWriter approx_global_log_csv(dir + "/global_log.csv",
-                                    {"replica", "batch_id", "txn_id", "timestamp", "depart_from_coordinator",
+                                    {"region", "batch_id", "txn_id", "timestamp", "depart_from_coordinator",
                                      "arrive_at_home", "enter_local_batch"});
     for (const auto& e : global_log) {
-      approx_global_log_csv << e.replica << e.batch_id << e.txn_id << e.txn_timestamp
+      approx_global_log_csv << e.region << e.batch_id << e.txn_id << e.txn_timestamp
                             << e.mh_depart_from_coordinator_time << e.mh_arrive_at_home_time
                             << e.mh_enter_local_batch_time << csvendl;
     }
@@ -364,13 +364,13 @@ class TxnTimestampMetrics {
 
 class GenericMetrics {
  public:
-  GenericMetrics(int sample_rate, uint32_t local_replica, uint32_t local_partition)
-      : sampler_(sample_rate, 1), local_replica_(local_replica), local_partition_(local_partition) {}
+  GenericMetrics(int sample_rate, uint32_t local_region, uint32_t local_partition)
+      : sampler_(sample_rate, 1), local_region_(local_region), local_partition_(local_partition) {}
 
   void Record(int type, int64_t time, int64_t data) {
     if (sampler_.IsChosen(0)) {
       data_.push_back(
-          {.time = time, .data = data, .type = type, .replica = local_replica_, .partition = local_partition_});
+          {.time = time, .data = data, .type = type, .region = local_region_, .partition = local_partition_});
     }
   }
 
@@ -378,22 +378,22 @@ class GenericMetrics {
     int64_t time;  // nanosecond since epoch
     int64_t data;
     int type;
-    uint32_t replica;
+    uint32_t region;
     uint32_t partition;
   };
 
   list<Data>& data() { return data_; }
 
   static void WriteToDisk(const std::string& dir, const list<Data>& data) {
-    CSVWriter generic_csv(dir + "/generic.csv", {"type", "time", "data", "partition", "replica"});
+    CSVWriter generic_csv(dir + "/generic.csv", {"type", "time", "data", "partition", "region"});
     for (const auto& d : data) {
-      generic_csv << d.type << d.time << d.data << d.partition << d.replica << csvendl;
+      generic_csv << d.type << d.time << d.data << d.partition << d.region << csvendl;
     }
   }
 
  private:
   Sampler sampler_;
-  uint32_t local_replica_;
+  uint32_t local_region_;
   uint32_t local_partition_;
   list<Data> data_;
 };
@@ -438,21 +438,21 @@ void MetricsRepository::RecordDeadlockResolverDeadlock(int num_vertices,
   return metrics_->deadlock_resolver_deadlock_metrics.Record(num_vertices, edges_removed, edges_added);
 }
 
-void MetricsRepository::RecordLogManagerEntry(uint32_t replica, BatchId batch_id, TxnId txn_id, int64_t txn_timestamp,
+void MetricsRepository::RecordLogManagerEntry(uint32_t region, BatchId batch_id, TxnId txn_id, int64_t txn_timestamp,
                                               int64_t mh_depart_from_coordinator_time, int64_t mh_arrive_at_home_time,
                                               int64_t mh_enter_local_batch_time) {
   if (!config_->metric_options().logs()) {
     return;
   }
   std::lock_guard<SpinLatch> guard(latch_);
-  return metrics_->log_manager_logs.Record(replica, batch_id, txn_id, txn_timestamp, mh_depart_from_coordinator_time,
+  return metrics_->log_manager_logs.Record(region, batch_id, txn_id, txn_timestamp, mh_depart_from_coordinator_time,
                                            mh_arrive_at_home_time, mh_enter_local_batch_time);
 }
 
-void MetricsRepository::RecordForwSequLatency(uint32_t replica, int64_t src_time, int64_t dst_time,
+void MetricsRepository::RecordForwSequLatency(uint32_t region, int64_t src_time, int64_t dst_time,
                                               int64_t src_recv_time, int64_t avg_time) {
   std::lock_guard<SpinLatch> guard(latch_);
-  return metrics_->forw_sequ_latency_metrics.Record(replica, src_time, dst_time, src_recv_time, avg_time);
+  return metrics_->forw_sequ_latency_metrics.Record(region, src_time, dst_time, src_recv_time, avg_time);
 }
 
 void MetricsRepository::RecordClockSync(uint32_t dst, int64_t src_time, int64_t dst_time, int64_t src_recv_time,
@@ -488,16 +488,16 @@ void MetricsRepository::RecordGeneric(int type, int64_t time, int64_t data) {
 }
 
 std::unique_ptr<AllMetrics> MetricsRepository::Reset() {
-  auto local_replica = config_->local_replica();
+  auto local_region = config_->local_region();
   auto local_partition = config_->local_partition();
   std::unique_ptr<AllMetrics> new_metrics(new AllMetrics(
       {.txn_event_metrics =
-           TransactionEventMetrics(config_->metric_options().txn_events_sample(), local_replica, local_partition),
+           TransactionEventMetrics(config_->metric_options().txn_events_sample(), local_region, local_partition),
        .deadlock_resolver_run_metrics = DeadlockResolverRunMetrics(
-           config_->metric_options().deadlock_resolver_runs_sample(), local_replica, local_partition),
+           config_->metric_options().deadlock_resolver_runs_sample(), local_region, local_partition),
        .deadlock_resolver_deadlock_metrics = DeadlockResolverDeadlockMetrics(
            config_->metric_options().deadlock_resolver_deadlocks_sample(),
-           config_->metric_options().deadlock_resolver_deadlock_details(), local_replica, local_partition),
+           config_->metric_options().deadlock_resolver_deadlock_details(), local_region, local_partition),
        .log_manager_logs = LogManagerLogs(),
        .forw_sequ_latency_metrics = ForwSequLatencyMetrics(config_->metric_options().forw_sequ_latency_sample()),
        .clock_sync_metrics = ClockSyncMetrics(config_->metric_options().clock_sync_sample()),
@@ -505,7 +505,7 @@ std::unique_ptr<AllMetrics> MetricsRepository::Reset() {
        .sequencer_batch_metrics = BatchMetrics(config_->metric_options().sequencer_batch_sample()),
        .mhorderer_batch_metrics = BatchMetrics(config_->metric_options().mhorderer_batch_sample()),
        .txn_timestamp_metrics = TxnTimestampMetrics(config_->metric_options().txn_timestamp_sample()),
-       .generic_metrics = GenericMetrics(config_->metric_options().generic_sample(), local_replica, local_partition)}));
+       .generic_metrics = GenericMetrics(config_->metric_options().generic_sample(), local_region, local_partition)}));
 
   std::lock_guard<SpinLatch> guard(latch_);
   metrics_.swap(new_metrics);

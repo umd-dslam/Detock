@@ -73,7 +73,7 @@ void LoadData(slog::Storage& storage, const ConfigurationPtr& config, const stri
     CHECK(sharder->is_local_key(datum.key()))
         << "Key " << datum.key() << " does not belong to partition " << config->local_partition();
 
-    CHECK_LT(datum.master(), config->num_replicas()) << "Master number exceeds number of replicas";
+    CHECK_LT(datum.master(), config->num_regions()) << "Master number exceeds number of regions";
 
     // Write to storage
     Record record(datum.record(), datum.master());
@@ -132,7 +132,7 @@ void GenerateSimpleData2(std::shared_ptr<slog::Storage> storage,
                         const ConfigurationPtr& config) {
   auto simple_partitioning = config->proto_config().simple_partitioning2();
   auto num_records = simple_partitioning.num_records();
-  auto num_replicas = config->num_replicas();
+  auto num_regions = config->num_regions();
   auto num_partitions = config->num_partitions();
   auto partition = config->local_partition();
 
@@ -146,7 +146,7 @@ void GenerateSimpleData2(std::shared_ptr<slog::Storage> storage,
   std::atomic<size_t> num_done = 0;
   auto GenerateFn = [&](uint64_t from_key, uint64_t to_key) {
     for (uint64_t key = from_key; key < to_key; key ++) {
-      uint32_t key_partition = key / num_replicas % num_partitions;
+      uint32_t key_partition = key / num_regions % num_partitions;
       if (key_partition == partition) {
         Record record(value);
         record.SetMetadata(metadata_initializer->Compute(std::to_string(key)));
@@ -176,7 +176,7 @@ void GenerateTPCCData(std::shared_ptr<slog::Storage> storage,
                       const ConfigurationPtr& config) {
   auto tpcc_partitioning = config->proto_config().tpcc_partitioning();
   auto storage_adapter = std::make_shared<slog::tpcc::KVStorageAdapter>(storage, metadata_initializer);
-  slog::tpcc::LoadTables(storage_adapter, tpcc_partitioning.warehouses(), config->num_replicas(),
+  slog::tpcc::LoadTables(storage_adapter, tpcc_partitioning.warehouses(), config->num_regions(),
                          config->num_partitions(), config->local_partition(), FLAGS_data_threads);
 }
 
@@ -203,7 +203,7 @@ int main(int argc, char* argv[]) {
 
   INIT_RECORDING(config);
 
-  LOG(INFO) << "Local replica: " << config->local_replica();
+  LOG(INFO) << "Local region: " << config->local_region();
   LOG(INFO) << "Local partition: " << config->local_partition();
   std::ostringstream os;
   for (auto r : config->replication_order()) {
@@ -236,17 +236,17 @@ int main(int argc, char* argv[]) {
   switch (config->proto_config().partitioning_case()) {
     case slog::internal::Configuration::kSimplePartitioning:
       metadata_initializer =
-          make_shared<slog::SimpleMetadataInitializer>(config->num_replicas(), config->num_partitions());
+          make_shared<slog::SimpleMetadataInitializer>(config->num_regions(), config->num_partitions());
       GenerateSimpleData(storage, metadata_initializer, config);
       break;
     case slog::internal::Configuration::kSimplePartitioning2:
       metadata_initializer =
-          make_shared<slog::SimpleMetadataInitializer2>(config->num_replicas(), config->num_partitions());
+          make_shared<slog::SimpleMetadataInitializer2>(config->num_regions(), config->num_partitions());
       GenerateSimpleData2(storage, metadata_initializer, config);
       break;
     case slog::internal::Configuration::kTpccPartitioning:
       metadata_initializer =
-          make_shared<slog::tpcc::TPCCMetadataInitializer>(config->num_replicas(), config->num_partitions());
+          make_shared<slog::tpcc::TPCCMetadataInitializer>(config->num_regions(), config->num_partitions());
       GenerateTPCCData(storage, metadata_initializer, config);
       break;
     default:
@@ -275,7 +275,7 @@ int main(int argc, char* argv[]) {
   auto num_log_managers = broker->config()->num_log_managers();
   for (size_t i = 0; i < num_log_managers; i++) {
     std::vector<uint32_t> regions;
-    for (size_t r = 0; r < broker->config()->num_replicas(); r++) {
+    for (size_t r = 0; r < broker->config()->num_regions(); r++) {
       if (r % num_log_managers == i) {
         regions.push_back(r);
       }
@@ -285,7 +285,7 @@ int main(int argc, char* argv[]) {
   }
 
   // One region is selected to globally order the multihome batches
-  if (config->leader_replica_for_multi_home_ordering() == config->local_replica()) {
+  if (config->leader_region_for_multi_home_ordering() == config->local_region()) {
     modules.emplace_back(MakeRunnerFor<slog::GlobalPaxos>(broker), slog::ModuleId::GLOBALPAXOS);
   }
 

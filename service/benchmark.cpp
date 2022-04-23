@@ -159,7 +159,7 @@ void RunBenchmark(vector<unique_ptr<ModuleRunner>>& generators) {
 }
 
 struct ResultWriters {
-  const vector<string> kTxnColumns = {"txn_id",   "coordinator",    "replicas", "partitions", "generator",
+  const vector<string> kTxnColumns = {"txn_id",   "coordinator",    "regions", "partitions", "generator",
                                       "restarts", "global_log_pos", "sent_at",  "received_at"};
   const vector<string> kEventsColumns = {"txn_id", "event", "time", "machine", "home"};
   const vector<string> kSummaryColumns = {"committed",   "aborted",     "not_started",      "restarted",
@@ -277,16 +277,16 @@ void WriteResults(const vector<unique_ptr<ModuleRunner>>& generators) {
   for (const auto& info : txn_infos) {
     CHECK(info.txn != nullptr);
     auto& txn_internal = info.txn->internal();
-    string involved_replicas, involved_partitions, global_log_pos;
+    string involved_regions, involved_partitions, global_log_pos;
     if (FLAGS_dry_run) {
-      involved_replicas = Join(info.profile.involved_replicas());
+      involved_regions = Join(info.profile.involved_regions());
       involved_partitions = Join(info.profile.involved_partitions());
     } else {
-      involved_replicas = Join(txn_internal.involved_replicas());
+      involved_regions = Join(txn_internal.involved_regions());
       involved_partitions = Join(txn_internal.involved_partitions());
       global_log_pos = Join(txn_internal.global_log_positions());
     }
-    writers->txns << txn_internal.id() << txn_internal.coordinating_server() << involved_replicas << involved_partitions
+    writers->txns << txn_internal.id() << txn_internal.coordinating_server() << involved_regions << involved_partitions
                   << info.generator_id << info.restarts << global_log_pos << info.sent_at.time_since_epoch().count()
                   << info.recv_at.time_since_epoch().count() << csvendl;
 

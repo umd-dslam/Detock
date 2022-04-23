@@ -7,7 +7,7 @@
 namespace slog {
 
 using Key = std::string;
-using KeyReplica = std::string;
+using KeyRegion = std::string;
 using Value = std::string;
 using TxnId = uint64_t;
 using BatchId = uint64_t;
@@ -76,7 +76,7 @@ struct Record {
 enum class LockMode { UNLOCKED, READ, WRITE };
 enum class AcquireLocksResult { ACQUIRED, WAITING, ABORT };
 
-inline KeyReplica MakeKeyReplica(const Key& key, uint32_t master) {
+inline KeyRegion MakeKeyRegion(const Key& key, uint32_t master) {
   std::string new_key;
   auto master_str = std::to_string(master);
   new_key.reserve(key.length() + master_str.length() + 1);

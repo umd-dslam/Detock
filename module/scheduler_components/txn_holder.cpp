@@ -5,13 +5,13 @@ namespace slog {
 TxnHolder::TxnHolder(const ConfigurationPtr& config, Transaction* txn)
     : txn_id_(txn->internal().id()),
       main_txn_idx_(txn->internal().home()),
-      lo_txns_(config->num_replicas()),
+      lo_txns_(config->num_regions()),
       remaster_result_(std::nullopt),
       dispatchable_(true),
       aborting_(false),
       done_(false),
       num_lo_txns_(0),
-      expected_num_lo_txns_(txn->internal().involved_replicas_size()),
+      expected_num_lo_txns_(txn->internal().involved_regions_size()),
       num_dispatches_(0),
       worker_(std::nullopt) {
   lo_txns_[main_txn_idx_].reset(txn);

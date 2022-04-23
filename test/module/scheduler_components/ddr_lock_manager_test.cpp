@@ -142,7 +142,7 @@ TEST(DDRLockManagerTest, MultiEdgeBetweenTwoTxns) {
   ASSERT_TRUE(result.empty());
 }
 
-TEST(DDRLockManagerTest, KeyReplicaLocks) {
+TEST(DDRLockManagerTest, KeyRegionLocks) {
   DDRLockManager lock_manager;
   auto configs = MakeTestConfigurations("locking", 3, 1);
   auto holder1 = MakeTestTxnHolder(configs[0], 100, {{"writeA", KeyType::WRITE, 2}, {"writeB", KeyType::WRITE, 2}});
@@ -220,10 +220,10 @@ class DDRLockManagerWithResolverTest : public ::testing::Test {
  protected:
   std::deque<DDRLockManager> lock_managers;
 
-  slog::ConfigVec Initialize(int num_replicas, int num_partitions, int ddr_interval = 0) {
+  slog::ConfigVec Initialize(int num_regions, int num_partitions, int ddr_interval = 0) {
     internal::Configuration add_on;
     add_on.set_ddr_interval(ddr_interval);
-    auto configs = MakeTestConfigurations("locking", num_replicas, num_partitions, add_on);
+    auto configs = MakeTestConfigurations("locking", num_regions, num_partitions, add_on);
 
     for (auto config : configs) {
       auto broker = brokers_.emplace_back(Broker::New(config, kTestModuleTimeout));

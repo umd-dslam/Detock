@@ -123,12 +123,12 @@ AcquireLocksResult RMALockManager::AcquireLocks(const Transaction& txn) {
       continue;
     }
 
-    auto key_replica = MakeKeyReplica(kv.key(), home);
-    txn_info.keys.push_back(key_replica);
+    auto key_region = MakeKeyRegion(kv.key(), home);
+    txn_info.keys.push_back(key_region);
 
-    auto& lock_state = lock_table_[key_replica];
+    auto& lock_state = lock_table_[key_region];
 
-    DCHECK(!lock_state.Contains(txn_id)) << "Txn requested lock twice: " << txn_id << ", " << key_replica;
+    DCHECK(!lock_state.Contains(txn_id)) << "Txn requested lock twice: " << txn_id << ", " << key_region;
 
     auto before_mode = lock_state.mode;
     switch (kv.value_entry().type()) {
@@ -163,8 +163,8 @@ vector<TxnId> RMALockManager::ReleaseLocks(TxnId txn_id) {
     return result;
   }
   auto& info = info_it->second;
-  for (const auto& key_replica : info.keys) {
-    auto lock_state_it = lock_table_.find(key_replica);
+  for (const auto& key_region : info.keys) {
+    auto lock_state_it = lock_table_.find(key_region);
     if (lock_state_it == lock_table_.end()) {
       continue;
     }

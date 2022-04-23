@@ -80,7 +80,7 @@ def print_slog_config_fragment(instance_public_ips, instance_private_ips, num_cl
         ]
         clients = [f'  client_addresses: "{ip}"' for ip in client_ips]
         slog_configs.append(
-            "replicas: {\n"
+            "regions: {\n"
             + "\n".join(private_server_ips_str)
             + "\n"
             + "\n".join(public_server_ips_str)

@@ -143,7 +143,7 @@ TEST_F(PaxosTest, MultiRegionsWithNonMembers) {
   auto configs = MakeTestConfigurations("paxos", 2, 2);
   vector<MachineId> members;
   auto member_part = configs.front()->leader_partition_for_multi_home_ordering();
-  for (uint32_t rep = 0; rep < configs.front()->num_replicas(); rep++) {
+  for (uint32_t rep = 0; rep < configs.front()->num_regions(); rep++) {
     members.emplace_back(configs.front()->MakeMachineId(rep, member_part));
   }
   for (auto config : configs) {

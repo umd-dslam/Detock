@@ -190,13 +190,13 @@ class PartitionedTPCCDataLoader {
   }
 };
 
-void LoadTables(const StorageAdapterPtr& storage_adapter, int W, int num_replicas, int num_partitions, int partition,
+void LoadTables(const StorageAdapterPtr& storage_adapter, int W, int num_regions, int num_partitions, int partition,
                 int num_threads) {
   LOG(INFO) << "Generating ~" << W / num_partitions << " warehouses using " << num_threads << " threads. ";
 
   std::vector<int> rep_w;
   int rep_w_counter = partition;
-  for (int i = 0; i < num_replicas; i++) {
+  for (int i = 0; i < num_regions; i++) {
     rep_w.push_back(rep_w_counter + 1);
     rep_w_counter += num_partitions;
   }

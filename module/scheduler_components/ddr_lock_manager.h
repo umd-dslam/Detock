@@ -65,11 +65,11 @@ class DeadlockResolver;
  * again for any future txns coming into this lock manager.
  *
  * Remastering:
- * Locks are taken on the tuple <key, replica>, using the transaction's
+ * Locks are taken on the tuple <key, region>, using the transaction's
  * master metadata. The masters are checked in the worker, so if two
  * transactions hold separate locks for the same key, then one has an
  * incorrect master and will be aborted. Remaster transactions request the
- * locks for both <key, old replica> and <key, new replica>.
+ * locks for both <key, old region> and <key, new region>.
  */
 class DDRLockManager {
  public:
@@ -154,7 +154,7 @@ class DDRLockManager {
     bool is_ready() const { return num_waiting_for == 0 && unarrived_lock_requests == 0; }
   };
 
-  std::unordered_map<KeyReplica, LockQueueTail> lock_table_;
+  std::unordered_map<KeyRegion, LockQueueTail> lock_table_;
   std::unordered_map<TxnId, TxnInfo> txn_info_;
   mutable SpinLatch txn_info_latch_;
 

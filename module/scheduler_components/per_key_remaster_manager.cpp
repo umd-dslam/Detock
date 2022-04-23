@@ -126,8 +126,8 @@ void PerKeyRemasterManager::TryToUnblock(const Key& unblocked_key, RemasterOccur
         if (static_cast<int>(kv.value_entry().metadata().master()) == lock_only_txn->internal().home()) {
           auto q_it = blocked_queue_.find(kv.key());
           DCHECK(q_it != blocked_queue_.end()) << "Transaction was not in correct blocked_queues";
-          auto& front_txn_replica_id = q_it->second.front().first;
-          if (front_txn_replica_id != lock_only_txn) {
+          auto& front_txn_region_id = q_it->second.front().first;
+          if (front_txn_region_id != lock_only_txn) {
             return;
           }
         }

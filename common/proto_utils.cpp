@@ -44,7 +44,7 @@ Transaction* MakeTransaction(const vector<KeyMetadata>& key_metadatas,
 
   SetTransactionType(*txn);
 
-  PopulateInvolvedReplicas(*txn);
+  PopulateInvolvedRegions(*txn);
 
   return txn;
 }
@@ -116,7 +116,7 @@ Transaction* GeneratePartitionedTxn(const SharderPtr& sharder, Transaction* txn,
     new_txn = new Transaction(*txn);
   }
 
-  vector<bool> involved_replicas(8, false);
+  vector<bool> involved_regions(8, false);
 
   // Check if the generated subtxn does not intend to lock any key in its home region
   // If this is a remaster txn, it is never redundant
@@ -128,10 +128,10 @@ Transaction* GeneratePartitionedTxn(const SharderPtr& sharder, Transaction* txn,
       it = new_txn->mutable_keys()->erase(it);
     } else {
       auto master = it->value_entry().metadata().master();
-      if (master >= involved_replicas.size()) {
-        involved_replicas.resize(master + 1);
+      if (master >= involved_regions.size()) {
+        involved_regions.resize(master + 1);
       }
-      involved_replicas[master] = true;
+      involved_regions[master] = true;
       is_redundant &= static_cast<int>(master) != new_txn->internal().home();
 
       ++it;
@@ -144,12 +144,12 @@ Transaction* GeneratePartitionedTxn(const SharderPtr& sharder, Transaction* txn,
     return nullptr;
   }
 
-  // Update involved replica list if needed
+  // Update involved region list if needed
   if (new_txn->internal().type() == TransactionType::MULTI_HOME_OR_LOCK_ONLY) {
-    new_txn->mutable_internal()->mutable_involved_replicas()->Clear();
-    for (size_t r = 0; r < involved_replicas.size(); ++r) {
-      if (involved_replicas[r]) {
-        new_txn->mutable_internal()->add_involved_replicas(r);
+    new_txn->mutable_internal()->mutable_involved_regions()->Clear();
+    for (size_t r = 0; r < involved_regions.size(); ++r) {
+      if (involved_regions[r]) {
+        new_txn->mutable_internal()->add_involved_regions(r);
       }
     }
   }
@@ -157,33 +157,33 @@ Transaction* GeneratePartitionedTxn(const SharderPtr& sharder, Transaction* txn,
   return new_txn;
 }
 
-void PopulateInvolvedReplicas(Transaction& txn) {
+void PopulateInvolvedRegions(Transaction& txn) {
   if (txn.internal().type() == TransactionType::UNKNOWN) {
     return;
   }
 
   if (txn.internal().type() == TransactionType::SINGLE_HOME) {
-    txn.mutable_internal()->mutable_involved_replicas()->Clear();
+    txn.mutable_internal()->mutable_involved_regions()->Clear();
     CHECK(txn.keys().begin()->value_entry().has_metadata());
-    txn.mutable_internal()->add_involved_replicas(txn.keys().begin()->value_entry().metadata().master());
+    txn.mutable_internal()->add_involved_regions(txn.keys().begin()->value_entry().metadata().master());
     return;
   }
 
-  vector<uint32_t> involved_replicas;
+  vector<uint32_t> involved_regions;
   for (const auto& kv : txn.keys()) {
     CHECK(kv.value_entry().has_metadata());
-    involved_replicas.push_back(kv.value_entry().metadata().master());
+    involved_regions.push_back(kv.value_entry().metadata().master());
   }
 
 #ifdef REMASTER_PROTOCOL_COUNTERLESS
   if (txn.program_case() == Transaction::kRemaster) {
-    involved_replicas.push_back(txn.remaster().new_master());
+    involved_regions.push_back(txn.remaster().new_master());
   }
 #endif
 
-  sort(involved_replicas.begin(), involved_replicas.end());
-  auto last = unique(involved_replicas.begin(), involved_replicas.end());
-  txn.mutable_internal()->mutable_involved_replicas()->Add(involved_replicas.begin(), last);
+  sort(involved_regions.begin(), involved_regions.end());
+  auto last = unique(involved_regions.begin(), involved_regions.end());
+  txn.mutable_internal()->mutable_involved_regions()->Add(involved_regions.begin(), last);
 }
 
 void PopulateInvolvedPartitions(const SharderPtr& sharder, Transaction& txn) {
@@ -242,10 +242,10 @@ void MergeTransaction(Transaction& txn, const Transaction& other) {
   txn.mutable_internal()->mutable_global_log_positions()->Add(-1);
   txn.mutable_internal()->mutable_global_log_positions()->MergeFrom(other.internal().global_log_positions());
 
-  auto involved_replicas = txn.mutable_internal()->mutable_involved_replicas();
-  involved_replicas->MergeFrom(other.internal().involved_replicas());
-  std::sort(involved_replicas->begin(), involved_replicas->end());
-  involved_replicas->erase(std::unique(involved_replicas->begin(), involved_replicas->end()), involved_replicas->end());
+  auto involved_regions = txn.mutable_internal()->mutable_involved_regions();
+  involved_regions->MergeFrom(other.internal().involved_regions());
+  std::sort(involved_regions->begin(), involved_regions->end());
+  involved_regions->erase(std::unique(involved_regions->begin(), involved_regions->end()), involved_regions->end());
 }
 
 std::ostream& operator<<(std::ostream& os, const Procedures& code) {
@@ -306,8 +306,8 @@ std::ostream& operator<<(std::ostream& os, const Transaction& txn) {
     os << p << " ";
   }
   os << "\n";
-  os << "Involved replicas: ";
-  for (auto r : txn.internal().involved_replicas()) {
+  os << "Involved regions: ";
+  for (auto r : txn.internal().involved_regions()) {
     os << r << " ";
   }
   os << std::endl;

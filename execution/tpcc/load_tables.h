@@ -6,7 +6,7 @@
 namespace slog {
 namespace tpcc {
 
-void LoadTables(const StorageAdapterPtr& storage_adapter, int W, int num_replicas, int num_partitions, int partition,
+void LoadTables(const StorageAdapterPtr& storage_adapter, int W, int num_regions, int num_partitions, int partition,
                 int num_threads = 3);
 
 }  // namespace tpcc

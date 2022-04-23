@@ -47,7 +47,7 @@ class SimpleSharder2 : public Sharder {
   uint32_t compute_partition(const Key& key) const final;
 
  private:
-  uint32_t num_replicas_;
+  uint32_t num_regions_;
 };
 
 class TPCCSharder : public Sharder {

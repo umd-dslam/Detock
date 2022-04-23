@@ -10,7 +10,7 @@ using internal::Request;
 namespace {
 
 vector<MachineId> GetMembers(const ConfigurationPtr& config) {
-  auto local_rep = config->local_replica();
+  auto local_rep = config->local_region();
   vector<MachineId> members;
   members.reserve(config->num_partitions());
   // Enlist all machines in the same region as members
@@ -27,7 +27,7 @@ GlobalPaxos::GlobalPaxos(const shared_ptr<Broker>& broker, std::chrono::millisec
                           poll_timeout),
       local_machine_id_(broker->config()->local_machine_id()) {
   auto& config = broker->config();
-  for (uint32_t rep = 0; rep < config->num_replicas(); rep++) {
+  for (uint32_t rep = 0; rep < config->num_regions(); rep++) {
     multihome_orderers_.push_back(config->MakeMachineId(rep, config->leader_partition_for_multi_home_ordering()));
   }
 }
@@ -47,7 +47,7 @@ LocalPaxos::LocalPaxos(const shared_ptr<Broker>& broker, std::chrono::millisecon
     : SimulatedMultiPaxos(kLocalPaxos, broker, GetMembers(broker->config()), broker->config()->local_machine_id(),
                           poll_timeout),
       local_log_channel_(kLogManagerChannel +
-                         broker->config()->local_replica() % broker->config()->num_log_managers()) {}
+                         broker->config()->local_region() % broker->config()->num_log_managers()) {}
 
 void LocalPaxos::OnCommit(uint32_t slot, uint32_t value, MachineId leader) {
   auto env = NewEnvelope();

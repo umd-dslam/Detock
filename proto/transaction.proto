@@ -93,7 +93,7 @@ message TransactionInternal {
     int64 timestamp = 5;
     repeated uint32 involved_partitions = 6;
     repeated uint32 active_partitions = 7;
-    repeated uint32 involved_replicas = 8;
+    repeated uint32 involved_regions = 8;
 
     // for recording time of different events of txn
     repeated TransactionEventInfo events = 9;

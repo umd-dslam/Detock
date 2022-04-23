@@ -32,7 +32,7 @@ const RawParamMap DEFAULT_PARAMS = {{MH_PCT, "0"}, {HOT, "100"}, {RECORDS, "10"}
 long long NumKeysPerRegion(const ConfigurationPtr& config) {
   auto simple_partitioning = config->proto_config().simple_partitioning2();
   auto num_records = static_cast<long long>(simple_partitioning.num_records());
-  return num_records / config->num_replicas();
+  return num_records / config->num_regions();
 }
 
 }  // namespace
@@ -59,7 +59,7 @@ std::pair<Transaction*, TransactionProfile> CockroachWorkload::NextTransaction()
 
   pro.client_txn_id = client_txn_id_counter_;
 
-  auto num_replicas = config_->num_replicas();
+  auto num_regions = config_->num_regions();
   auto num_partitions = config_->num_partitions();
 
   // Decide if this is a multi-home txn or not
@@ -76,21 +76,21 @@ std::pair<Transaction*, TransactionProfile> CockroachWorkload::NextTransaction()
     numeric_keys = KeyBatch(records_, 2);
     CHECK(!numeric_keys.empty());
     for (size_t i = 0; i < numeric_keys.size(); i++) {
-      numeric_keys[i] = numeric_keys[i] * num_replicas + local_region_;
+      numeric_keys[i] = numeric_keys[i] * num_regions + local_region_;
       homes[i] = local_region_;
     }
     is_hot[0] = is_hot[1] = true;
   } else {
     // Select a remote region
-    std::uniform_int_distribution<> dis(1, num_replicas - 1);
-    uint32_t remote_region = (local_region_ + dis(rg_)) % num_replicas;
+    std::uniform_int_distribution<> dis(1, num_regions - 1);
+    uint32_t remote_region = (local_region_ + dis(rg_)) % num_regions;
     int num_local_keys = records_ / 2;
 
     // Select keys from the local region
     auto local_keys = KeyBatch(num_local_keys, 1);
     CHECK(!local_keys.empty());
     for (int i = 0; i < num_local_keys; i++) {
-      numeric_keys[i] = local_keys[i] * num_replicas + local_region_;
+      numeric_keys[i] = local_keys[i] * num_regions + local_region_;
       homes[i] = local_region_;
     }
 
@@ -98,7 +98,7 @@ std::pair<Transaction*, TransactionProfile> CockroachWorkload::NextTransaction()
     auto remote_keys = KeyBatch(records_ - num_local_keys, 1);
     CHECK(!remote_keys.empty());
     for (int i = num_local_keys; i < records_; i++) {
-      numeric_keys[i] = remote_keys[i - num_local_keys] * num_replicas + remote_region;
+      numeric_keys[i] = remote_keys[i - num_local_keys] * num_regions + remote_region;
       homes[i] = remote_region;
     }
     is_hot[0] = is_hot[num_local_keys] = true;
@@ -123,7 +123,7 @@ std::pair<Transaction*, TransactionProfile> CockroachWorkload::NextTransaction()
     record.is_write = true;
     record.home = homes[i];
     // See SimpleSharder2
-    record.partition = numeric_keys[i] / num_replicas % num_partitions;
+    record.partition = numeric_keys[i] / num_regions % num_partitions;
     record.is_hot = is_hot[i];
     if (last_partition == -1) {
       last_partition = record.partition;

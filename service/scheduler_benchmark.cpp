@@ -45,7 +45,7 @@ int main(int argc, char* argv[]) {
   config_proto.set_num_partitions(1);
   config_proto.mutable_simple_partitioning()->set_num_records(FLAGS_records);
   config_proto.mutable_simple_partitioning()->set_record_size_bytes(FLAGS_record_size);
-  config_proto.add_replicas()->add_addresses(address);
+  config_proto.add_regions()->add_addresses(address);
   config_proto.set_num_workers(FLAGS_workers);
   if (FLAGS_execution == "noop") {
     config_proto.set_execution_type(internal::ExecutionType::NOOP);
@@ -72,7 +72,7 @@ int main(int argc, char* argv[]) {
   LOG(INFO) << "Generating " << FLAGS_txns << " transactions";
   for (size_t i = 0; i < FLAGS_txns; i++) {
     auto txn = workload.NextTransaction().first;
-    txn->mutable_internal()->add_involved_replicas(0);
+    txn->mutable_internal()->add_involved_regions(0);
     txn->mutable_internal()->add_involved_partitions(0);
     txn->mutable_internal()->set_coordinating_server(0);
     transactions.push_back(txn);

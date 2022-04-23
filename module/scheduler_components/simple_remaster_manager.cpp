@@ -50,8 +50,8 @@ RemasterOccurredResult SimpleRemasterManager::RemasterOccured(const Key& remaste
 
 RemasterOccurredResult SimpleRemasterManager::ReleaseTransaction(const Transaction& txn) {
   auto& txn_internal = txn.internal();
-  for (auto replica : txn_internal.involved_replicas()) {
-    auto it = blocked_queue_.find(replica);
+  for (auto region : txn_internal.involved_regions()) {
+    auto it = blocked_queue_.find(region);
     if (it == blocked_queue_.end() || it->second.empty()) {
       continue;
     }
@@ -67,9 +67,9 @@ RemasterOccurredResult SimpleRemasterManager::ReleaseTransaction(const Transacti
   // Note: this must happen after the transaction is released, otherwise it could be returned in
   // the unblocked list
   RemasterOccurredResult result;
-  for (auto replica : txn_internal.involved_replicas()) {
+  for (auto region : txn_internal.involved_regions()) {
     // TODO: only necessary if a removed txn was front of the queue
-    TryToUnblock(replica, result);
+    TryToUnblock(region, result);
   }
   return result;
 }
@@ -94,7 +94,7 @@ void SimpleRemasterManager::TryToUnblock(uint32_t local_log_machine_id, Remaster
   // Head of queue has changed
   it->second.pop_front();
 
-  // Note: queue may be left empty, since there are not many replicas
+  // Note: queue may be left empty, since there are not many regions
   TryToUnblock(local_log_machine_id, result);
 }
 

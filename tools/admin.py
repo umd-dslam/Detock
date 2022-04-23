@@ -52,19 +52,19 @@ RemoteProcess = collections.namedtuple(
         "docker_client",
         "public_address",
         "private_address",
-        "replica",
+        "region",
         "partition",
     ],
 )
 
 
-def public_addresses(rep: Replica):
+def public_addresses(rep: Region):
     if rep.public_addresses:
         return rep.public_addresses
     return rep.addresses
 
 
-def private_addresses(rep: Replica):
+def private_addresses(rep: Region):
     return rep.addresses
 
 
@@ -231,7 +231,7 @@ class AdminCommand(Command):
     def init_remote_processes(self, args):
         # Create a docker client for each node
         self.remote_procs = []
-        for rep, rep_info in enumerate(self.config.replicas):
+        for rep, rep_info in enumerate(self.config.regions):
             for part, (pub_addr, priv_addr) in enumerate(
                 zip(public_addresses(rep_info), private_addresses(rep_info))
             ):
@@ -309,7 +309,7 @@ class GenDataCommand(AdminCommand):
     def do_command(self, args):
         shell_cmd = (
             f"tools/gen_data.py {CONTAINER_DATA_DIR} "
-            f"--num-replicas {len(self.config.replicas)} "
+            f"--num-regions {len(self.config.regions)} "
             f"--num-partitions {self.config.num_partitions} "
             f"--partition-bytes {self.config.hash_partitioning.partition_key_num_bytes} "
             f"--partition {args.partition} "
@@ -440,7 +440,7 @@ class StatusCommand(AdminCommand):
         key_func = lambda p: p.replica
         remote_procs = sorted(self.remote_procs, key=key_func)
         for rep, g in itertools.groupby(remote_procs, key_func):
-            print(f"Replica {rep}:")
+            print(f"Region {rep}:")
             for client, addr, _, _, part, *_ in g:
                 status = get_container_status(client, SLOG_CONTAINER_NAME)
                 print(f"\tPartition {part} ({addr}): {status}")
@@ -462,8 +462,8 @@ class LogsCommand(AdminCommand):
             "-rp",
             nargs=2,
             type=int,
-            metavar=("REPLICA", "PARTITION"),
-            help="Two numbers representing the replica and"
+            metavar=("REGION", "PARTITION"),
+            help="Two numbers representing the region and"
             "partition of the machine to stream log from.",
         )
         parser.add_argument(
@@ -495,16 +495,16 @@ class LogsCommand(AdminCommand):
                 else:
                     # Check if the given address is specified in the config
                     if args.client:
-                        addr_is_in_replica = (
+                        addr_is_in_region = (
                             args.a.encode() in rep.client_addresses
-                            for rep in self.config.replicas
+                            for rep in self.config.regions
                         )
                     else:
-                        addr_is_in_replica = (
+                        addr_is_in_region = (
                             args.a.encode() in public_addresses(rep)
-                            for rep in self.config.replicas
+                            for rep in self.config.regions
                         )
-                    if any(addr_is_in_replica):
+                    if any(addr_is_in_region):
                         self.addr = args.a
                     else:
                         LOG.error('Address "%s" is not specified in the config', args.a)
@@ -514,9 +514,9 @@ class LogsCommand(AdminCommand):
                     raise Exception('The "-rp" flag requires a valid config file')
                 r, p = args.rp
                 if args.client:
-                    self.addr = self.config.replicas[r].client_addresses[p]
+                    self.addr = self.config.regions[r].client_addresses[p]
                 else:
-                    addresses = public_addresses(self.config.replicas[r])
+                    addresses = public_addresses(self.config.regions[r])
                     self.addr = addresses[p]
 
             self.client = self.new_docker_client(args.user, self.addr)
@@ -603,7 +603,7 @@ class LocalCommand(AdminCommand):
         super().load_config(args)
         # Replace the addresses in the config with auto-generated addresses
         address_generator = ipaddress.ip_network(self.IP_RANGE).hosts()
-        for rep in self.config.replicas:
+        for rep in self.config.regions:
             del rep.addresses[:]
             for p in range(self.config.num_partitions):
                 ip_address = str(next(address_generator))
@@ -669,12 +669,12 @@ class LocalCommand(AdminCommand):
 
         # Clean up everything first so that the old running session does not
         # mess up with broker synchronization of the new session
-        for r, rep in enumerate(self.config.replicas):
+        for r, rep in enumerate(self.config.regions):
             for p, _ in enumerate(public_addresses(rep)):
                 container_name = f"slog_{r}_{p}"
                 cleanup_container(self.client, container_name)
 
-        for r, rep in enumerate(self.config.replicas):
+        for r, rep in enumerate(self.config.regions):
             for p, (pub_addr, priv_addr) in enumerate(
                 zip(public_addresses(rep), private_addresses(rep))
             ):
@@ -712,7 +712,7 @@ class LocalCommand(AdminCommand):
                 )
 
     def __stop(self):
-        for r in range(len(self.config.replicas)):
+        for r in range(len(self.config.regions)):
             for p in range(self.config.num_partitions):
                 try:
                     container_name = f"slog_{r}_{p}"
@@ -723,14 +723,14 @@ class LocalCommand(AdminCommand):
                     pass
 
     def __remove(self):
-        for r in range(len(self.config.replicas)):
+        for r in range(len(self.config.regions)):
             for p in range(self.config.num_partitions):
                 container_name = f"slog_{r}_{p}"
                 cleanup_container(self.client, container_name)
 
     def __status(self):
-        for r, rep in enumerate(self.config.replicas):
-            print(f"Replica {r}:")
+        for r, rep in enumerate(self.config.regions):
+            print(f"Region {r}:")
             for p, addr in enumerate(public_addresses(rep)):
                 container_name = f"slog_{r}_{p}"
                 status = get_container_status(self.client, container_name)
@@ -822,7 +822,7 @@ class BenchmarkCommand(AdminCommand):
         """
         self.remote_procs = []
         # Create a docker client for each node
-        for rep, rep_info in enumerate(self.config.replicas):
+        for rep, rep_info in enumerate(self.config.regions):
             for i, addr in enumerate(rep_info.client_addresses):
                 # Use None as a placeholder for the first value
                 self.remote_procs.append(RemoteProcess(None, addr, None, rep, i))
@@ -974,7 +974,7 @@ class CollectClientCommand(AdminCommand):
         client_out_dir = os.path.join(args.out_dir, args.tag, "client")
         machines = [
             {"address": c, "name": str(i)}
-            for i, r in enumerate(self.config.replicas)
+            for i, r in enumerate(self.config.regions)
             for c in r.client_addresses
         ]
         fetch_data(machines, args.user, args.tag, client_out_dir)
@@ -1009,7 +1009,7 @@ class CollectServerCommand(AdminCommand):
 
     def do_command(self, args):
         if not args.download_only:
-            addresses = [a for r in self.config.replicas for a in public_addresses(r)]
+            addresses = [a for r in self.config.regions for a in public_addresses(r)]
 
             out_dir = os.path.join(HOST_DATA_DIR, args.tag)
             config_path = os.path.join(HOST_DATA_DIR, self.config_name)
@@ -1055,7 +1055,7 @@ class CollectServerCommand(AdminCommand):
         server_out_dir = os.path.join(args.out_dir, args.tag, "server")
         machines = [
             {"address": a, "name": f"{r}-{p}"}
-            for r, rep in enumerate(self.config.replicas)
+            for r, rep in enumerate(self.config.regions)
             for p, a in enumerate(public_addresses(rep))
         ]
         fetch_data(machines, args.user, args.tag, server_out_dir)
@@ -1099,20 +1099,20 @@ class GenNetEmCommand(AdminCommand):
             for line in f:
                 arr = list(map(float, line.split(",")))
                 assert len(arr) == len(
-                    self.config.replicas
+                    self.config.regions
                 ), "Number of regions must match config"
                 latency.append(arr)
 
         assert len(latency) == len(
-            self.config.replicas
+            self.config.regions
         ), "Number of regions must match config"
 
         commands = []
         preview = []
-        for i, r_from in enumerate(self.config.replicas):
+        for i, r_from in enumerate(self.config.regions):
             netems = []
             filters = []
-            for j, r_to in enumerate(self.config.replicas):
+            for j, r_to in enumerate(self.config.regions):
                 if i == j:
                     continue
 

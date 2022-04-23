@@ -86,7 +86,7 @@ class DeadlockResolver : public NetworkedModule {
     vector<TxnId> waited_by;
   };
   // This map replicate a snapshot of the txn info map in the lock manager. Any updates
-  // made by the resolver is performed on this replica so that it does not conflict with
+  // made by the resolver is performed on this region so that it does not conflict with
   // the lock manager while it is doing so.
   unordered_map<TxnId, TxnInfoUpdate> txn_info_updates_;
 
@@ -149,7 +149,7 @@ class DeadlockResolver : public NetworkedModule {
     other_partitions.reserve(config_->num_partitions());
     for (uint32_t p = 0; p < config_->num_partitions(); p++) {
       if (p != config_->local_partition()) {
-        other_partitions.push_back(config_->MakeMachineId(config_->local_replica(), p));
+        other_partitions.push_back(config_->MakeMachineId(config_->local_region(), p));
       }
     }
     Send(move(graph_log_env), other_partitions, kDeadlockResolverChannel);
@@ -526,8 +526,8 @@ AcquireLocksResult DDRLockManager::AcquireLocks(const Transaction& txn) {
   auto txn_id = txn.internal().id();
   auto home = txn.internal().home();
   auto is_remaster = txn.program_case() == Transaction::kRemaster;
-  // The txn may contain keys that are homed in a remote replica. This variable
-  // counts the keys homed in the current replica.
+  // The txn may contain keys that are homed in a remote region. This variable
+  // counts the keys homed in the current region.
   int num_relevant_locks = 0;
 
   // Collect a list of txns that are blocking the current txn
@@ -538,8 +538,8 @@ AcquireLocksResult DDRLockManager::AcquireLocks(const Transaction& txn) {
     }
     ++num_relevant_locks;
 
-    auto key_replica = MakeKeyReplica(kv.key(), home);
-    auto& lock_queue_tail = lock_table_[key_replica];
+    auto key_region = MakeKeyRegion(kv.key(), home);
+    auto& lock_queue_tail = lock_table_[key_region];
 
     switch (kv.value_entry().type()) {
       case KeyType::READ: {

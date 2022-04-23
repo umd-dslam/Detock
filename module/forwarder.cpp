@@ -42,7 +42,7 @@ Forwarder::Forwarder(const std::shared_ptr<zmq::context_t>& context, const Confi
       partitioned_lookup_request_(config->num_partitions()),
       batch_size_(0),
       rg_(std::random_device{}()) {
-  for (uint32_t i = 0; i < config->num_replicas(); i++) {
+  for (uint32_t i = 0; i < config->num_regions(); i++) {
     latencies_ns_.emplace_back(config->avg_latency_window_size());
   }
 }
@@ -57,7 +57,7 @@ void Forwarder::ScheduleNextLatencyProbe() {
   NewTimedCallback(config()->fs_latency_interval(), [this] {
     auto p = config()->leader_partition_for_multi_home_ordering();
     auto now = slog_clock::now().time_since_epoch().count();
-    for (uint32_t r = 0; r < config()->num_replicas(); r++) {
+    for (uint32_t r = 0; r < config()->num_regions(); r++) {
       auto env = NewEnvelope();
       auto ping = env->mutable_request()->mutable_ping();
       ping->set_src_time(now);
@@ -154,7 +154,7 @@ void Forwarder::SendLookupMasterRequestBatch() {
                                                   (std::chrono::steady_clock::now() - batch_starting_time_).count());
   }
 
-  auto local_rep = config()->local_replica();
+  auto local_rep = config()->local_region();
   auto num_partitions = config()->num_partitions();
   for (uint32_t part = 0; part < num_partitions; part++) {
     if (!partitioned_lookup_request_[part].request().lookup_master().txn_ids().empty()) {
@@ -261,13 +261,13 @@ void Forwarder::Forward(EnvelopePtr&& env) {
   auto txn_id = txn_internal->id();
   auto txn_type = txn_internal->type();
 
-  PopulateInvolvedReplicas(*txn);
+  PopulateInvolvedRegions(*txn);
 
   if (txn_type == TransactionType::SINGLE_HOME) {
-    // If this current replica is its home, forward to the sequencer of the same machine
+    // If this current region is its home, forward to the sequencer of the same machine
     // Otherwise, forward to the sequencer of a random machine in its home region
-    auto home_replica = txn->keys().begin()->value_entry().metadata().master();
-    if (home_replica == config()->local_replica()) {
+    auto home_region = txn->keys().begin()->value_entry().metadata().master();
+    if (home_region == config()->local_region()) {
       VLOG(3) << "Current region is home of txn " << txn_id;
 
       RECORD(txn_internal, TransactionEvent::EXIT_FORWARDER_TO_SEQUENCER);
@@ -275,14 +275,14 @@ void Forwarder::Forward(EnvelopePtr&& env) {
       Send(move(env), kSequencerChannel);
     } else {
       auto partition = ChooseRandomPartition(*txn, rg_);
-      auto random_machine_in_home_replica = config()->MakeMachineId(home_replica, partition);
+      auto random_machine_in_home_region = config()->MakeMachineId(home_region, partition);
 
-      VLOG(3) << "Forwarding txn " << txn_id << " to its home region (rep: " << home_replica << ", part: " << partition
+      VLOG(3) << "Forwarding txn " << txn_id << " to its home region (rep: " << home_region << ", part: " << partition
               << ")";
 
       RECORD(txn_internal, TransactionEvent::EXIT_FORWARDER_TO_SEQUENCER);
 
-      Send(*env, random_machine_in_home_replica, kSequencerChannel);
+      Send(*env, random_machine_in_home_region, kSequencerChannel);
     }
   } else if (txn_type == TransactionType::MULTI_HOME_OR_LOCK_ONLY) {
     RECORD(txn_internal, TransactionEvent::EXIT_FORWARDER_TO_MULTI_HOME_ORDERER);
@@ -290,15 +290,15 @@ void Forwarder::Forward(EnvelopePtr&& env) {
     if (config()->bypass_mh_orderer()) {
       VLOG(3) << "Txn " << txn_id << " is a multi-home txn. Sending to the sequencer.";
 
-      // Send the txn directly to sequencers of involved replicas to generate lock-only txns
+      // Send the txn directly to sequencers of involved regions to generate lock-only txns
       auto part = config()->leader_partition_for_multi_home_ordering();
 
       if (config()->synchronized_batching()) {
         // If synchronized batching is on, compute the batching delay based on latency between the current
-        // replica to the involved replicas
+        // region to the involved regions
         std::vector<MachineId> destinations;
         int64_t max_avg_latency_ns = 0;
-        for (auto rep : txn_internal->involved_replicas()) {
+        for (auto rep : txn_internal->involved_regions()) {
           max_avg_latency_ns = std::max(max_avg_latency_ns, static_cast<int64_t>(latencies_ns_[rep].avg()));
           destinations.push_back(config()->MakeMachineId(rep, part));
         }
@@ -313,8 +313,8 @@ void Forwarder::Forward(EnvelopePtr&& env) {
         Send(move(env), destinations, kSequencerChannel);
       } else {
         std::vector<MachineId> destinations;
-        destinations.reserve(txn_internal->involved_replicas_size());
-        for (auto rep : txn_internal->involved_replicas()) {
+        destinations.reserve(txn_internal->involved_regions_size());
+        for (auto rep : txn_internal->involved_regions()) {
           destinations.push_back(config()->MakeMachineId(rep, part));
         }
         Send(move(env), destinations, kSequencerChannel);
