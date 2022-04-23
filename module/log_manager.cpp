@@ -219,18 +219,18 @@ void LogManager::AdvanceLog() {
       std::vector<MachineId> destinations, ack_destinations;
       destinations.reserve(num_regions);
       ack_destinations.reserve(config()->replication_factor());
-      for (uint32_t rep = 0; rep < num_regions; rep++) {
-        if (rep == local_region) {
+      for (uint32_t reg = 0; reg < num_regions; reg++) {
+        if (reg == local_region) {
           continue;
         }
         // Send to a fixed partition of the destination region to avoid reordering.
         // The partition is selected such that the logs are evenly distributed over
         // all partitions
-        auto part = (rep + num_regions - local_region) % num_regions % num_partitions;
-        if (need_ack_from_region_[rep]) {
-          ack_destinations.push_back(config()->MakeMachineId(rep, part));
+        auto part = (reg + num_regions - local_region) % num_regions % num_partitions;
+        if (need_ack_from_region_[reg]) {
+          ack_destinations.push_back(config()->MakeMachineId(reg, part));
         } else {
-          destinations.push_back(config()->MakeMachineId(rep, part));
+          destinations.push_back(config()->MakeMachineId(reg, part));
         }
       }
 

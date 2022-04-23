@@ -10,12 +10,12 @@ using internal::Request;
 namespace {
 
 vector<MachineId> GetMembers(const ConfigurationPtr& config) {
-  auto local_rep = config->local_region();
+  auto local_reg = config->local_region();
   vector<MachineId> members;
   members.reserve(config->num_partitions());
   // Enlist all machines in the same region as members
   for (uint32_t part = 0; part < config->num_partitions(); part++) {
-    members.push_back(config->MakeMachineId(local_rep, part));
+    members.push_back(config->MakeMachineId(local_reg, part));
   }
   return members;
 }
@@ -27,8 +27,8 @@ GlobalPaxos::GlobalPaxos(const shared_ptr<Broker>& broker, std::chrono::millisec
                           poll_timeout),
       local_machine_id_(broker->config()->local_machine_id()) {
   auto& config = broker->config();
-  for (uint32_t rep = 0; rep < config->num_regions(); rep++) {
-    multihome_orderers_.push_back(config->MakeMachineId(rep, config->leader_partition_for_multi_home_ordering()));
+  for (uint32_t reg = 0; reg < config->num_regions(); reg++) {
+    multihome_orderers_.push_back(config->MakeMachineId(reg, config->leader_partition_for_multi_home_ordering()));
   }
 }
 

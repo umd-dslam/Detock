@@ -80,13 +80,13 @@ BasicWorkload::BasicWorkload(const ConfigurationPtr& config, uint32_t region, co
   auto hot_keys_per_list = std::max(1U, params_.GetUInt32(HOT) / num_regions);
   const auto& proto_config = config->proto_config();
   for (uint32_t part = 0; part < num_partitions; part++) {
-    for (uint32_t rep = 0; rep < num_regions; rep++) {
+    for (uint32_t reg = 0; reg < num_regions; reg++) {
       // Initialize hot keys limit for each key list. When keys are added to a list,
       // the first keys are considered hot keys until this limit is reached and any new
       // keys from there are cold keys.
       switch (proto_config.partitioning_case()) {
         case internal::Configuration::kSimplePartitioning: {
-          partition_to_key_lists_[part].emplace_back(config, part, rep, hot_keys_per_list);
+          partition_to_key_lists_[part].emplace_back(config, part, reg, hot_keys_per_list);
           break;
         }
         case internal::Configuration::kHashPartitioning: {

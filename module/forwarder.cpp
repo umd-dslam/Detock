@@ -154,11 +154,11 @@ void Forwarder::SendLookupMasterRequestBatch() {
                                                   (std::chrono::steady_clock::now() - batch_starting_time_).count());
   }
 
-  auto local_rep = config()->local_region();
+  auto local_reg = config()->local_region();
   auto num_partitions = config()->num_partitions();
   for (uint32_t part = 0; part < num_partitions; part++) {
     if (!partitioned_lookup_request_[part].request().lookup_master().txn_ids().empty()) {
-      Send(partitioned_lookup_request_[part], config()->MakeMachineId(local_rep, part), kForwarderChannel);
+      Send(partitioned_lookup_request_[part], config()->MakeMachineId(local_reg, part), kForwarderChannel);
       partitioned_lookup_request_[part].Clear();
     }
   }
@@ -277,7 +277,7 @@ void Forwarder::Forward(EnvelopePtr&& env) {
       auto partition = ChooseRandomPartition(*txn, rg_);
       auto random_machine_in_home_region = config()->MakeMachineId(home_region, partition);
 
-      VLOG(3) << "Forwarding txn " << txn_id << " to its home region (rep: " << home_region << ", part: " << partition
+      VLOG(3) << "Forwarding txn " << txn_id << " to its home region (reg: " << home_region << ", part: " << partition
               << ")";
 
       RECORD(txn_internal, TransactionEvent::EXIT_FORWARDER_TO_SEQUENCER);
@@ -298,9 +298,9 @@ void Forwarder::Forward(EnvelopePtr&& env) {
         // region to the involved regions
         std::vector<MachineId> destinations;
         int64_t max_avg_latency_ns = 0;
-        for (auto rep : txn_internal->involved_regions()) {
-          max_avg_latency_ns = std::max(max_avg_latency_ns, static_cast<int64_t>(latencies_ns_[rep].avg()));
-          destinations.push_back(config()->MakeMachineId(rep, part));
+        for (auto reg : txn_internal->involved_regions()) {
+          max_avg_latency_ns = std::max(max_avg_latency_ns, static_cast<int64_t>(latencies_ns_[reg].avg()));
+          destinations.push_back(config()->MakeMachineId(reg, part));
         }
 
         auto now = slog_clock::now();
@@ -314,8 +314,8 @@ void Forwarder::Forward(EnvelopePtr&& env) {
       } else {
         std::vector<MachineId> destinations;
         destinations.reserve(txn_internal->involved_regions_size());
-        for (auto rep : txn_internal->involved_regions()) {
-          destinations.push_back(config()->MakeMachineId(rep, part));
+        for (auto reg : txn_internal->involved_regions()) {
+          destinations.push_back(config()->MakeMachineId(reg, part));
         }
         Send(move(env), destinations, kSequencerChannel);
       }

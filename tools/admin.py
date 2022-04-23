@@ -58,14 +58,14 @@ RemoteProcess = collections.namedtuple(
 )
 
 
-def public_addresses(rep: Region):
-    if rep.public_addresses:
-        return rep.public_addresses
-    return rep.addresses
+def public_addresses(reg: Region):
+    if reg.public_addresses:
+        return reg.public_addresses
+    return reg.addresses
 
 
-def private_addresses(rep: Region):
-    return rep.addresses
+def private_addresses(reg: Region):
+    return reg.addresses
 
 
 def cleanup_container(
@@ -231,13 +231,13 @@ class AdminCommand(Command):
     def init_remote_processes(self, args):
         # Create a docker client for each node
         self.remote_procs = []
-        for rep, rep_info in enumerate(self.config.regions):
+        for reg, reg_info in enumerate(self.config.regions):
             for part, (pub_addr, priv_addr) in enumerate(
-                zip(public_addresses(rep_info), private_addresses(rep_info))
+                zip(public_addresses(reg_info), private_addresses(reg_info))
             ):
                 # Use None as a placeholder for the first value
                 self.remote_procs.append(
-                    RemoteProcess(None, pub_addr, priv_addr, rep, part)
+                    RemoteProcess(None, pub_addr, priv_addr, reg, part)
                 )
 
         def init_docker_client(remote_proc):
@@ -439,8 +439,8 @@ class StatusCommand(AdminCommand):
     def do_command(self, args):
         key_func = lambda p: p.replica
         remote_procs = sorted(self.remote_procs, key=key_func)
-        for rep, g in itertools.groupby(remote_procs, key_func):
-            print(f"Region {rep}:")
+        for reg, g in itertools.groupby(remote_procs, key_func):
+            print(f"Region {reg}:")
             for client, addr, _, _, part, *_ in g:
                 status = get_container_status(client, SLOG_CONTAINER_NAME)
                 print(f"\tPartition {part} ({addr}): {status}")
@@ -496,13 +496,13 @@ class LogsCommand(AdminCommand):
                     # Check if the given address is specified in the config
                     if args.client:
                         addr_is_in_region = (
-                            args.a.encode() in rep.client_addresses
-                            for rep in self.config.regions
+                            args.a.encode() in reg.client_addresses
+                            for reg in self.config.regions
                         )
                     else:
                         addr_is_in_region = (
-                            args.a.encode() in public_addresses(rep)
-                            for rep in self.config.regions
+                            args.a.encode() in public_addresses(reg)
+                            for reg in self.config.regions
                         )
                     if any(addr_is_in_region):
                         self.addr = args.a
@@ -603,11 +603,11 @@ class LocalCommand(AdminCommand):
         super().load_config(args)
         # Replace the addresses in the config with auto-generated addresses
         address_generator = ipaddress.ip_network(self.IP_RANGE).hosts()
-        for rep in self.config.regions:
-            del rep.addresses[:]
+        for reg in self.config.regions:
+            del reg.addresses[:]
             for p in range(self.config.num_partitions):
                 ip_address = str(next(address_generator))
-                rep.addresses.append(ip_address.encode())
+                reg.addresses.append(ip_address.encode())
 
     def init_remote_processes(self, args):
         """
@@ -669,14 +669,14 @@ class LocalCommand(AdminCommand):
 
         # Clean up everything first so that the old running session does not
         # mess up with broker synchronization of the new session
-        for r, rep in enumerate(self.config.regions):
-            for p, _ in enumerate(public_addresses(rep)):
+        for r, reg in enumerate(self.config.regions):
+            for p, _ in enumerate(public_addresses(reg)):
                 container_name = f"slog_{r}_{p}"
                 cleanup_container(self.client, container_name)
 
-        for r, rep in enumerate(self.config.regions):
+        for r, reg in enumerate(self.config.regions):
             for p, (pub_addr, priv_addr) in enumerate(
-                zip(public_addresses(rep), private_addresses(rep))
+                zip(public_addresses(reg), private_addresses(reg))
             ):
                 shell_cmd = (
                     f"slog "
@@ -729,9 +729,9 @@ class LocalCommand(AdminCommand):
                 cleanup_container(self.client, container_name)
 
     def __status(self):
-        for r, rep in enumerate(self.config.regions):
+        for r, reg in enumerate(self.config.regions):
             print(f"Region {r}:")
-            for p, addr in enumerate(public_addresses(rep)):
+            for p, addr in enumerate(public_addresses(reg)):
                 container_name = f"slog_{r}_{p}"
                 status = get_container_status(self.client, container_name)
                 print(f"\tPartition {p} ({addr}): {status}")
@@ -822,10 +822,10 @@ class BenchmarkCommand(AdminCommand):
         """
         self.remote_procs = []
         # Create a docker client for each node
-        for rep, rep_info in enumerate(self.config.regions):
-            for i, addr in enumerate(rep_info.client_addresses):
+        for reg, reg_info in enumerate(self.config.regions):
+            for i, addr in enumerate(reg_info.client_addresses):
                 # Use None as a placeholder for the first value
-                self.remote_procs.append(RemoteProcess(None, addr, None, rep, i))
+                self.remote_procs.append(RemoteProcess(None, addr, None, reg, i))
 
         def init_docker_client(proc):
             client = None
@@ -891,13 +891,13 @@ class BenchmarkCommand(AdminCommand):
 
         def benchmark_runner(enumerated_proc):
             i, proc = enumerated_proc
-            client, addr, _, rep, *_ = proc
+            client, addr, _, reg, *_ = proc
             rmdir_cmd = f"rm -rf {out_dir}"
             mkdir_cmd = f"mkdir -p {out_dir}"
             shell_cmd = (
                 f"benchmark "
                 f"--config {config_path} "
-                f"--r {rep} "
+                f"--r {reg} "
                 f"--data-dir {CONTAINER_DATA_DIR} "
                 f"--out-dir {out_dir} "
                 f"--duration {args.duration} "
@@ -1055,8 +1055,8 @@ class CollectServerCommand(AdminCommand):
         server_out_dir = os.path.join(args.out_dir, args.tag, "server")
         machines = [
             {"address": a, "name": f"{r}-{p}"}
-            for r, rep in enumerate(self.config.regions)
-            for p, a in enumerate(public_addresses(rep))
+            for r, reg in enumerate(self.config.regions)
+            for p, a in enumerate(public_addresses(reg))
         ]
         fetch_data(machines, args.user, args.tag, server_out_dir)
 

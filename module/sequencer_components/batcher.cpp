@@ -186,15 +186,15 @@ void Batcher::SendBatches() {
     auto env = NewBatchForwardingMessage(move(batch_partitions), home_position);
     std::vector<MachineId> destinations;
     destinations.reserve(num_regions);
-    for (uint32_t rep = 0; rep < num_regions; rep++) {
-      if (rep != local_region) {
+    for (uint32_t reg = 0; reg < num_regions; reg++) {
+      if (reg != local_region) {
         uint32_t part = 0;
         if (config()->sequencer_rrr()) {
           part = home_position % num_partitions;
         } else {
-          part = (rep + num_regions - local_region) % num_regions % num_partitions;
+          part = (reg + num_regions - local_region) % num_regions % num_partitions;
         }
-        destinations.push_back(config()->MakeMachineId(rep, part));
+        destinations.push_back(config()->MakeMachineId(reg, part));
       }
     }
 

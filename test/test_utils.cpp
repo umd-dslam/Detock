@@ -63,12 +63,12 @@ ConfigVec MakeTestConfigurations(string&& prefix, int num_regions, int num_parti
   ConfigVec configs;
   configs.reserve(num_machines);
 
-  for (int rep = 0; rep < num_regions; rep++) {
+  for (int reg = 0; reg < num_regions; reg++) {
     for (int part = 0; part < num_partitions; part++) {
       // Generate different server ports because tests
       // run on the same machine
       common_config.set_server_port(NextUnusedPort());
-      int i = rep * num_partitions + part;
+      int i = reg * num_partitions + part;
       string local_addr = addr + to_string(i);
       configs.push_back(std::make_shared<Configuration>(common_config, local_addr));
     }

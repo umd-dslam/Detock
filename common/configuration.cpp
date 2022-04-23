@@ -157,13 +157,13 @@ bool Configuration::sequencer_rrr() const { return config_.sequencer_rrr(); }
 uint32_t Configuration::replication_factor() const { return std::max(config_.replication_factor(), 1U); }
 
 vector<MachineId> Configuration::all_machine_ids() const {
-  auto num_reps = num_regions();
+  auto num_regs = num_regions();
   auto num_parts = num_partitions();
   vector<MachineId> ret;
-  ret.reserve(num_reps * num_parts);
-  for (size_t rep = 0; rep < num_reps; rep++) {
+  ret.reserve(num_regs * num_parts);
+  for (size_t reg = 0; reg < num_regs; reg++) {
     for (size_t part = 0; part < num_parts; part++) {
-      ret.push_back(MakeMachineId(rep, part));
+      ret.push_back(MakeMachineId(reg, part));
     }
   }
   return ret;

@@ -19,14 +19,14 @@ MultiHomeOrderer::MultiHomeOrderer(const shared_ptr<Broker>& broker, const Metri
                                    std::chrono::milliseconds poll_timeout)
     : NetworkedModule(broker, kMultiHomeOrdererChannel, metrics_manager, poll_timeout, true /* is_long_sender */),
       batch_id_counter_(0) {
-  batch_per_rep_.resize(config()->num_regions());
+  batch_per_reg_.resize(config()->num_regions());
   NewBatch();
 }
 
 void MultiHomeOrderer::NewBatch() {
   ++batch_id_counter_;
   batch_size_ = 0;
-  for (auto& batch : batch_per_rep_) {
+  for (auto& batch : batch_per_reg_) {
     if (batch == nullptr) {
       batch.reset(new Batch());
     }
@@ -110,10 +110,10 @@ void MultiHomeOrderer::AddToBatch(Transaction* txn) {
 
   auto& regions = txn->internal().involved_regions();
   for (int i = 0; i < regions.size() - 1; i++) {
-    batch_per_rep_[regions[i]]->add_transactions()->CopyFrom(*txn);
+    batch_per_reg_[regions[i]]->add_transactions()->CopyFrom(*txn);
   }
   // Add the last one directly instead of copying
-  batch_per_rep_[regions[regions.size() - 1]]->mutable_transactions()->AddAllocated(txn);
+  batch_per_reg_[regions[regions.size() - 1]]->mutable_transactions()->AddAllocated(txn);
 
   ++batch_size_;
 
@@ -143,11 +143,11 @@ void MultiHomeOrderer::SendBatch() {
 
   // Replicate new batch to other regions
   auto part = config()->leader_partition_for_multi_home_ordering();
-  for (uint32_t rep = 0; rep < config()->num_regions(); rep++) {
+  for (uint32_t reg = 0; reg < config()->num_regions(); reg++) {
     auto env = NewEnvelope();
     auto forward_batch = env->mutable_request()->mutable_forward_batch_data();
-    forward_batch->mutable_batch_data()->AddAllocated(batch_per_rep_[rep].release());
-    Send(move(env), config()->MakeMachineId(rep, part), kMultiHomeOrdererChannel);
+    forward_batch->mutable_batch_data()->AddAllocated(batch_per_reg_[reg].release());
+    Send(move(env), config()->MakeMachineId(reg, part), kMultiHomeOrdererChannel);
   }
 }
 

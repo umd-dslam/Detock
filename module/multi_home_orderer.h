@@ -43,7 +43,7 @@ class MultiHomeOrderer : public NetworkedModule {
   void AddToBatch(Transaction* txn);
   void SendBatch();
 
-  std::vector<std::unique_ptr<internal::Batch>> batch_per_rep_;
+  std::vector<std::unique_ptr<internal::Batch>> batch_per_reg_;
   BatchId batch_id_counter_;
   int batch_size_;
 
