@@ -25,7 +25,7 @@ from paramiko.ssh_exception import PasswordRequiredException
 from common import Command, initialize_and_run_commands
 from gen_data import add_exported_gen_data_arguments
 from netem import gen_netem_script
-from proto.configuration_pb2 import Configuration, Replica
+from proto.configuration_pb2 import Configuration, Region
 
 LOG = logging.getLogger("admin")
 

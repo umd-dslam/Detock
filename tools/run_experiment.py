@@ -14,7 +14,7 @@ from multiprocessing import Process
 import google.protobuf.text_format as text_format
 
 import admin
-from proto.configuration_pb2 import Configuration, Replica
+from proto.configuration_pb2 import Configuration, Region
 
 LOG = logging.getLogger("experiment")
 
