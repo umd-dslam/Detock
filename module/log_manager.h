@@ -6,7 +6,7 @@
 #include "common/configuration.h"
 #include "common/metrics.h"
 #include "common/types.h"
-#include "data_structure/batch_log.h"
+#include "common/batch_log.h"
 #include "module/base/networked_module.h"
 #include "proto/transaction.pb.h"
 

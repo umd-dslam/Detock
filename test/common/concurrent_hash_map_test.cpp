@@ -1,4 +1,4 @@
-#include "data_structure/concurrent_hash_map.h"
+#include "common/concurrent_hash_map.h"
 
 #include <gtest/gtest.h>
 

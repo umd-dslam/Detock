@@ -3,7 +3,7 @@
 #include <unordered_map>
 
 #include "common/clock.h"
-#include "data_structure/rolling_window.h"
+#include "common/rolling_window.h"
 #include "module/base/networked_module.h"
 
 namespace slog {

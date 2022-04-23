@@ -11,7 +11,7 @@
 #include "common/types.h"
 #include "connection/broker.h"
 #include "connection/sender.h"
-#include "data_structure/batch_log.h"
+#include "common/batch_log.h"
 #include "module/scheduler_components/txn_holder.h"
 #include "module/scheduler_components/worker.h"
 #include "storage/storage.h"

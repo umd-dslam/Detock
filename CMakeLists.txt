@@ -227,7 +227,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 #            Library
 #========================================
 
-set(SLOG_CORE_SRC_DIRS common connection data_structure execution module paxos storage workload)
+set(SLOG_CORE_SRC_DIRS common connection execution module paxos storage workload)
 add_library(slog-core STATIC "")
 foreach (DIR ${SLOG_CORE_SRC_DIRS})
   add_subdirectory(${DIR})

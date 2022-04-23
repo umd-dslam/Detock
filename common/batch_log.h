@@ -4,7 +4,7 @@
 #include <unordered_map>
 
 #include "common/types.h"
-#include "data_structure/async_log.h"
+#include "common/async_log.h"
 #include "proto/internal.pb.h"
 
 namespace slog {

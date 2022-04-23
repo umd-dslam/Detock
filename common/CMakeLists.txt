@@ -1,7 +1,11 @@
 target_sources(slog-core
   PRIVATE
+    async_log.h
+    batch_log.cpp
+    batch_log.h
     clock.cpp
     clock.h
+    concurrent_hash_map.h
     configuration.cpp
     configuration.h
     constants.h
@@ -14,6 +18,7 @@ target_sources(slog-core
     offline_data_reader.h
     proto_utils.cpp
     proto_utils.h
+    rwlatch.h
     sharder.cpp
     sharder.h
     spin_latch.h

@@ -14,7 +14,7 @@
 #include <atomic>
 #include <memory>
 
-#include "data_structure/rwlatch.h"
+#include "common/rwlatch.h"
 
 namespace slog {
 

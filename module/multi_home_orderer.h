@@ -3,7 +3,7 @@
 #include "common/configuration.h"
 #include "common/metrics.h"
 #include "connection/broker.h"
-#include "data_structure/batch_log.h"
+#include "common/batch_log.h"
 #include "module/base/networked_module.h"
 
 namespace slog {
