@@ -3,10 +3,10 @@
 #include <queue>
 #include <unordered_map>
 
+#include "common/batch_log.h"
 #include "common/configuration.h"
 #include "common/metrics.h"
 #include "common/types.h"
-#include "common/batch_log.h"
 #include "module/base/networked_module.h"
 #include "proto/transaction.pb.h"
 

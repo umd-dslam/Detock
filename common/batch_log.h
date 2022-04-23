@@ -3,8 +3,8 @@
 #include <queue>
 #include <unordered_map>
 
-#include "common/types.h"
 #include "common/async_log.h"
+#include "common/types.h"
 #include "proto/internal.pb.h"
 
 namespace slog {

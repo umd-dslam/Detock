@@ -50,15 +50,15 @@ uint32_t HashSharder::compute_partition(const Key& key) const {
  * Simple Sharder
  *
  * This sharder assumes the following home/partition assignment
- * 
+ *
  *        home | 0  1  2  3  0  1  2  3  0  ...
  * ------------|-------------------------------
  * partition 0 | 0  3  6  9  12 15 18 21 24 ...
  * partition 1 | 1  4  7  10 13 16 19 22 25 ...
  * partition 2 | 2  5  8  11 14 17 20 23 26 ...
  * ------------|-------------------------------
- *             |            keys            
- * 
+ *             |            keys
+ *
  * Taking the modulo of the key by the number of partitions gives the partition of the key
  */
 SimpleSharder::SimpleSharder(const ConfigurationPtr& config) : Sharder(config) {}
@@ -68,21 +68,23 @@ uint32_t SimpleSharder::compute_partition(const Key& key) const { return std::st
  * Simple Sharder 2
  *
  * This sharder assumes the following home/partition assignment
- * 
+ *
  *   partition | 0  1  2  3  0  1  2  3  0  ...
  * ------------|-------------------------------
  *      home 0 | 0  3  6  9  12 15 18 21 24 ...
  *      home 1 | 1  4  7  10 13 16 19 22 25 ...
  *      home 2 | 2  5  8  11 14 17 20 23 26 ...
  * ------------|-------------------------------
- *             |            keys      
- * 
+ *             |            keys
+ *
  * We divide the key by the number of regions to get the "column number" of the key.
  * Then, taking the modulo of the column number by the number of partitions gives the partition
  * of the key.
  */
 SimpleSharder2::SimpleSharder2(const ConfigurationPtr& config) : Sharder(config), num_regions_(config->num_regions()) {}
-uint32_t SimpleSharder2::compute_partition(const Key& key) const { return (std::stoll(key) / num_regions_) % num_partitions_; }
+uint32_t SimpleSharder2::compute_partition(const Key& key) const {
+  return (std::stoll(key) / num_regions_) % num_partitions_;
+}
 
 /**
  * TPC-C Sharder

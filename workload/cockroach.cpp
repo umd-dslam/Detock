@@ -27,7 +27,8 @@ constexpr char VALUE_SIZE[] = "value_size";
 // Sort the keys
 constexpr char SORT_KEYS[] = "sort_keys";
 
-const RawParamMap DEFAULT_PARAMS = {{MH_PCT, "0"}, {HOT, "100"}, {RECORDS, "10"}, {VALUE_SIZE, "100"}, {SORT_KEYS, "0"}};
+const RawParamMap DEFAULT_PARAMS = {
+    {MH_PCT, "0"}, {HOT, "100"}, {RECORDS, "10"}, {VALUE_SIZE, "100"}, {SORT_KEYS, "0"}};
 
 long long NumKeysPerRegion(const ConfigurationPtr& config) {
   auto simple_partitioning = config->proto_config().simple_partitioning2();
@@ -37,8 +38,8 @@ long long NumKeysPerRegion(const ConfigurationPtr& config) {
 
 }  // namespace
 
-CockroachWorkload::CockroachWorkload(const ConfigurationPtr& config, uint32_t region,
-                                     const string& params_str, const uint32_t seed)
+CockroachWorkload::CockroachWorkload(const ConfigurationPtr& config, uint32_t region, const string& params_str,
+                                     const uint32_t seed)
     : Workload(DEFAULT_PARAMS, params_str),
       config_(config),
       local_region_(region),
@@ -119,7 +120,7 @@ std::pair<Transaction*, TransactionProfile> CockroachWorkload::NextTransaction()
     code.push_back({"SET", key, rnd_str_(value_size_)});
 
     auto ins = pro.records.emplace(key, TransactionProfile::Record());
-    auto &record = ins.first->second;
+    auto& record = ins.first->second;
     record.is_write = true;
     record.home = homes[i];
     // See SimpleSharder2

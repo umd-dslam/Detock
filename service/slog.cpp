@@ -128,8 +128,8 @@ void GenerateSimpleData(std::shared_ptr<slog::Storage> storage,
 }
 
 void GenerateSimpleData2(std::shared_ptr<slog::Storage> storage,
-                        const std::shared_ptr<slog::MetadataInitializer>& metadata_initializer,
-                        const ConfigurationPtr& config) {
+                         const std::shared_ptr<slog::MetadataInitializer>& metadata_initializer,
+                         const ConfigurationPtr& config) {
   auto simple_partitioning = config->proto_config().simple_partitioning2();
   auto num_records = simple_partitioning.num_records();
   auto num_regions = config->num_regions();
@@ -145,7 +145,7 @@ void GenerateSimpleData2(std::shared_ptr<slog::Storage> storage,
   std::atomic<uint64_t> counter = 0;
   std::atomic<size_t> num_done = 0;
   auto GenerateFn = [&](uint64_t from_key, uint64_t to_key) {
-    for (uint64_t key = from_key; key < to_key; key ++) {
+    for (uint64_t key = from_key; key < to_key; key++) {
       uint32_t key_partition = key / num_regions % num_partitions;
       if (key_partition == partition) {
         Record record(value);

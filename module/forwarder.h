@@ -5,10 +5,10 @@
 
 #include "common/configuration.h"
 #include "common/metrics.h"
+#include "common/rolling_window.h"
 #include "common/sharder.h"
 #include "common/types.h"
 #include "connection/broker.h"
-#include "common/rolling_window.h"
 #include "module/base/networked_module.h"
 #include "proto/transaction.pb.h"
 #include "storage/lookup_master_index.h"

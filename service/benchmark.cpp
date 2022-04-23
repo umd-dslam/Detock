@@ -160,7 +160,7 @@ void RunBenchmark(vector<unique_ptr<ModuleRunner>>& generators) {
 
 struct ResultWriters {
   const vector<string> kTxnColumns = {"txn_id",   "coordinator",    "regions", "partitions", "generator",
-                                      "restarts", "global_log_pos", "sent_at",  "received_at"};
+                                      "restarts", "global_log_pos", "sent_at", "received_at"};
   const vector<string> kEventsColumns = {"txn_id", "event", "time", "machine", "home"};
   const vector<string> kSummaryColumns = {"committed",   "aborted",     "not_started",      "restarted",
                                           "single_home", "multi_home",  "single_partition", "multi_partition",

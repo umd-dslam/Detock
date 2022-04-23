@@ -6,12 +6,12 @@
 #include <unordered_set>
 #include <vector>
 
+#include "common/batch_log.h"
 #include "common/configuration.h"
 #include "common/metrics.h"
 #include "common/types.h"
 #include "connection/broker.h"
 #include "connection/sender.h"
-#include "common/batch_log.h"
 #include "module/scheduler_components/txn_holder.h"
 #include "module/scheduler_components/worker.h"
 #include "storage/storage.h"
