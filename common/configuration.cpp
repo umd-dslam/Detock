@@ -65,17 +65,28 @@ Configuration::Configuration(const internal::Configuration& config, const string
   }
 
   bool local_address_is_valid = local_address_.empty();
-  for (int r = 0; r < config_.regions_size(); r++) {
-    auto& region = config_.regions(r);
-    CHECK_EQ((uint32_t)region.addresses_size(), config_.num_partitions())
-        << "Number of addresses in each region must match number of partitions.";
-    for (int p = 0; p < region.addresses_size(); p++) {
-      auto& address = region.addresses(p);
-      all_addresses_.push_back(address);
-      if (address == local_address) {
-        local_address_is_valid = true;
-        local_region_ = r;
-        local_partition_ = p;
+  for (int reg = 0; reg < config_.regions_size(); reg++) {
+    auto& region = config_.regions(reg);
+    auto num_rep = region.num_replicas();
+    auto num_part = config_.num_partitions();
+
+    CHECK_EQ((uint32_t)region.addresses_size(), num_part * num_rep)
+        << "Number of addresses in each region must match num_partitions * num_replicas";
+    CHECK_LE(num_rep, 1) << "There must be at least one replica per region";
+
+    for (size_t rep = 0; rep < num_rep; rep++) {
+      for (size_t p = 0; p < num_part; p++) {
+        auto& addr = region.addresses(rep * num_part + p);
+        MachineId id = MakeMachineId(reg, rep, p);
+        all_addresses_.emplace(id, addr);
+        all_machine_ids_.push_back(id);
+        if (addr == local_address) {
+          local_address_is_valid = true;
+          local_region_ = reg;
+          local_replica_ = rep;
+          local_partition_ = p;
+          local_machine_id_ = id;
+        }
       }
     }
   }
@@ -108,21 +119,25 @@ const internal::Configuration& Configuration::proto_config() const { return conf
 
 const string& Configuration::protocol() const { return config_.protocol(); }
 
-const vector<string>& Configuration::all_addresses() const { return all_addresses_; }
-
 const string& Configuration::address(uint32_t region, uint32_t partition) const {
   return config_.regions(region).addresses(partition);
 }
 
-const string& Configuration::address(MachineId machine_id) const { return all_addresses_[machine_id]; }
+const string& Configuration::address(MachineId machine_id) const {
+  auto it = all_addresses_.find(machine_id);
+  CHECK(it != all_addresses_.end()) << "Cannot find address for machine id: " << machine_id;
+  return it->second;
+}
 
-uint32_t Configuration::num_regions() const { return config_.regions_size(); }
+int Configuration::num_regions() const { return config_.regions_size(); }
 
-uint32_t Configuration::num_partitions() const { return config_.num_partitions(); }
+int Configuration::num_replicas(RegionId reg) const { return config_.regions(reg).num_replicas(); }
 
-uint32_t Configuration::num_workers() const { return std::max(config_.num_workers(), 1U); }
+int Configuration::num_partitions() const { return config_.num_partitions(); }
 
-uint32_t Configuration::num_log_managers() const { return std::max(config_.num_log_managers(), 1U); }
+int Configuration::num_workers() const { return std::max(config_.num_workers(), 1U); }
+
+int Configuration::num_log_managers() const { return std::max(config_.num_log_managers(), 1U); }
 
 uint32_t Configuration::broker_ports(int i) const { return config_.broker_ports(i); }
 uint32_t Configuration::broker_ports_size() const { return config_.broker_ports_size(); }
@@ -156,40 +171,21 @@ bool Configuration::sequencer_rrr() const { return config_.sequencer_rrr(); }
 
 uint32_t Configuration::replication_factor() const { return std::max(config_.replication_factor(), 1U); }
 
-vector<MachineId> Configuration::all_machine_ids() const {
-  auto num_regs = num_regions();
-  auto num_parts = num_partitions();
-  vector<MachineId> ret;
-  ret.reserve(num_regs * num_parts);
-  for (size_t reg = 0; reg < num_regs; reg++) {
-    for (size_t part = 0; part < num_parts; part++) {
-      ret.push_back(MakeMachineId(reg, part));
-    }
-  }
-  return ret;
-}
+vector<MachineId> Configuration::all_machine_ids() const { return all_machine_ids_; }
 
 const string& Configuration::local_address() const { return local_address_; }
 
-uint32_t Configuration::local_region() const { return local_region_; }
+RegionId Configuration::local_region() const { return local_region_; }
 
-uint32_t Configuration::local_partition() const { return local_partition_; }
+ReplicaId Configuration::local_replica() const { return local_replica_; }
 
-MachineId Configuration::local_machine_id() const { return MakeMachineId(local_region_, local_partition_); }
+PartitionId Configuration::local_partition() const { return local_partition_; }
 
-MachineId Configuration::MakeMachineId(uint32_t region, uint32_t partition) const {
-  return region * num_partitions() + partition;
-}
+MachineId Configuration::local_machine_id() const { return local_machine_id_; }
 
-std::pair<uint32_t, uint32_t> Configuration::UnpackMachineId(MachineId machine_id) const {
-  auto np = num_partitions();
-  // (region, partition)
-  return std::make_pair(machine_id / np, machine_id % np);
-}
+RegionId Configuration::leader_region_for_multi_home_ordering() const { return 0; }
 
-uint32_t Configuration::leader_region_for_multi_home_ordering() const { return 0; }
-
-uint32_t Configuration::leader_partition_for_multi_home_ordering() const { return 0; }
+PartitionId Configuration::leader_partition_for_multi_home_ordering() const { return 0; }
 
 uint32_t Configuration::replication_delay_pct() const { return config_.replication_delay().delay_pct(); }
 

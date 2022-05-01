@@ -19,6 +19,10 @@ message Region {
     // Comma-separated string of region id (e.g "1,3,2") ordered from closest region to
     // furthest region, not including this region. This field is only used by the admin tool.
     string distance_ranking = 4;
+    // Number of replicas in this region. The number of addresses in this region must equal to
+    // num_replicas * num_partitions. The addresses list is split into num_replicas groups.
+    // Each group has num_partitions addresses.
+    uint32 num_replicas = 5;
 }
 
 message ReplicationDelayExperiment {

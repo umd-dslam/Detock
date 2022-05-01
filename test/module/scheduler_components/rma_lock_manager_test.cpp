@@ -13,7 +13,7 @@ using testing::UnorderedElementsAre;
 
 TEST(RMALockManagerTest, GetAllLocksOnFirstTry) {
   RMALockManager lock_manager;
-  auto configs = MakeTestConfigurations("locking", 1, 1);
+  auto configs = MakeTestConfigurations("locking", 1, 1, 1);
   auto holder = MakeTestTxnHolder(
       configs[0], 100, {{"readA", KeyType::READ, 0}, {"readB", KeyType::READ, 0}, {"writeC", KeyType::WRITE, 0}});
   ASSERT_EQ(lock_manager.AcquireLocks(holder.lock_only_txn(0)), AcquireLocksResult::ACQUIRED);
@@ -23,7 +23,7 @@ TEST(RMALockManagerTest, GetAllLocksOnFirstTry) {
 
 TEST(RMALockManagerTest, ReadLocks) {
   RMALockManager lock_manager;
-  auto configs = MakeTestConfigurations("locking", 1, 1);
+  auto configs = MakeTestConfigurations("locking", 1, 1, 1);
   auto holder1 = MakeTestTxnHolder(configs[0], 100, {{"readA", KeyType::READ, 0}, {"readB", KeyType::READ, 0}});
   auto holder2 = MakeTestTxnHolder(configs[0], 200, {{"readB", KeyType::READ, 0}, {"readC", KeyType::READ, 0}});
   ASSERT_EQ(lock_manager.AcquireLocks(holder1.lock_only_txn(0)), AcquireLocksResult::ACQUIRED);
@@ -34,7 +34,7 @@ TEST(RMALockManagerTest, ReadLocks) {
 
 TEST(RMALockManagerTest, WriteLocks) {
   RMALockManager lock_manager;
-  auto configs = MakeTestConfigurations("locking", 1, 1);
+  auto configs = MakeTestConfigurations("locking", 1, 1, 1);
   auto holder1 = MakeTestTxnHolder(configs[0], 100, {{"writeA", KeyType::WRITE, 0}, {"writeB", KeyType::WRITE, 0}});
   auto holder2 = MakeTestTxnHolder(configs[0], 200, {{"readA", KeyType::READ, 0}, {"writeA", KeyType::WRITE, 0}});
 
@@ -48,7 +48,7 @@ TEST(RMALockManagerTest, WriteLocks) {
 
 TEST(RMALockManagerTest, ReleaseLocksAndGetMultipleNewLockHolders) {
   RMALockManager lock_manager;
-  auto configs = MakeTestConfigurations("locking", 1, 1);
+  auto configs = MakeTestConfigurations("locking", 1, 1, 1);
   auto holder1 =
       MakeTestTxnHolder(configs[0], 100, {{"A", KeyType::READ, 0}, {"B", KeyType::WRITE, 0}, {"C", KeyType::WRITE, 0}});
   auto holder2 = MakeTestTxnHolder(configs[0], 200, {{"B", KeyType::READ, 0}, {"A", KeyType::WRITE, 0}});
@@ -70,7 +70,7 @@ TEST(RMALockManagerTest, ReleaseLocksAndGetMultipleNewLockHolders) {
 
 TEST(RMALockManagerTest, PartiallyAcquiredLocks) {
   RMALockManager lock_manager;
-  auto configs = MakeTestConfigurations("locking", 1, 1);
+  auto configs = MakeTestConfigurations("locking", 1, 1, 1);
   auto holder1 =
       MakeTestTxnHolder(configs[0], 100, {{"A", KeyType::READ, 0}, {"B", KeyType::WRITE, 0}, {"C", KeyType::WRITE, 0}});
   auto holder2 = MakeTestTxnHolder(configs[0], 200, {{"A", KeyType::READ, 0}, {"B", KeyType::WRITE, 0}});
@@ -89,7 +89,7 @@ TEST(RMALockManagerTest, PartiallyAcquiredLocks) {
 
 TEST(RMALockManagerTest, AcquireLocksWithLockOnly1) {
   RMALockManager lock_manager;
-  auto configs = MakeTestConfigurations("locking", 2, 1);
+  auto configs = MakeTestConfigurations("locking", 2, 1, 1);
   auto holder1 =
       MakeTestTxnHolder(configs[0], 100, {{"A", KeyType::READ, 0}, {"B", KeyType::WRITE, 0}, {"C", KeyType::WRITE, 0}});
   auto holder2 = MakeTestTxnHolder(configs[0], 200, {{"A", KeyType::READ, 1}, {"B", KeyType::WRITE, 0}});
@@ -104,7 +104,7 @@ TEST(RMALockManagerTest, AcquireLocksWithLockOnly1) {
 
 TEST(RMALockManagerTest, AcquireLocksWithLockOnly2) {
   RMALockManager lock_manager;
-  auto configs = MakeTestConfigurations("locking", 2, 1);
+  auto configs = MakeTestConfigurations("locking", 2, 1, 1);
   auto holder1 =
       MakeTestTxnHolder(configs[0], 100, {{"A", KeyType::READ, 0}, {"B", KeyType::WRITE, 0}, {"C", KeyType::WRITE, 0}});
   auto holder2 = MakeTestTxnHolder(configs[0], 200, {{"A", KeyType::READ, 1}, {"B", KeyType::WRITE, 0}});
@@ -119,7 +119,7 @@ TEST(RMALockManagerTest, AcquireLocksWithLockOnly2) {
 
 TEST(RMALockManagerTest, KeyRegionLocks) {
   RMALockManager lock_manager;
-  auto configs = MakeTestConfigurations("locking", 3, 1);
+  auto configs = MakeTestConfigurations("locking", 3, 1, 1);
   auto holder1 = MakeTestTxnHolder(configs[0], 100, {{"writeA", KeyType::WRITE, 2}, {"writeB", KeyType::WRITE, 2}});
   auto holder2 = MakeTestTxnHolder(configs[0], 200, {{"readA", KeyType::READ, 1}, {"writeA", KeyType::WRITE, 1}});
 
@@ -130,7 +130,7 @@ TEST(RMALockManagerTest, KeyRegionLocks) {
 #ifdef REMASTER_PROTOCOL_COUNTERLESS
 TEST(RMALockManagerTest, RemasterTxn) {
   RMALockManager lock_manager;
-  auto configs = MakeTestConfigurations("locking", 3, 1);
+  auto configs = MakeTestConfigurations("locking", 3, 1, 1);
   auto holder = MakeTestTxnHolder(configs[0], 100, {{"A", KeyType::WRITE, 2}}, {}, 1 /* new_master */);
 
   ASSERT_EQ(lock_manager.AcquireLocks(holder.lock_only_txn(1)), AcquireLocksResult::WAITING);

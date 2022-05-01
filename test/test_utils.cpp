@@ -38,7 +38,7 @@ uint32_t NextUnusedPort() {
 
 }  // namespace
 
-ConfigVec MakeTestConfigurations(string&& prefix, int num_regions, int num_partitions,
+ConfigVec MakeTestConfigurations(string&& prefix, int num_regions, int num_replicas, int num_partitions,
                                  internal::Configuration common_config) {
   int num_machines = num_regions * num_partitions;
   string addr = "/tmp/test_" + prefix;
@@ -53,24 +53,30 @@ ConfigVec MakeTestConfigurations(string&& prefix, int num_regions, int num_parti
   common_config.set_sequencer_batch_duration(1);
   common_config.set_forwarder_batch_duration(1);
   common_config.set_execution_type(internal::ExecutionType::KEY_VALUE);
-  for (int r = 0; r < num_regions; r++) {
+  int counter = 0;
+  for (int reg = 0; reg < num_regions; reg++) {
     auto region = common_config.add_regions();
-    for (int p = 0; p < num_partitions; p++) {
-      region->add_addresses(addr + to_string(r * num_partitions + p));
+    for (int rep = 0; rep < num_replicas; rep++) {
+      for (int p = 0; p < num_partitions; p++) {
+        region->add_addresses(addr + to_string(counter++));
+        region->set_num_replicas(num_replicas);
+      }
     }
   }
 
   ConfigVec configs;
   configs.reserve(num_machines);
 
+  counter = 0;
   for (int reg = 0; reg < num_regions; reg++) {
-    for (int part = 0; part < num_partitions; part++) {
-      // Generate different server ports because tests
-      // run on the same machine
-      common_config.set_server_port(NextUnusedPort());
-      int i = reg * num_partitions + part;
-      string local_addr = addr + to_string(i);
-      configs.push_back(std::make_shared<Configuration>(common_config, local_addr));
+    for (int rep = 0; rep < num_replicas; rep++) {
+      for (int part = 0; part < num_partitions; part++) {
+        // Generate different server ports because tests
+        // run on the same machine
+        common_config.set_server_port(NextUnusedPort());
+        string local_addr = addr + to_string(counter++);
+        configs.push_back(std::make_shared<Configuration>(common_config, local_addr));
+      }
     }
   }
 
@@ -148,9 +154,9 @@ void TestSlog::AddSequencer() {
 
 void TestSlog::AddLogManagers() {
   auto num_log_managers = broker_->config()->num_log_managers();
-  for (size_t i = 0; i < num_log_managers; i++) {
+  for (int i = 0; i < num_log_managers; i++) {
     std::vector<uint32_t> regions;
-    for (size_t r = 0; r < broker_->config()->num_regions(); r++) {
+    for (int r = 0; r < broker_->config()->num_regions(); r++) {
       if (r % num_log_managers == i) {
         regions.push_back(r);
       }

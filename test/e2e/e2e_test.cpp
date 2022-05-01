@@ -30,7 +30,8 @@ class E2ETest : public ::testing::Test {
     custom_config.add_replication_order("0");
     custom_config.set_num_workers(2);
     custom_config.set_num_log_managers(2);
-    configs = MakeTestConfigurations("e2e", 2 /* num_regions */, 2 /* num_partitions */, custom_config);
+    configs =
+        MakeTestConfigurations("e2e", 2 /* num_regions */, 1 /* num_replicas */, 2 /* num_partitions */, custom_config);
 
     for (size_t i = 0; i < NUM_MACHINES; i++) {
       test_slogs[i] = make_unique<TestSlog>(configs[i]);
@@ -92,7 +93,7 @@ TEST_F(E2ETest, BasicSingleHomeSingleParition) {
 }
 
 TEST_F(E2ETest, MultiPartitionTxn) {
-  for (size_t i = 0; i < NUM_MACHINES; i++) {
+  for (size_t i = 2; i < 3; i++) {
     auto txn = MakeTransaction({{"A", KeyType::READ}, {"B", KeyType::WRITE}}, {{"GET", "A"}, {"SET", "B", "newB"}});
 
     test_slogs[i]->SendTxn(txn);

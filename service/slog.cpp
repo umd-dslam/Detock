@@ -273,9 +273,9 @@ int main(int argc, char* argv[]) {
   // clang-format on
 
   auto num_log_managers = broker->config()->num_log_managers();
-  for (size_t i = 0; i < num_log_managers; i++) {
+  for (int i = 0; i < num_log_managers; i++) {
     std::vector<uint32_t> regions;
-    for (size_t r = 0; r < broker->config()->num_regions(); r++) {
+    for (int r = 0; r < broker->config()->num_regions(); r++) {
       if (r % num_log_managers == i) {
         regions.push_back(r);
       }

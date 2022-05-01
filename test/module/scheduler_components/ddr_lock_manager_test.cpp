@@ -16,7 +16,7 @@ using testing::UnorderedElementsAre;
 
 TEST(DDRLockManagerTest, GetAllLocksOnFirstTry) {
   DDRLockManager lock_manager;
-  auto configs = MakeTestConfigurations("locking", 1, 1);
+  auto configs = MakeTestConfigurations("locking", 1, 1, 1);
   auto holder = MakeTestTxnHolder(
       configs[0], 100, {{"readA", KeyType::READ, 0}, {"readB", KeyType::READ, 0}, {"writeC", KeyType::WRITE, 0}});
   ASSERT_EQ(lock_manager.AcquireLocks(holder.lock_only_txn(0)), AcquireLocksResult::ACQUIRED);
@@ -26,7 +26,7 @@ TEST(DDRLockManagerTest, GetAllLocksOnFirstTry) {
 
 TEST(DDRLockManagerTest, ReadLocks) {
   DDRLockManager lock_manager;
-  auto configs = MakeTestConfigurations("locking", 1, 1);
+  auto configs = MakeTestConfigurations("locking", 1, 1, 1);
   auto holder1 = MakeTestTxnHolder(configs[0], 100, {{"readA", KeyType::READ, 0}, {"readB", KeyType::READ, 0}});
   auto holder2 = MakeTestTxnHolder(configs[0], 200, {{"readB", KeyType::READ, 0}, {"readC", KeyType::READ, 0}});
   ASSERT_EQ(lock_manager.AcquireLocks(holder1.lock_only_txn(0)), AcquireLocksResult::ACQUIRED);
@@ -37,7 +37,7 @@ TEST(DDRLockManagerTest, ReadLocks) {
 
 TEST(DDRLockManagerTest, WriteLocks) {
   DDRLockManager lock_manager;
-  auto configs = MakeTestConfigurations("locking", 1, 1);
+  auto configs = MakeTestConfigurations("locking", 1, 1, 1);
   auto holder1 = MakeTestTxnHolder(configs[0], 100, {{"writeA", KeyType::WRITE, 0}, {"writeB", KeyType::WRITE, 0}});
   auto holder2 = MakeTestTxnHolder(configs[0], 200, {{"readA", KeyType::READ, 0}, {"writeA", KeyType::WRITE, 0}});
 
@@ -51,7 +51,7 @@ TEST(DDRLockManagerTest, WriteLocks) {
 
 TEST(DDRLockManagerTest, ReleaseLocksAndReturnMultipleNewLockHolders) {
   DDRLockManager lock_manager;
-  auto configs = MakeTestConfigurations("locking", 1, 1);
+  auto configs = MakeTestConfigurations("locking", 1, 1, 1);
   auto holder1 =
       MakeTestTxnHolder(configs[0], 100, {{"A", KeyType::READ, 0}, {"B", KeyType::WRITE, 0}, {"C", KeyType::WRITE, 0}});
   auto holder2 = MakeTestTxnHolder(configs[0], 200, {{"B", KeyType::READ, 0}, {"A", KeyType::WRITE, 0}});
@@ -77,7 +77,7 @@ TEST(DDRLockManagerTest, ReleaseLocksAndReturnMultipleNewLockHolders) {
 
 TEST(DDRLockManagerTest, PartiallyAcquiredLocks) {
   DDRLockManager lock_manager;
-  auto configs = MakeTestConfigurations("locking", 1, 1);
+  auto configs = MakeTestConfigurations("locking", 1, 1, 1);
   auto holder1 =
       MakeTestTxnHolder(configs[0], 100, {{"A", KeyType::READ, 0}, {"B", KeyType::WRITE, 0}, {"C", KeyType::WRITE, 0}});
   auto holder2 = MakeTestTxnHolder(configs[0], 200, {{"A", KeyType::READ, 0}, {"B", KeyType::WRITE, 0}});
@@ -96,7 +96,7 @@ TEST(DDRLockManagerTest, PartiallyAcquiredLocks) {
 
 TEST(DDRLockManagerTest, AcquireLocksWithLockOnly1) {
   DDRLockManager lock_manager;
-  auto configs = MakeTestConfigurations("locking", 2, 1);
+  auto configs = MakeTestConfigurations("locking", 2, 1, 1);
   auto holder1 =
       MakeTestTxnHolder(configs[0], 100, {{"A", KeyType::READ, 0}, {"B", KeyType::WRITE, 0}, {"C", KeyType::WRITE, 0}});
   auto holder2 = MakeTestTxnHolder(configs[0], 200, {{"A", KeyType::READ, 1}, {"B", KeyType::WRITE, 0}});
@@ -111,7 +111,7 @@ TEST(DDRLockManagerTest, AcquireLocksWithLockOnly1) {
 
 TEST(DDRLockManagerTest, AcquireLocksWithLockOnly2) {
   DDRLockManager lock_manager;
-  auto configs = MakeTestConfigurations("locking", 2, 1);
+  auto configs = MakeTestConfigurations("locking", 2, 1, 1);
   auto holder1 =
       MakeTestTxnHolder(configs[0], 100, {{"A", KeyType::READ, 0}, {"B", KeyType::WRITE, 0}, {"C", KeyType::WRITE, 0}});
   auto holder2 = MakeTestTxnHolder(configs[0], 200, {{"A", KeyType::READ, 1}, {"B", KeyType::WRITE, 0}});
@@ -126,7 +126,7 @@ TEST(DDRLockManagerTest, AcquireLocksWithLockOnly2) {
 
 TEST(DDRLockManagerTest, MultiEdgeBetweenTwoTxns) {
   DDRLockManager lock_manager;
-  auto configs = MakeTestConfigurations("locking", 3, 1);
+  auto configs = MakeTestConfigurations("locking", 3, 1, 1);
   auto holder1 = MakeTestTxnHolder(configs[0], 100, {{"A", KeyType::WRITE, 1}, {"B", KeyType::WRITE, 2}});
   auto holder2 = MakeTestTxnHolder(configs[0], 200, {{"A", KeyType::READ, 1}, {"B", KeyType::READ, 2}});
 
@@ -144,7 +144,7 @@ TEST(DDRLockManagerTest, MultiEdgeBetweenTwoTxns) {
 
 TEST(DDRLockManagerTest, KeyRegionLocks) {
   DDRLockManager lock_manager;
-  auto configs = MakeTestConfigurations("locking", 3, 1);
+  auto configs = MakeTestConfigurations("locking", 3, 1, 1);
   auto holder1 = MakeTestTxnHolder(configs[0], 100, {{"writeA", KeyType::WRITE, 2}, {"writeB", KeyType::WRITE, 2}});
   auto holder2 = MakeTestTxnHolder(configs[0], 200, {{"readA", KeyType::READ, 1}, {"writeA", KeyType::WRITE, 1}});
 
@@ -155,7 +155,7 @@ TEST(DDRLockManagerTest, KeyRegionLocks) {
 #ifdef REMASTER_PROTOCOL_COUNTERLESS
 TEST(DDRLockManagerTest, RemasterTxn) {
   DDRLockManager lock_manager;
-  auto configs = MakeTestConfigurations("locking", 3, 1);
+  auto configs = MakeTestConfigurations("locking", 3, 1, 1);
   auto holder = MakeTestTxnHolder(configs[0], 100, {{"A", KeyType::WRITE, 2}}, {}, 1 /* new_master */);
 
   ASSERT_EQ(lock_manager.AcquireLocks(holder.lock_only_txn(1)), AcquireLocksResult::WAITING);
@@ -170,7 +170,7 @@ TEST(DDRLockManagerTest, RemasterTxn) {
 
 TEST(DDRLockManagerTest, EnsureStateIsClean) {
   DDRLockManager lock_manager;
-  auto configs = MakeTestConfigurations("locking", 1, 1);
+  auto configs = MakeTestConfigurations("locking", 1, 1, 1);
   auto holder1 =
       MakeTestTxnHolder(configs[0], 100, {{"A", KeyType::READ, 0}, {"B", KeyType::WRITE, 0}, {"C", KeyType::WRITE, 0}});
   auto holder2 = MakeTestTxnHolder(configs[0], 200, {{"B", KeyType::READ, 0}, {"A", KeyType::WRITE, 0}});
@@ -187,7 +187,7 @@ TEST(DDRLockManagerTest, EnsureStateIsClean) {
 
 TEST(DDRLockManagerTest, LongChain) {
   DDRLockManager lock_manager;
-  auto configs = MakeTestConfigurations("locking", 1, 1);
+  auto configs = MakeTestConfigurations("locking", 1, 1, 1);
   auto holder1 = MakeTestTxnHolder(configs[0], 100, {{"A", KeyType::WRITE, 0}});
   auto holder2 = MakeTestTxnHolder(configs[0], 200, {{"A", KeyType::READ, 0}});
   auto holder3 = MakeTestTxnHolder(configs[0], 300, {{"A", KeyType::READ, 0}});
@@ -223,7 +223,7 @@ class DDRLockManagerWithResolverTest : public ::testing::Test {
   slog::ConfigVec Initialize(int num_regions, int num_partitions, int ddr_interval = 0) {
     internal::Configuration add_on;
     add_on.set_ddr_interval(ddr_interval);
-    auto configs = MakeTestConfigurations("locking", num_regions, num_partitions, add_on);
+    auto configs = MakeTestConfigurations("locking", num_regions, 1, num_partitions, add_on);
 
     for (auto config : configs) {
       auto broker = brokers_.emplace_back(Broker::New(config, kTestModuleTimeout));
@@ -530,7 +530,7 @@ TEST_F(DDRLockManagerWithResolverTest, ConcurrentResolver) {
     // Change txn ids at every loop so that they are all uniques
     std::array<TxnId, 7> ids;
     std::iota(ids.begin(), ids.end(), (i + 1) * 1000);
-    auto configs = MakeTestConfigurations("locking", 2, 1);
+    auto configs = MakeTestConfigurations("locking", 2, 1, 1);
     auto holder1 = MakeTestTxnHolder(configs[0], ids[1], {{"A", KeyType::READ, 1}, {"B", KeyType::WRITE, 0}});
     auto holder2 = MakeTestTxnHolder(configs[0], ids[2], {{"B", KeyType::READ, 0}, {"A", KeyType::WRITE, 1}});
     auto holder3 = MakeTestTxnHolder(configs[0], ids[3], {{"B", KeyType::READ, 0}});

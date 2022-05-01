@@ -70,6 +70,7 @@ class LogManager : public NetworkedModule {
   std::unordered_map<uint32_t, BatchLog> single_home_logs_;
   LocalLog local_log_;
   std::vector<MachineId> other_partitions_;
+  std::vector<MachineId> other_replicas_;
   std::vector<bool> need_ack_from_region_;
 };
 

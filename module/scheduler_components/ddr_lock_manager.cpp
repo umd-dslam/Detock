@@ -147,9 +147,9 @@ class DeadlockResolver : public NetworkedModule {
 
     vector<MachineId> other_partitions;
     other_partitions.reserve(config_->num_partitions());
-    for (uint32_t p = 0; p < config_->num_partitions(); p++) {
-      if (p != config_->local_partition()) {
-        other_partitions.push_back(config_->MakeMachineId(config_->local_region(), p));
+    for (int p = 0; p < config_->num_partitions(); p++) {
+      if (static_cast<PartitionId>(p) != config_->local_partition()) {
+        other_partitions.push_back(MakeMachineId(config_->local_region(), config_->local_replica(), p));
       }
     }
     Send(move(graph_log_env), other_partitions, kDeadlockResolverChannel);

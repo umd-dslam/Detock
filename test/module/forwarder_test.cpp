@@ -22,7 +22,7 @@ class ForwarderTest : public ::testing::Test {
   static const size_t NUM_MACHINES = 4;
 
   void SetUp() {
-    configs = MakeTestConfigurations("forwarder", 2 /* num_regions */, 2 /* num_partitions */);
+    configs = MakeTestConfigurations("forwarder", 2 /* num_regions */, 1 /* num_replicas */, 2 /* num_partitions */);
 
     for (size_t i = 0; i < NUM_MACHINES; i++) {
       test_slogs[i] = make_unique<TestSlog>(configs[i]);

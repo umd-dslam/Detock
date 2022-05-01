@@ -292,7 +292,7 @@ void Worker::Finish(const RunId& run_id) {
   // the scheduler may destroy the transaction holder before we can
   // send the transaction to the server.
   auto coordinator = txn->internal().coordinating_server();
-  if (config()->UnpackMachineId(coordinator).first == config()->local_region()) {
+  if (std::get<0>(UnpackMachineId(coordinator)) == config()->local_region()) {
     if (config()->return_dummy_txn()) {
       txn->mutable_keys()->Clear();
       txn->mutable_code()->Clear();
@@ -331,12 +331,13 @@ void Worker::BroadcastReads(const RunId& run_id) {
 #endif
 
   auto local_region = config()->local_region();
+  auto local_replica = config()->local_replica();
   auto local_partition = config()->local_partition();
 
   std::vector<MachineId> destinations;
   for (auto p : waiting_partitions) {
     if (p != local_partition) {
-      destinations.push_back(config()->MakeMachineId(local_region, p));
+      destinations.push_back(MakeMachineId(local_region, local_replica, p));
     }
   }
 

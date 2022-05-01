@@ -187,13 +187,15 @@ bool Server::OnCustomSocket() {
 
 void Server::OnInternalRequestReceived(EnvelopePtr&& env) {
   switch (env->request().type_case()) {
-    case internal::Request::kSignal:
-      LOG(INFO) << "Machine " << env->from() << " is online";
+    case internal::Request::kSignal: {
+      auto [regid, repid, partid] = UnpackMachineId(env->from());
+      LOG(INFO) << "Machine [" << regid << ", " << repid << ", " << partid << "] is online";
       offline_machines_.erase(env->from());
       if (offline_machines_.empty()) {
         LOG(INFO) << "All machines are online";
       }
       break;
+    }
     case internal::Request::kFinishedSubtxn:
       ProcessFinishedSubtxn(move(env));
       break;
@@ -215,7 +217,7 @@ void Server::ProcessFinishedSubtxn(EnvelopePtr&& env) {
     return;
   }
 
-  auto part = config()->UnpackMachineId(env->from()).second;
+  auto part = std::get<PartitionId>(UnpackMachineId(env->from()));
 
   auto res = finished_txns_.try_emplace(txn_id, txn_internal->involved_partitions_size());
   auto& finished_txn = res.first->second;
@@ -307,7 +309,7 @@ void Server::SendResponseToClient(TxnId txn_id, api::Response&& res) {
 
 TxnId Server::NextTxnId() {
   txn_id_counter_++;
-  return txn_id_counter_ * kMaxNumMachines + config()->local_machine_id();
+  return (txn_id_counter_ << kMachineIdBits) | config()->local_machine_id();
 }
 
 }  // namespace slog

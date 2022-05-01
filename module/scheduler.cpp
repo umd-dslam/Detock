@@ -46,7 +46,7 @@ Scheduler::Scheduler(const shared_ptr<Broker>& broker, const shared_ptr<Storage>
     : NetworkedModule(broker, {kSchedulerChannel, false /* is_raw */}, metrics_manager, poll_timeout),
       current_worker_(0),
       global_log_counter_(0) {
-  for (size_t i = 0; i < config()->num_workers(); i++) {
+  for (int i = 0; i < config()->num_workers(); i++) {
     workers_.push_back(MakeRunnerFor<Worker>(i, broker, storage, metrics_manager, poll_timeout));
   }
 

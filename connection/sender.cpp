@@ -84,8 +84,8 @@ Sender::SocketPtr& Sender::GetRemoteSocket(MachineId machine_id, Channel channel
   }
 
   // Lazily establish a new connection when necessary
-  uint64_t machine_id_and_port = (static_cast<uint64_t>(machine_id) << 32) | port;
-  auto ins = machine_id_and_port_to_sockets_.try_emplace(machine_id_and_port, nullptr);
+  auto id = std::make_pair(machine_id, port);
+  auto ins = machine_id_and_port_to_sockets_.try_emplace(id, nullptr);
   auto& socket = ins.first->second;
   if (socket == nullptr) {
     socket = std::make_unique<zmq::socket_t>(*context_, ZMQ_PUSH);

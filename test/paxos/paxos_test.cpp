@@ -84,7 +84,7 @@ class PaxosTest : public ::testing::Test {
 };
 
 TEST_F(PaxosTest, ProposeWithoutForwarding) {
-  auto configs = MakeTestConfigurations("paxos", 1, 3);
+  auto configs = MakeTestConfigurations("paxos", 1, 1, 3);
   for (auto config : configs) {
     AddAndStartNewPaxos(config);
   }
@@ -98,7 +98,7 @@ TEST_F(PaxosTest, ProposeWithoutForwarding) {
 }
 
 TEST_F(PaxosTest, ProposeWithForwarding) {
-  auto configs = MakeTestConfigurations("paxos", 1, 3);
+  auto configs = MakeTestConfigurations("paxos", 1, 1, 3);
   for (auto config : configs) {
     AddAndStartNewPaxos(config);
   }
@@ -112,7 +112,7 @@ TEST_F(PaxosTest, ProposeWithForwarding) {
 }
 
 TEST_F(PaxosTest, ProposeMultipleValues) {
-  auto configs = MakeTestConfigurations("paxos", 1, 3);
+  auto configs = MakeTestConfigurations("paxos", 1, 1, 3);
   for (auto config : configs) {
     AddAndStartNewPaxos(config);
   }
@@ -140,11 +140,11 @@ TEST_F(PaxosTest, ProposeMultipleValues) {
 }
 
 TEST_F(PaxosTest, MultiRegionsWithNonMembers) {
-  auto configs = MakeTestConfigurations("paxos", 2, 2);
+  auto configs = MakeTestConfigurations("paxos", 2, 1, 2);
   vector<MachineId> members;
   auto member_part = configs.front()->leader_partition_for_multi_home_ordering();
-  for (uint32_t reg = 0; reg < configs.front()->num_regions(); reg++) {
-    members.emplace_back(configs.front()->MakeMachineId(reg, member_part));
+  for (int reg = 0; reg < configs.front()->num_regions(); reg++) {
+    members.emplace_back(MakeMachineId(reg, 0, member_part));
   }
   for (auto config : configs) {
     AddAndStartNewPaxos(config, members, config->local_machine_id());

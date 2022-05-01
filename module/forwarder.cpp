@@ -42,7 +42,7 @@ Forwarder::Forwarder(const std::shared_ptr<zmq::context_t>& context, const Confi
       partitioned_lookup_request_(config->num_partitions()),
       batch_size_(0),
       rg_(std::random_device{}()) {
-  for (uint32_t i = 0; i < config->num_regions(); i++) {
+  for (int i = 0; i < config->num_regions(); i++) {
     latencies_ns_.emplace_back(config->avg_latency_window_size());
   }
 }
@@ -57,12 +57,12 @@ void Forwarder::ScheduleNextLatencyProbe() {
   NewTimedCallback(config()->fs_latency_interval(), [this] {
     auto p = config()->leader_partition_for_multi_home_ordering();
     auto now = slog_clock::now().time_since_epoch().count();
-    for (uint32_t r = 0; r < config()->num_regions(); r++) {
+    for (int r = 0; r < config()->num_regions(); r++) {
       auto env = NewEnvelope();
       auto ping = env->mutable_request()->mutable_ping();
       ping->set_src_time(now);
       ping->set_dst(r);
-      Send(move(env), config()->MakeMachineId(r, p), kSequencerChannel);
+      Send(move(env), MakeMachineId(r, 0, p), kSequencerChannel);
     }
     ScheduleNextLatencyProbe();
   });
@@ -100,21 +100,26 @@ void Forwarder::ProcessForwardTxn(EnvelopePtr&& env) {
   for (auto& kv : *txn->mutable_keys()) {
     const auto& key = kv.key();
     auto value = kv.mutable_value_entry();
-    auto partition = sharder_->compute_partition(key);
 
+    // If there is only a single region, the metadata is irrelevant
+    if (config()->num_regions() == 1) {
+      value->mutable_metadata()->set_master(0);
+      value->mutable_metadata()->set_counter(0);
+    }
     // If this is a local partition, lookup the master info from the local storage
-    if (partition == config()->local_partition()) {
+    else if (auto partition = sharder_->compute_partition(key); partition == config()->local_partition()) {
       Metadata metadata;
       if (lookup_master_index_->GetMasterMetadata(key, metadata)) {
         value->mutable_metadata()->set_master(metadata.master);
         value->mutable_metadata()->set_counter(metadata.counter);
       } else {
-        auto metadata = metadata_initializer_->Compute(key);
-        value->mutable_metadata()->set_master(metadata.master);
-        value->mutable_metadata()->set_counter(metadata.counter);
+        auto new_metadata = metadata_initializer_->Compute(key);
+        value->mutable_metadata()->set_master(new_metadata.master);
+        value->mutable_metadata()->set_counter(new_metadata.counter);
       }
-    } else {
-      // Otherwise, add the key to the appropriate remote lookup master request
+    }
+    // Otherwise, add the key to the appropriate remote lookup master request
+    else {
       partitioned_lookup_request_[partition].mutable_request()->mutable_lookup_master()->add_keys(key);
       need_remote_lookup = true;
     }
@@ -155,10 +160,11 @@ void Forwarder::SendLookupMasterRequestBatch() {
   }
 
   auto local_reg = config()->local_region();
+  auto local_rep = config()->local_replica();
   auto num_partitions = config()->num_partitions();
-  for (uint32_t part = 0; part < num_partitions; part++) {
+  for (int part = 0; part < num_partitions; part++) {
     if (!partitioned_lookup_request_[part].request().lookup_master().txn_ids().empty()) {
-      Send(partitioned_lookup_request_[part], config()->MakeMachineId(local_reg, part), kForwarderChannel);
+      Send(partitioned_lookup_request_[part], MakeMachineId(local_reg, local_rep, part), kForwarderChannel);
       partitioned_lookup_request_[part].Clear();
     }
   }
@@ -275,7 +281,7 @@ void Forwarder::Forward(EnvelopePtr&& env) {
       Send(move(env), kSequencerChannel);
     } else {
       auto partition = ChooseRandomPartition(*txn, rg_);
-      auto random_machine_in_home_region = config()->MakeMachineId(home_region, partition);
+      auto random_machine_in_home_region = MakeMachineId(home_region, 0, partition);
 
       VLOG(3) << "Forwarding txn " << txn_id << " to its home region (reg: " << home_region << ", part: " << partition
               << ")";
@@ -300,7 +306,7 @@ void Forwarder::Forward(EnvelopePtr&& env) {
         int64_t max_avg_latency_ns = 0;
         for (auto reg : txn_internal->involved_regions()) {
           max_avg_latency_ns = std::max(max_avg_latency_ns, static_cast<int64_t>(latencies_ns_[reg].avg()));
-          destinations.push_back(config()->MakeMachineId(reg, part));
+          destinations.push_back(MakeMachineId(reg, 0, part));
         }
 
         auto now = slog_clock::now();
@@ -315,7 +321,7 @@ void Forwarder::Forward(EnvelopePtr&& env) {
         std::vector<MachineId> destinations;
         destinations.reserve(txn_internal->involved_regions_size());
         for (auto reg : txn_internal->involved_regions()) {
-          destinations.push_back(config()->MakeMachineId(reg, part));
+          destinations.push_back(MakeMachineId(reg, 0, part));
         }
         Send(move(env), destinations, kSequencerChannel);
       }

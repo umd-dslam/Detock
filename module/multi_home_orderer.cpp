@@ -139,15 +139,15 @@ void MultiHomeOrderer::SendBatch() {
   auto paxos_env = NewEnvelope();
   auto paxos_propose = paxos_env->mutable_request()->mutable_paxos_propose();
   paxos_propose->set_value(batch_id());
-  Send(move(paxos_env), config()->MakeMachineId(config()->leader_region_for_multi_home_ordering(), 0), kGlobalPaxos);
+  Send(move(paxos_env), MakeMachineId(config()->leader_region_for_multi_home_ordering(), 0, 0), kGlobalPaxos);
 
   // Replicate new batch to other regions
   auto part = config()->leader_partition_for_multi_home_ordering();
-  for (uint32_t reg = 0; reg < config()->num_regions(); reg++) {
+  for (int reg = 0; reg < config()->num_regions(); reg++) {
     auto env = NewEnvelope();
     auto forward_batch = env->mutable_request()->mutable_forward_batch_data();
     forward_batch->mutable_batch_data()->AddAllocated(batch_per_reg_[reg].release());
-    Send(move(env), config()->MakeMachineId(reg, part), kMultiHomeOrdererChannel);
+    Send(move(env), MakeMachineId(reg, 0, part), kMultiHomeOrdererChannel);
   }
 }
 

@@ -154,6 +154,7 @@ void Batcher::SendBatches() {
   }
 
   auto local_region = config()->local_region();
+  auto local_replica = config()->local_replica();
   auto local_partition = config()->local_partition();
   auto num_regions = config()->num_regions();
   auto num_partitions = config()->num_partitions();
@@ -170,13 +171,13 @@ void Batcher::SendBatches() {
 
     // Distribute the batch data to other partitions in the same replica
     std::vector<internal::Batch*> batch_partitions;
-    for (uint32_t p = 0; p < num_partitions; p++) {
+    for (int p = 0; p < num_partitions; p++) {
       auto batch_partition = batch[p].release();
 
       RECORD(batch_partition, TransactionEvent::EXIT_SEQUENCER_IN_BATCH);
 
       auto env = NewBatchForwardingMessage({batch_partition}, home_position);
-      Send(*env, config()->MakeMachineId(local_region, p), LogManager::MakeTag(local_region));
+      Send(*env, MakeMachineId(local_region, local_replica, p), LogManager::MakeTag(local_region));
       // Collect back the batch partition to send to other regions
       batch_partitions.push_back(
           env->mutable_request()->mutable_forward_batch_data()->mutable_batch_data()->ReleaseLast());
@@ -186,15 +187,15 @@ void Batcher::SendBatches() {
     auto env = NewBatchForwardingMessage(move(batch_partitions), home_position);
     std::vector<MachineId> destinations;
     destinations.reserve(num_regions);
-    for (uint32_t reg = 0; reg < num_regions; reg++) {
+    for (int reg = 0; reg < num_regions; reg++) {
       if (reg != local_region) {
-        uint32_t part = 0;
+        int part = 0;
         if (config()->sequencer_rrr()) {
           part = home_position % num_partitions;
         } else {
           part = (reg + num_regions - local_region) % num_regions % num_partitions;
         }
-        destinations.push_back(config()->MakeMachineId(reg, part));
+        destinations.push_back(MakeMachineId(reg, 0, part));
       }
     }
 

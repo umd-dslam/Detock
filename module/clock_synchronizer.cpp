@@ -19,8 +19,8 @@ ClockSynchronizer::ClockSynchronizer(const std::shared_ptr<zmq::context_t>& cont
     avg_window = std::max(2, 1000 / static_cast<int>(config->clock_sync_interval().count()));
   }
 
-  for (size_t p = 0; p < config->num_partitions(); p++) {
-    auto m = config->MakeMachineId(config->local_region(), p);
+  for (int p = 0; p < config->num_partitions(); p++) {
+    auto m = MakeMachineId(config->local_region(), config->local_replica(), p);
     if (m != config->local_machine_id()) {
       latencies_ns_.emplace(m, avg_window);
     }
@@ -28,8 +28,8 @@ ClockSynchronizer::ClockSynchronizer(const std::shared_ptr<zmq::context_t>& cont
 
   auto leader_partition = config->leader_partition_for_multi_home_ordering();
   if (config->local_partition() == leader_partition) {
-    for (size_t r = 0; r < config->num_regions(); r++) {
-      auto m = config->MakeMachineId(r, leader_partition);
+    for (int r = 0; r < config->num_regions(); r++) {
+      auto m = MakeMachineId(r, 0, leader_partition);
       if (m != config->local_machine_id()) {
         latencies_ns_.emplace(m, avg_window);
       }

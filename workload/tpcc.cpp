@@ -64,8 +64,8 @@ TPCCWorkload::TPCCWorkload(const ConfigurationPtr& config, uint32_t region, cons
 
   auto num_regions = config_->num_regions();
   if (distance_ranking_.empty()) {
-    for (size_t i = 0; i < num_regions; i++) {
-      if (i != local_region_) {
+    for (int i = 0; i < num_regions; i++) {
+      if ((uint32_t)i != local_region_) {
         distance_ranking_.push_back(i);
       }
     }
@@ -78,7 +78,7 @@ TPCCWorkload::TPCCWorkload(const ConfigurationPtr& config, uint32_t region, cons
   CHECK_EQ(distance_ranking_.size(), num_regions - 1) << "Distance ranking size must match the number of regions";
 
   auto num_partitions = config_->num_partitions();
-  for (size_t i = 0; i < num_partitions; i++) {
+  for (int i = 0; i < num_partitions; i++) {
     vector<vector<int>> partitions(num_regions);
     warehouse_index_.push_back(partitions);
   }
@@ -300,11 +300,11 @@ std::vector<int> TPCCWorkload::SelectRemoteWarehouses(int partition) {
   }
 
   auto num_regions = config_->num_regions();
-  auto max_num_homes = std::min(params_.GetUInt32(HOMES), num_regions);
+  auto max_num_homes = std::min(params_.GetInt32(HOMES), num_regions);
   if (max_num_homes < 2) {
     return {};
   }
-  auto num_homes = std::uniform_int_distribution{2U, max_num_homes}(rg_);
+  auto num_homes = std::uniform_int_distribution{2, max_num_homes}(rg_);
   auto remote_warehouses = zipf_sample(rg_, zipf_coef_, distance_ranking_, num_homes - 1);
 
   for (size_t i = 0; i < remote_warehouses.size(); i++) {

@@ -12,7 +12,7 @@ using testing::ElementsAre;
 using testing::UnorderedElementsAre;
 
 TEST(OldLockManagerTest, GetAllLocksOnFirstTry) {
-  auto configs = MakeTestConfigurations("locking", 1, 1);
+  auto configs = MakeTestConfigurations("locking", 1, 1, 1);
   OldLockManager lock_manager;
   auto holder = MakeTestTxnHolder(
       configs[0], 1000, {{"readA", KeyType::READ, 0}, {"readB", KeyType::READ, 0}, {"writeC", KeyType::WRITE, 0}});
@@ -22,7 +22,7 @@ TEST(OldLockManagerTest, GetAllLocksOnFirstTry) {
 }
 
 TEST(OldLockManager, ReadLocks) {
-  auto configs = MakeTestConfigurations("locking", 1, 1);
+  auto configs = MakeTestConfigurations("locking", 1, 1, 1);
   OldLockManager lock_manager;
   auto holder1 = MakeTestTxnHolder(configs[0], 100, {{"readA", KeyType::READ, 0}, {"readB", KeyType::READ, 0}});
 
@@ -35,7 +35,7 @@ TEST(OldLockManager, ReadLocks) {
 }
 
 TEST(OldLockManager, WriteLocks) {
-  auto configs = MakeTestConfigurations("locking", 1, 1);
+  auto configs = MakeTestConfigurations("locking", 1, 1, 1);
   OldLockManager lock_manager;
   auto holder1 = MakeTestTxnHolder(configs[0], 100, {{"writeA", KeyType::WRITE, 0}, {"writeB", KeyType::WRITE, 0}});
   auto holder2 = MakeTestTxnHolder(configs[0], 200, {{"readA", KeyType::READ, 0}, {"writeA", KeyType::WRITE, 0}});
@@ -49,7 +49,7 @@ TEST(OldLockManager, WriteLocks) {
 }
 
 TEST(OldLockManager, ReleaseLocksAndGetManyNewHolders) {
-  auto configs = MakeTestConfigurations("locking", 1, 1);
+  auto configs = MakeTestConfigurations("locking", 1, 1, 1);
   OldLockManager lock_manager;
   auto holder1 =
       MakeTestTxnHolder(configs[0], 100, {{"A", KeyType::READ, 0}, {"B", KeyType::WRITE, 0}, {"C", KeyType::WRITE, 0}});
@@ -72,7 +72,7 @@ TEST(OldLockManager, ReleaseLocksAndGetManyNewHolders) {
 }
 
 TEST(OldLockManager, PartiallyAcquiredLocks) {
-  auto configs = MakeTestConfigurations("locking", 1, 1);
+  auto configs = MakeTestConfigurations("locking", 1, 1, 1);
   OldLockManager lock_manager;
   auto holder1 =
       MakeTestTxnHolder(configs[0], 100, {{"A", KeyType::READ, 0}, {"B", KeyType::WRITE, 0}, {"C", KeyType::WRITE, 0}});
@@ -91,7 +91,7 @@ TEST(OldLockManager, PartiallyAcquiredLocks) {
 }
 
 TEST(OldLockManager, AcquireLocksWithLockOnlyholder1) {
-  auto configs = MakeTestConfigurations("locking", 3, 1);
+  auto configs = MakeTestConfigurations("locking", 3, 1, 1);
   OldLockManager lock_manager;
   auto holder1 =
       MakeTestTxnHolder(configs[0], 100, {{"A", KeyType::READ, 0}, {"B", KeyType::WRITE, 0}, {"C", KeyType::WRITE, 0}});
@@ -106,7 +106,7 @@ TEST(OldLockManager, AcquireLocksWithLockOnlyholder1) {
 }
 
 TEST(OldLockManager, AcquireLocksWithLockOnlyholder2) {
-  auto configs = MakeTestConfigurations("locking", 3, 1);
+  auto configs = MakeTestConfigurations("locking", 3, 1, 1);
   OldLockManager lock_manager;
   auto holder1 =
       MakeTestTxnHolder(configs[0], 100, {{"A", KeyType::READ, 0}, {"B", KeyType::WRITE, 0}, {"C", KeyType::WRITE, 0}});

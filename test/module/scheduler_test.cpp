@@ -14,7 +14,7 @@ class SchedulerTest : public ::testing::Test {
   static const uint32_t kNumRegions = 2;
   static const uint32_t kNumPartitions = 3;
 
-  virtual ConfigVec MakeConfigs() { return MakeTestConfigurations("scheduler", kNumRegions, kNumPartitions); }
+  virtual ConfigVec MakeConfigs() { return MakeTestConfigurations("scheduler", kNumRegions, 1, kNumPartitions); }
 
   void SetUp() {
     ConfigVec configs = MakeConfigs();
@@ -399,7 +399,7 @@ class SchedulerTestWithDeadlockResolver : public SchedulerTest {
   ConfigVec MakeConfigs() final {
     internal::Configuration add_on;
     add_on.set_ddr_interval(10);
-    return MakeTestConfigurations("scheduler", kNumRegions, kNumPartitions, add_on);
+    return MakeTestConfigurations("scheduler", kNumRegions, 1, kNumPartitions, add_on);
   }
 };
 

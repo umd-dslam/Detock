@@ -13,7 +13,28 @@ using TxnId = uint64_t;
 using BatchId = uint64_t;
 using SlotId = uint32_t;
 using Channel = uint64_t;
-using MachineId = int;
+using MachineId = uint32_t;
+using RegionId = uint8_t;
+using ReplicaId = uint8_t;
+using PartitionId = uint16_t;
+
+const int kRegionIdBits = sizeof(RegionId) * 8;
+const int kReplicaIdBits = sizeof(ReplicaId) * 8;
+const int kPartitionIdBits = sizeof(PartitionId) * 8;
+const int kMachineIdBits = kRegionIdBits + kReplicaIdBits + kPartitionIdBits;
+
+inline MachineId MakeMachineId(RegionId region, ReplicaId replica, PartitionId partition) {
+  return (static_cast<MachineId>(region) << (kReplicaIdBits + kPartitionIdBits)) |
+         (static_cast<MachineId>(replica) << kPartitionIdBits) | (static_cast<MachineId>(partition));
+}
+
+inline std::tuple<RegionId, ReplicaId, PartitionId> UnpackMachineId(MachineId id) {
+  RegionId region_id = (id >> (kReplicaIdBits + kPartitionIdBits)) & ((1 << kRegionIdBits) - 1);
+  ReplicaId replica_id = (id >> kPartitionIdBits) & ((1 << kReplicaIdBits) - 1);
+  PartitionId partition_id = id & ((1LL << kPartitionIdBits) - 1);
+
+  return std::make_tuple(region_id, replica_id, partition_id);
+}
 
 struct Metadata {
   Metadata() = default;

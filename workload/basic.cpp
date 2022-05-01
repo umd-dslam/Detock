@@ -79,8 +79,8 @@ BasicWorkload::BasicWorkload(const ConfigurationPtr& config, uint32_t region, co
   auto num_partitions = config->num_partitions();
   auto hot_keys_per_list = std::max(1U, params_.GetUInt32(HOT) / num_regions);
   const auto& proto_config = config->proto_config();
-  for (uint32_t part = 0; part < num_partitions; part++) {
-    for (uint32_t reg = 0; reg < num_regions; reg++) {
+  for (int part = 0; part < num_partitions; part++) {
+    for (int reg = 0; reg < num_regions; reg++) {
       // Initialize hot keys limit for each key list. When keys are added to a list,
       // the first keys are considered hot keys until this limit is reached and any new
       // keys from there are cold keys.
@@ -101,8 +101,8 @@ BasicWorkload::BasicWorkload(const ConfigurationPtr& config, uint32_t region, co
   }
 
   if (distance_ranking_.empty()) {
-    for (size_t i = 0; i < num_regions; i++) {
-      if (i != local_region_) {
+    for (int i = 0; i < num_regions; i++) {
+      if (static_cast<RegionId>(i) != local_region_) {
         distance_ranking_.push_back(i);
       }
     }
@@ -120,7 +120,7 @@ BasicWorkload::BasicWorkload(const ConfigurationPtr& config, uint32_t region, co
 
   if (proto_config.partitioning_case() == internal::Configuration::kHashPartitioning) {
     // Load and index the initial data from file if simple partitioning is not used
-    for (uint32_t partition = 0; partition < num_partitions; partition++) {
+    for (int partition = 0; partition < num_partitions; partition++) {
       auto data_file = data_dir + "/" + std::to_string(partition) + ".dat";
       auto fd = open(data_file.c_str(), O_RDONLY);
       if (fd < 0) {
@@ -162,11 +162,11 @@ std::pair<Transaction*, TransactionProfile> BasicWorkload::NextTransaction() {
     shuffle(selected_partitions.begin(), selected_partitions.end(), rg_);
 
     // Compute number of needed partitions
-    auto max_num_partitions = std::min(num_partitions, params_.GetUInt32(MP_PARTS));
+    auto max_num_partitions = std::min(num_partitions, params_.GetInt32(MP_PARTS));
     CHECK_GE(max_num_partitions, 2) << "At least 2 partitions must be selected for MP txns";
 
     // Select the first max_num_partitions
-    std::uniform_int_distribution num_partitions(2U, max_num_partitions);
+    std::uniform_int_distribution num_partitions(2, max_num_partitions);
     selected_partitions.resize(num_partitions(rg_));
   } else {
     auto sp_partition = params_.GetInt32(SP_PARTITION);
@@ -192,10 +192,10 @@ std::pair<Transaction*, TransactionProfile> BasicWorkload::NextTransaction() {
   vector<uint32_t> selected_homes;
   if (pro.is_multi_home) {
     CHECK_GE(num_regions, 2) << "There must be at least 2 regions for MH txns";
-    auto max_num_homes = std::min(params_.GetUInt32(MH_HOMES), num_regions);
+    auto max_num_homes = std::min(params_.GetInt32(MH_HOMES), num_regions);
 
     CHECK_GE(max_num_homes, 2) << "At least 2 regions must be selected for MH txns";
-    auto num_homes = std::uniform_int_distribution{2U, max_num_homes}(rg_);
+    auto num_homes = std::uniform_int_distribution{2, max_num_homes}(rg_);
     selected_homes.reserve(num_homes);
 
     if (params_.GetInt32(NEAREST)) {

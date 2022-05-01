@@ -20,7 +20,7 @@ namespace {
 void ConnectToServer(const ConfigurationPtr& config, zmq::socket_t& socket, uint32_t region) {
   socket.set(zmq::sockopt::sndhwm, 0);
   socket.set(zmq::sockopt::rcvhwm, 0);
-  for (uint32_t p = 0; p < config->num_partitions(); p++) {
+  for (int p = 0; p < config->num_partitions(); p++) {
     std::ostringstream endpoint_s;
     if (config->protocol() == "ipc") {
       endpoint_s << "tcp://localhost:" << config->server_port();

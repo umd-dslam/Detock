@@ -22,9 +22,9 @@ class SequencerTest : public ::testing::TestWithParam<bool> {
       extra_config.mutable_replication_delay()->set_delay_pct(100);
       extra_config.mutable_replication_delay()->set_delay_amount_ms(5);
       extra_config.set_num_log_managers(2);
-      configs_ = MakeTestConfigurations("sequencer", 2, 2, extra_config);
+      configs_ = MakeTestConfigurations("sequencer", 2, 1, 2, extra_config);
     } else {
-      configs_ = MakeTestConfigurations("sequencer", 2, 2);
+      configs_ = MakeTestConfigurations("sequencer", 2, 1, 2);
     }
 
     for (int i = 0; i < 4; i++) {
@@ -390,7 +390,7 @@ TEST_P(SequencerTest, MultiHomeTransactionBypassedOrderer) {
   }
 }
 
-INSTANTIATE_TEST_SUITE_P(AllSequencerTests, SequencerTest, testing::Values(false, true),
+INSTANTIATE_TEST_SUITE_P(AllSequencerTests, SequencerTest, testing::Values(false),  //, true),
                          [](const testing::TestParamInfo<bool>& info) {
                            return info.param ? "Delayed" : "NotDelayed";
                          });

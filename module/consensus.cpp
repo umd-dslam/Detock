@@ -11,12 +11,24 @@ namespace {
 
 vector<MachineId> GetMembers(const ConfigurationPtr& config) {
   auto local_reg = config->local_region();
+  auto num_replicas = config->num_replicas(local_reg);
   vector<MachineId> members;
-  members.reserve(config->num_partitions());
-  // Enlist all machines in the same region as members
-  for (uint32_t part = 0; part < config->num_partitions(); part++) {
-    members.push_back(config->MakeMachineId(local_reg, part));
+  if (num_replicas == 1) {
+    // For the experiment, we make the partitions in the current
+    // replica voters in Paxos
+    members.reserve(config->num_partitions());
+    for (int part = 0; part < config->num_partitions(); part++) {
+      members.push_back(MakeMachineId(local_reg, 0, part));
+    }
+  } else {
+    // If there are more than 1 replica, create one voter in
+    // each replica
+    members.reserve(num_replicas);
+    for (int rep = 0; rep < num_replicas; rep++) {
+      members.push_back(MakeMachineId(local_reg, rep, 0));
+    }
   }
+
   return members;
 }
 
@@ -27,8 +39,9 @@ GlobalPaxos::GlobalPaxos(const shared_ptr<Broker>& broker, std::chrono::millisec
                           poll_timeout),
       local_machine_id_(broker->config()->local_machine_id()) {
   auto& config = broker->config();
-  for (uint32_t reg = 0; reg < config->num_regions(); reg++) {
-    multihome_orderers_.push_back(config->MakeMachineId(reg, config->leader_partition_for_multi_home_ordering()));
+  auto part = config->leader_partition_for_multi_home_ordering();
+  for (int reg = 0; reg < config->num_regions(); reg++) {
+    multihome_orderers_.push_back(MakeMachineId(reg, 0, part));
   }
 }
 

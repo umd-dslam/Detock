@@ -18,13 +18,13 @@ TEST(LocalLogTest, InOrder) {
   ASSERT_FALSE(log.HasNextBatch());
 
   log.AddSlot(0 /* slot_id */, 111 /* queue_id */, 0 /* leader */);
-  ASSERT_EQ(make_pair(0U, make_pair(100UL, 0)), log.NextBatch());
+  ASSERT_EQ(make_pair(0U, make_pair(100UL, 0U)), log.NextBatch());
 
   log.AddBatchId(222 /* queue_id */, 0 /* position */, 200 /* batch_id */);
   ASSERT_FALSE(log.HasNextBatch());
 
   log.AddSlot(1 /* slot_id */, 222 /* queue_id */, 1 /* leader */);
-  ASSERT_EQ(make_pair(1U, make_pair(200UL, 1)), log.NextBatch());
+  ASSERT_EQ(make_pair(1U, make_pair(200UL, 1U)), log.NextBatch());
 
   ASSERT_FALSE(log.HasNextBatch());
 }
@@ -38,16 +38,16 @@ TEST(LocalLogTest, BatchesComeFirst) {
   log.AddBatchId(333 /* queue_id */, 1 /* position */, 400 /* batch_id */);
 
   log.AddSlot(0 /* slot_id */, 111 /* queue_id */, 0 /* leader */);
-  ASSERT_EQ(make_pair(0U, make_pair(200UL, 0)), log.NextBatch());
+  ASSERT_EQ(make_pair(0U, make_pair(200UL, 0U)), log.NextBatch());
 
   log.AddSlot(1 /* slot_id */, 333 /* queue_id */, 1 /* leader */);
-  ASSERT_EQ(make_pair(1U, make_pair(300UL, 1)), log.NextBatch());
+  ASSERT_EQ(make_pair(1U, make_pair(300UL, 1U)), log.NextBatch());
 
   log.AddSlot(2 /* slot_id */, 222 /* queue_id */, 2 /* leader */);
-  ASSERT_EQ(make_pair(2U, make_pair(100UL, 2)), log.NextBatch());
+  ASSERT_EQ(make_pair(2U, make_pair(100UL, 2U)), log.NextBatch());
 
   log.AddSlot(3 /* slot_id */, 333 /* queue_id */, 3 /* leader */);
-  ASSERT_EQ(make_pair(3U, make_pair(400UL, 3)), log.NextBatch());
+  ASSERT_EQ(make_pair(3U, make_pair(400UL, 3U)), log.NextBatch());
 
   ASSERT_FALSE(log.HasNextBatch());
 }
@@ -61,16 +61,16 @@ TEST(LocalLogTest, SlotsComeFirst) {
   log.AddSlot(0 /* slot_id */, 111 /* queue_id */, 0 /* leader */);
 
   log.AddBatchId(111 /* queue_id */, 0 /* position */, 200 /* batch_id */);
-  ASSERT_EQ(make_pair(0U, make_pair(200UL, 0)), log.NextBatch());
+  ASSERT_EQ(make_pair(0U, make_pair(200UL, 0U)), log.NextBatch());
 
   log.AddBatchId(333 /* queue_id */, 0 /* position */, 300 /* batch_id */);
-  ASSERT_EQ(make_pair(1U, make_pair(300UL, 0)), log.NextBatch());
+  ASSERT_EQ(make_pair(1U, make_pair(300UL, 0U)), log.NextBatch());
 
   log.AddBatchId(222 /* queue_id */, 0 /* position */, 100 /* batch_id */);
-  ASSERT_EQ(make_pair(2U, make_pair(100UL, 0)), log.NextBatch());
+  ASSERT_EQ(make_pair(2U, make_pair(100UL, 0U)), log.NextBatch());
 
   log.AddBatchId(333 /* queue_id */, 1 /* position */, 400 /* batch_id */);
-  ASSERT_EQ(make_pair(3U, make_pair(400UL, 0)), log.NextBatch());
+  ASSERT_EQ(make_pair(3U, make_pair(400UL, 0U)), log.NextBatch());
 
   ASSERT_FALSE(log.HasNextBatch());
 }
@@ -88,10 +88,10 @@ TEST(LocalLogTest, MultipleNextBatches) {
   log.AddSlot(2 /* slot_id */, 111 /* queue_id */, 1 /* leader */);
   log.AddSlot(0 /* slot_id */, 222 /* queue_id */, 1 /* leader */);
 
-  ASSERT_EQ(make_pair(0U, make_pair(100UL, 1)), log.NextBatch());
-  ASSERT_EQ(make_pair(1U, make_pair(400UL, 1)), log.NextBatch());
-  ASSERT_EQ(make_pair(2U, make_pair(300UL, 1)), log.NextBatch());
-  ASSERT_EQ(make_pair(3U, make_pair(200UL, 1)), log.NextBatch());
+  ASSERT_EQ(make_pair(0U, make_pair(100UL, 1U)), log.NextBatch());
+  ASSERT_EQ(make_pair(1U, make_pair(400UL, 1U)), log.NextBatch());
+  ASSERT_EQ(make_pair(2U, make_pair(300UL, 1U)), log.NextBatch());
+  ASSERT_EQ(make_pair(3U, make_pair(200UL, 1U)), log.NextBatch());
 
   ASSERT_FALSE(log.HasNextBatch());
 }
@@ -113,9 +113,9 @@ TEST(LocalLogTest, SameOriginOutOfOrder) {
   log.AddSlot(2 /* slot_id */, 111 /* queue_id */, 0 /* leader */);
   ASSERT_TRUE(log.HasNextBatch());
 
-  ASSERT_EQ(make_pair(0U, make_pair(100UL, 0)), log.NextBatch());
-  ASSERT_EQ(make_pair(1U, make_pair(200UL, 0)), log.NextBatch());
-  ASSERT_EQ(make_pair(2U, make_pair(300UL, 0)), log.NextBatch());
+  ASSERT_EQ(make_pair(0U, make_pair(100UL, 0U)), log.NextBatch());
+  ASSERT_EQ(make_pair(1U, make_pair(200UL, 0U)), log.NextBatch());
+  ASSERT_EQ(make_pair(2U, make_pair(300UL, 0U)), log.NextBatch());
 
   ASSERT_FALSE(log.HasNextBatch());
 }
@@ -127,22 +127,31 @@ constexpr int NUM_MACHINES = NUM_REGIONS * NUM_PARTITIONS;
 class LogManagerTest : public ::testing::Test {
  public:
   void SetUp() {
-    auto configs = MakeTestConfigurations("log_manager", NUM_REGIONS, NUM_PARTITIONS);
-    for (int i = 0; i < 4; i++) {
-      slogs_[i] = make_unique<TestSlog>(configs[i]);
-      slogs_[i]->AddLogManagers();
-      slogs_[i]->AddOutputSocket(kSchedulerChannel);
-      senders_[i] = slogs_[i]->NewSender();
-      slogs_[i]->StartInNewThreads();
-    }
+    auto configs = MakeTestConfigurations("log_manager", NUM_REGIONS, 1, NUM_PARTITIONS);
+    int counter = 0;
+    for (int reg = 0; reg < NUM_REGIONS; reg++)
+      for (int p = 0; p < NUM_PARTITIONS; p++) {
+        MachineId id = MakeMachineId(reg, 0, p);
+        auto res = slogs_.emplace(id, configs[counter++]);
+        CHECK(res.second);
+        auto& slog = res.first->second;
+        slog.AddLogManagers();
+        slog.AddOutputSocket(kSchedulerChannel);
+        senders_.emplace(id, slog.NewSender());
+        slog.StartInNewThreads();
+      }
   }
 
-  void SendToLogManager(int from, int to, const Envelope& req, int home) {
-    senders_[from]->Send(req, to, kLogManagerChannel + home);
+  void SendToLogManager(MachineId from, MachineId to, const Envelope& req, int home) {
+    auto it = senders_.find(from);
+    CHECK(it != senders_.end());
+    it->second->Send(req, to, kLogManagerChannel + home);
   }
 
-  Transaction* ReceiveTxn(int i) {
-    auto req_env = slogs_[i]->ReceiveFromOutputSocket(kSchedulerChannel);
+  Transaction* ReceiveTxn(MachineId id) {
+    auto it = slogs_.find(id);
+    CHECK(it != slogs_.end());
+    auto req_env = it->second.ReceiveFromOutputSocket(kSchedulerChannel);
     if (req_env == nullptr) {
       return nullptr;
     }
@@ -152,8 +161,8 @@ class LogManagerTest : public ::testing::Test {
     return req_env->mutable_request()->mutable_forward_txn()->release_txn();
   }
 
-  unique_ptr<Sender> senders_[4];
-  unique_ptr<TestSlog> slogs_[4];
+  unordered_map<MachineId, unique_ptr<Sender>> senders_;
+  unordered_map<MachineId, TestSlog> slogs_;
 };
 
 internal::Batch* MakeBatch(BatchId batch_id, const vector<Transaction*>& txns, TransactionType batch_type) {
@@ -179,10 +188,10 @@ TEST_F(LogManagerTest, BatchDataBeforeBatchOrder) {
     forward_batch_data->set_home(0);
     forward_batch_data->set_home_position(0);
 
-    SendToLogManager(0, 0, req, 0);
-    SendToLogManager(0, 1, req, 0);
+    SendToLogManager(MakeMachineId(0, 0, 0), MakeMachineId(0, 0, 0), req, 0);
+    SendToLogManager(MakeMachineId(0, 0, 0), MakeMachineId(0, 0, 1), req, 0);
   }
-  // Distribute batch to remote replica
+  // Distribute batch to remote region
   {
     Envelope req;
     auto forward_batch_data = req.mutable_request()->mutable_forward_batch_data();
@@ -191,7 +200,7 @@ TEST_F(LogManagerTest, BatchDataBeforeBatchOrder) {
     forward_batch_data->set_home(0);
     forward_batch_data->set_home_position(0);
 
-    SendToLogManager(0, 2, req, 0);
+    SendToLogManager(MakeMachineId(0, 0, 0), MakeMachineId(1, 0, 0), req, 0);
   }
 
   // Then send local ordering
@@ -201,19 +210,21 @@ TEST_F(LogManagerTest, BatchDataBeforeBatchOrder) {
     local_batch_order->set_queue_id(0);
     local_batch_order->set_slot(0);
     local_batch_order->set_leader(0);
-    SendToLogManager(0, 0, req, 0);
-    SendToLogManager(1, 1, req, 0);
+    SendToLogManager(MakeMachineId(0, 0, 0), MakeMachineId(0, 0, 0), req, 0);
+    SendToLogManager(MakeMachineId(0, 0, 1), MakeMachineId(0, 0, 1), req, 0);
   }
 
   // The batch order is replicated across all machines
-  for (int i = 0; i < NUM_MACHINES; i++) {
-    auto txn1 = ReceiveTxn(i);
-    auto txn2 = ReceiveTxn(i);
-    ASSERT_EQ(*txn1, *expected_txn_1);
-    ASSERT_EQ(*txn2, *expected_txn_2);
-    delete txn1;
-    delete txn2;
-  }
+  for (int reg = 0; reg < NUM_REGIONS; reg++)
+    for (int p = 0; p < NUM_PARTITIONS; p++) {
+      MachineId id = MakeMachineId(reg, 0, p);
+      auto txn1 = ReceiveTxn(id);
+      auto txn2 = ReceiveTxn(id);
+      ASSERT_EQ(*txn1, *expected_txn_1);
+      ASSERT_EQ(*txn2, *expected_txn_2);
+      delete txn1;
+      delete txn2;
+    }
 }
 
 TEST_F(LogManagerTest, BatchOrderBeforeBatchData) {
@@ -228,8 +239,8 @@ TEST_F(LogManagerTest, BatchOrderBeforeBatchData) {
     local_batch_order->set_queue_id(0);
     local_batch_order->set_slot(0);
     local_batch_order->set_leader(0);
-    SendToLogManager(0, 0, req, 0);
-    SendToLogManager(1, 1, req, 0);
+    SendToLogManager(MakeMachineId(0, 0, 0), MakeMachineId(0, 0, 0), req, 0);
+    SendToLogManager(MakeMachineId(0, 0, 1), MakeMachineId(0, 0, 1), req, 0);
   }
 
   // Replicate batch data to all machines
@@ -241,8 +252,8 @@ TEST_F(LogManagerTest, BatchOrderBeforeBatchData) {
     forward_batch_data->set_home(0);
     forward_batch_data->set_home_position(0);
 
-    SendToLogManager(0, 0, req, 0);
-    SendToLogManager(0, 1, req, 0);
+    SendToLogManager(MakeMachineId(0, 0, 0), MakeMachineId(0, 0, 0), req, 0);
+    SendToLogManager(MakeMachineId(0, 0, 0), MakeMachineId(0, 0, 1), req, 0);
   }
   // Distribute batch to remote replica
   {
@@ -253,18 +264,20 @@ TEST_F(LogManagerTest, BatchOrderBeforeBatchData) {
     forward_batch_data->set_home(0);
     forward_batch_data->set_home_position(0);
 
-    SendToLogManager(0, 2, req, 0);
+    SendToLogManager(MakeMachineId(0, 0, 0), MakeMachineId(1, 0, 0), req, 0);
   }
 
   // Both batch data and batch order are sent at the same time
-  for (int i = 0; i < NUM_MACHINES; i++) {
-    auto txn1 = ReceiveTxn(i);
-    auto txn2 = ReceiveTxn(i);
-    ASSERT_EQ(*txn1, *expected_txn_1);
-    ASSERT_EQ(*txn2, *expected_txn_2);
-    delete txn1;
-    delete txn2;
-  }
+  for (int reg = 0; reg < NUM_REGIONS; reg++)
+    for (int p = 0; p < NUM_PARTITIONS; p++) {
+      MachineId id = MakeMachineId(reg, 0, p);
+      auto txn1 = ReceiveTxn(id);
+      auto txn2 = ReceiveTxn(id);
+      ASSERT_EQ(*txn1, *expected_txn_1);
+      ASSERT_EQ(*txn2, *expected_txn_2);
+      delete txn1;
+      delete txn2;
+    }
 
   delete batch;
 }

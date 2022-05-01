@@ -12,7 +12,7 @@ using ::testing::ElementsAre;
 class SimpleRemasterManagerTest : public ::testing::Test {
  protected:
   void SetUp() {
-    configs = MakeTestConfigurations("remaster", 2, 1);
+    configs = MakeTestConfigurations("remaster", 2, 1, 1);
     storage = make_shared<slog::MemOnlyStorage>();
     remaster_manager = make_unique<SimpleRemasterManager>(storage);
   }

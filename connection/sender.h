@@ -61,6 +61,7 @@ class Sender {
   void Send(EnvelopePtr&& envelope, const std::vector<MachineId>& to_machine_ids, Channel to_channel);
 
  private:
+  using MachineIdWithPort = std::pair<MachineId, int>;
   using SocketPtr = std::unique_ptr<zmq::socket_t>;
   SocketPtr& GetRemoteSocket(MachineId machine_id, Channel channel);
 
@@ -70,7 +71,7 @@ class Sender {
   std::shared_ptr<zmq::context_t> context_;
   // Sockets of a long sender have a larger kernel buffer size
   bool is_long_;
-  std::unordered_map<uint64_t, SocketPtr> machine_id_and_port_to_sockets_;
+  std::map<MachineIdWithPort, SocketPtr> machine_id_and_port_to_sockets_;
   std::unordered_map<Channel, zmq::socket_t> local_channel_to_socket_;
 };
 

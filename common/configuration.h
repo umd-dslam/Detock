@@ -22,7 +22,6 @@ class Configuration {
 
   const internal::Configuration& proto_config() const;
   const std::string& protocol() const;
-  const std::vector<std::string>& all_addresses() const;
   const std::string& address(uint32_t region, uint32_t partition) const;
   const std::string& address(MachineId machine_id) const;
   uint32_t broker_ports(int i) const;
@@ -31,10 +30,11 @@ class Configuration {
   uint32_t forwarder_port() const;
   uint32_t sequencer_port() const;
   uint32_t clock_synchronizer_port() const;
-  uint32_t num_regions() const;
-  uint32_t num_partitions() const;
-  uint32_t num_workers() const;
-  uint32_t num_log_managers() const;
+  int num_regions() const;
+  int num_replicas(RegionId reg) const;
+  int num_partitions() const;
+  int num_workers() const;
+  int num_log_managers() const;
   std::vector<MachineId> all_machine_ids() const;
   std::chrono::milliseconds mh_orderer_batch_duration() const;
   std::chrono::milliseconds forwarder_batch_duration() const;
@@ -44,14 +44,13 @@ class Configuration {
   uint32_t replication_factor() const;
 
   const std::string& local_address() const;
-  uint32_t local_region() const;
-  uint32_t local_partition() const;
+  RegionId local_region() const;
+  ReplicaId local_replica() const;
+  PartitionId local_partition() const;
   MachineId local_machine_id() const;
-  MachineId MakeMachineId(uint32_t region, uint32_t partition) const;
-  std::pair<uint32_t, uint32_t> UnpackMachineId(MachineId machine_id) const;
 
-  uint32_t leader_region_for_multi_home_ordering() const;
-  uint32_t leader_partition_for_multi_home_ordering() const;
+  RegionId leader_region_for_multi_home_ordering() const;
+  PartitionId leader_partition_for_multi_home_ordering() const;
 
   uint32_t replication_delay_pct() const;
   uint32_t replication_delay_amount_ms() const;
@@ -79,9 +78,12 @@ class Configuration {
   internal::Configuration config_;
   std::string local_address_;
   int local_region_;
+  int local_replica_;
   int local_partition_;
+  MachineId local_machine_id_;
 
-  std::vector<std::string> all_addresses_;
+  std::unordered_map<MachineId, std::string> all_addresses_;
+  std::vector<MachineId> all_machine_ids_;
   std::vector<uint32_t> replication_order_;
 };
 
