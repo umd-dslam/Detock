@@ -31,7 +31,7 @@ inline MachineId MakeMachineId(RegionId region, ReplicaId replica, PartitionId p
 inline std::tuple<RegionId, ReplicaId, PartitionId> UnpackMachineId(MachineId id) {
   RegionId region_id = (id >> (kReplicaIdBits + kPartitionIdBits)) & ((1 << kRegionIdBits) - 1);
   ReplicaId replica_id = (id >> kPartitionIdBits) & ((1 << kReplicaIdBits) - 1);
-  PartitionId partition_id = id & ((1LL << kPartitionIdBits) - 1);
+  PartitionId partition_id = id & ((1 << kPartitionIdBits) - 1);
 
   return std::make_tuple(region_id, replica_id, partition_id);
 }

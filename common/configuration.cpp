@@ -72,7 +72,7 @@ Configuration::Configuration(const internal::Configuration& config, const string
 
     CHECK_EQ((uint32_t)region.addresses_size(), num_part * num_rep)
         << "Number of addresses in each region must match num_partitions * num_replicas";
-    CHECK_LE(num_rep, 1) << "There must be at least one replica per region";
+    CHECK_GE(num_rep, 1) << "There must be at least one replica per region";
 
     for (size_t rep = 0; rep < num_rep; rep++) {
       for (size_t p = 0; p < num_part; p++) {

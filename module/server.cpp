@@ -11,11 +11,6 @@ namespace slog {
 
 namespace {
 void PreprocessTxn(Transaction* txn) {
-  if (txn->keys().empty()) {
-    txn->set_status(TransactionStatus::ABORTED);
-    txn->set_abort_reason("txn accesses no key");
-    return;
-  }
   txn->set_status(TransactionStatus::NOT_STARTED);
   txn->set_abort_reason("");
   for (auto& kv : *(txn->mutable_keys())) {
@@ -124,11 +119,20 @@ bool Server::OnCustomSocket() {
 
       RECORD(txn_internal, TransactionEvent::ENTER_SERVER);
 
-      PreprocessTxn(txn);
+      if (txn->keys().empty()) {
+        txn->set_status(TransactionStatus::ABORTED);
+        txn->set_abort_reason("txn accesses no key");
+      } else if (txn->has_remaster() && config()->num_regions() == 1) {
+        txn->set_status(TransactionStatus::ABORTED);
+        txn->set_abort_reason("Remaster txn cannot be used when there is only a single region");
+      }
+
       if (txn->status() == TransactionStatus::ABORTED) {
         SendTxnToClient(txn);
         break;
       }
+
+      PreprocessTxn(txn);
 
       RECORD(txn_internal, TransactionEvent::EXIT_SERVER_TO_FORWARDER);
 
@@ -189,7 +193,7 @@ void Server::OnInternalRequestReceived(EnvelopePtr&& env) {
   switch (env->request().type_case()) {
     case internal::Request::kSignal: {
       auto [regid, repid, partid] = UnpackMachineId(env->from());
-      LOG(INFO) << "Machine [" << regid << ", " << repid << ", " << partid << "] is online";
+      LOG(INFO) << "Machine [" << (int)regid << ", " << (int)repid << ", " << partid << "] is online";
       offline_machines_.erase(env->from());
       if (offline_machines_.empty()) {
         LOG(INFO) << "All machines are online";
@@ -217,7 +221,7 @@ void Server::ProcessFinishedSubtxn(EnvelopePtr&& env) {
     return;
   }
 
-  auto part = std::get<PartitionId>(UnpackMachineId(env->from()));
+  auto part = std::get<2>(UnpackMachineId(env->from()));
 
   auto res = finished_txns_.try_emplace(txn_id, txn_internal->involved_partitions_size());
   auto& finished_txn = res.first->second;

@@ -185,8 +185,8 @@ TEST_F(LogManagerTest, BatchDataBeforeBatchOrder) {
     Envelope req;
     auto forward_batch_data = req.mutable_request()->mutable_forward_batch_data();
     forward_batch_data->mutable_batch_data()->Add()->CopyFrom(*batch);
-    forward_batch_data->set_home(0);
-    forward_batch_data->set_home_position(0);
+    forward_batch_data->set_generator(0);
+    forward_batch_data->set_generator_position(0);
 
     SendToLogManager(MakeMachineId(0, 0, 0), MakeMachineId(0, 0, 0), req, 0);
     SendToLogManager(MakeMachineId(0, 0, 0), MakeMachineId(0, 0, 1), req, 0);
@@ -197,8 +197,8 @@ TEST_F(LogManagerTest, BatchDataBeforeBatchOrder) {
     auto forward_batch_data = req.mutable_request()->mutable_forward_batch_data();
     forward_batch_data->mutable_batch_data()->Add()->CopyFrom(*batch);
     forward_batch_data->mutable_batch_data()->Add()->CopyFrom(*batch);
-    forward_batch_data->set_home(0);
-    forward_batch_data->set_home_position(0);
+    forward_batch_data->set_generator(0);
+    forward_batch_data->set_generator_position(0);
 
     SendToLogManager(MakeMachineId(0, 0, 0), MakeMachineId(1, 0, 0), req, 0);
   }
@@ -207,7 +207,7 @@ TEST_F(LogManagerTest, BatchDataBeforeBatchOrder) {
   {
     Envelope req;
     auto local_batch_order = req.mutable_request()->mutable_forward_batch_order()->mutable_local_batch_order();
-    local_batch_order->set_queue_id(0);
+    local_batch_order->set_generator(0);
     local_batch_order->set_slot(0);
     local_batch_order->set_leader(0);
     SendToLogManager(MakeMachineId(0, 0, 0), MakeMachineId(0, 0, 0), req, 0);
@@ -236,7 +236,7 @@ TEST_F(LogManagerTest, BatchOrderBeforeBatchData) {
   {
     Envelope req;
     auto local_batch_order = req.mutable_request()->mutable_forward_batch_order()->mutable_local_batch_order();
-    local_batch_order->set_queue_id(0);
+    local_batch_order->set_generator(0);
     local_batch_order->set_slot(0);
     local_batch_order->set_leader(0);
     SendToLogManager(MakeMachineId(0, 0, 0), MakeMachineId(0, 0, 0), req, 0);
@@ -249,8 +249,8 @@ TEST_F(LogManagerTest, BatchOrderBeforeBatchData) {
     Envelope req;
     auto forward_batch_data = req.mutable_request()->mutable_forward_batch_data();
     forward_batch_data->mutable_batch_data()->Add()->CopyFrom(*batch);
-    forward_batch_data->set_home(0);
-    forward_batch_data->set_home_position(0);
+    forward_batch_data->set_generator(0);
+    forward_batch_data->set_generator_position(0);
 
     SendToLogManager(MakeMachineId(0, 0, 0), MakeMachineId(0, 0, 0), req, 0);
     SendToLogManager(MakeMachineId(0, 0, 0), MakeMachineId(0, 0, 1), req, 0);
@@ -261,8 +261,8 @@ TEST_F(LogManagerTest, BatchOrderBeforeBatchData) {
     auto forward_batch_data = req.mutable_request()->mutable_forward_batch_data();
     forward_batch_data->mutable_batch_data()->Add()->CopyFrom(*batch);
     forward_batch_data->mutable_batch_data()->Add()->CopyFrom(*batch);
-    forward_batch_data->set_home(0);
-    forward_batch_data->set_home_position(0);
+    forward_batch_data->set_generator(0);
+    forward_batch_data->set_generator_position(0);
 
     SendToLogManager(MakeMachineId(0, 0, 0), MakeMachineId(1, 0, 0), req, 0);
   }

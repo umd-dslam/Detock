@@ -13,10 +13,10 @@ using std::shared_ptr;
 namespace slog {
 
 namespace {
-std::vector<uint64_t> RegionsToTags(const std::vector<uint32_t>& regions) {
+std::vector<uint64_t> RegionsToTags(const std::vector<RegionId>& regions) {
   std::vector<uint64_t> tags;
   for (auto r : regions) {
-    tags.push_back(LogManager::MakeTag(r));
+    tags.push_back(LogManager::MakeLogChannel(r));
   }
   return tags;
 }
@@ -63,7 +63,7 @@ void LocalLog::UpdateReadyBatches() {
   }
 }
 
-LogManager::LogManager(int id, const std::vector<uint32_t>& regions, const shared_ptr<Broker>& broker,
+LogManager::LogManager(int id, const std::vector<RegionId>& regions, const shared_ptr<Broker>& broker,
                        const MetricsRepositoryManagerPtr& metrics_manager, std::chrono::milliseconds poll_timeout)
     : NetworkedModule(broker, Broker::ChannelOption(kLogManagerChannel + id, true, RegionsToTags(regions)),
                       metrics_manager, poll_timeout) {
@@ -111,12 +111,21 @@ void LogManager::OnInternalRequestReceived(EnvelopePtr&& env) {
 }
 
 void LogManager::ProcessBatchReplicationAck(EnvelopePtr&& env) {
-  auto from_region = std::get<0>(UnpackMachineId(env->from()));
+  auto [from_region, from_replica, _] = UnpackMachineId(env->from());
   auto local_region = config()->local_region();
+  auto local_replica = config()->local_replica();
+  bool first_time_region = from_region != local_region;
+  bool first_time_replica = first_time_region || from_replica != local_replica;
   // If this ack comes from another region, propagate the ack to
-  // other machines in the same replica
-  if (from_region != local_region) {
-    Send(*env, other_partitions_, MakeTag(local_region));
+  // other replicas
+  if (first_time_region) {
+    Send(*env, other_replicas_, MakeLogChannel(local_region));
+  }
+
+  // If this ack comes from another replica in the same region, propagate the ack to
+  // other partitions
+  if (first_time_replica) {
+    Send(*env, other_partitions_, MakeLogChannel(local_region));
   }
 
   auto batch_id = env->request().batch_replication_ack().batch_id();
@@ -128,20 +137,22 @@ void LogManager::ProcessForwardBatchData(EnvelopePtr&& env) {
   auto local_replica = config()->local_replica();
   auto local_partition = config()->local_partition();
   auto forward_batch_data = env->mutable_request()->mutable_forward_batch_data();
+  MachineId generator = forward_batch_data->generator();
+  auto generator_position = forward_batch_data->generator_position();
+  auto generator_home = std::get<0>(UnpackMachineId(generator));
   auto [from_region, from_replica, from_partition] = UnpackMachineId(env->from());
+  bool first_time_region = from_region != local_region;
+  bool first_time_replica = first_time_region || from_replica != local_replica;
+
+  if (first_time_region) {
+    // If this batch comes from a different region, distribute it to other local replicas
+    Send(*env, other_replicas_, MakeLogChannel(generator_home));
+  }
 
   BatchPtr my_batch;
-  // If the batch comes from the same region and replica, no need to distribute further
-  if (from_region == local_region && from_replica == local_replica) {
-    my_batch = BatchPtr(forward_batch_data->mutable_batch_data()->ReleaseLast());
-  } else {
-    // If this batch comes from a different region, distribute it to other replicas
-    if (from_region != local_region && !other_replicas_.empty()) {
-      Send(*env, other_replicas_, MakeTag(local_region));
-    }
-
-    // At this point, this is the first time the batch reaches our replica, so
-    // distribute the batch partitions to the local partitions
+  if (first_time_replica) {
+    // If this is the first time the batch reaches our replica, distribute the batch partitions
+    // to the local partitions
 
     CHECK_EQ(forward_batch_data->batch_data_size(), config()->num_partitions());
     PartitionId p = config()->num_partitions() - 1;
@@ -150,61 +161,67 @@ void LogManager::ProcessForwardBatchData(EnvelopePtr&& env) {
       if (p == local_partition) {
         my_batch = BatchPtr(batch_partition);
       } else {
-        auto home = forward_batch_data->home();
         auto new_env = NewEnvelope();
         auto new_forward_batch = new_env->mutable_request()->mutable_forward_batch_data();
-        new_forward_batch->set_home(home);
-        new_forward_batch->set_home_position(forward_batch_data->home_position());
+        new_forward_batch->set_generator(generator);
+        new_forward_batch->set_generator_position(generator_position);
         new_forward_batch->mutable_batch_data()->AddAllocated(batch_partition);
-        Send(*new_env, MakeMachineId(local_region, local_replica, p), MakeTag(home));
+        Send(*new_env, MakeMachineId(local_region, local_replica, p), MakeLogChannel(generator_home));
       }
       p--;
     }
+  } else {
+    // If the batch comes from the same region and replica, no need to distribute further
+    my_batch = BatchPtr(forward_batch_data->mutable_batch_data()->ReleaseLast());
   }
 
   RECORD(my_batch.get(), TransactionEvent::ENTER_LOG_MANAGER_IN_BATCH);
 
   auto [regid, repid, partid] = UnpackMachineId(env->from());
-  VLOG(1) << "Received data for batch " << my_batch->id() << " from [" << regid << ", " << repid << ", " << partid
-          << "]. Number of txns: " << my_batch->transactions_size();
+  VLOG(1) << "Received data for batch " << my_batch->id() << " (home = " << (int)generator_home << ") from [" << (int)regid << ", " << (int)repid << ", "
+          << partid << "]. Number of txns: " << my_batch->transactions_size()
+          << ". First time region: " << first_time_region << ". First time replica: " << first_time_replica;
 
-  if (forward_batch_data->home() == local_region) {
-    local_log_.AddBatchId(from_partition /* queue_id */,
-                          // Batches generated by the same machine need to follow the order
-                          // of creation. This field is used to keep track of that order
-                          forward_batch_data->home_position(), my_batch->id());
+  if (generator_home == local_region) {
+    VLOG(1) << "Added batch " << my_batch->id() << " to local log at (" << generator << ", " << generator_position << ")";
+    local_log_.AddBatchId(generator, generator_position, my_batch->id());
   }
 
-  single_home_logs_[forward_batch_data->home()].AddBatch(move(my_batch));
+  single_home_logs_[generator_home].AddBatch(move(my_batch));
 }
 
 void LogManager::ProcessForwardBatchOrder(EnvelopePtr&& env) {
   auto forward_batch_order = env->mutable_request()->mutable_forward_batch_order();
-  auto [from_region, from_replica, _from_partition] = UnpackMachineId(env->from());
+  auto [from_region, from_replica, from_partition] = UnpackMachineId(env->from());
   auto local_region = config()->local_region();
   auto local_replica = config()->local_replica();
+  auto local_partition = config()->local_partition();
 
   switch (forward_batch_order->locality_case()) {
     case internal::ForwardBatchOrder::kLocalBatchOrder: {
       auto& order = forward_batch_order->local_batch_order();
-      VLOG(1) << "Received local batch order. Slot id: " << order.slot() << ". Queue id: " << order.queue_id();
+      VLOG(1) << "Received local batch order. Slot id: " << order.slot() << ". Generator: " << order.generator();
 
-      local_log_.AddSlot(order.slot(), order.queue_id(), order.leader());
+      local_log_.AddSlot(order.slot(), order.generator(), order.leader());
+
+      // If there are more than one replica in the current region, the partitions are not used for Paxos
+      // voting, so we need to tell them about the order.
+      if (config()->num_replicas(local_region) > 1 && from_partition == local_partition) {
+        Send(*env, other_partitions_, MakeLogChannel(local_region));
+      }
       break;
     }
     case internal::ForwardBatchOrder::kRemoteBatchOrder: {
       auto& batch_order = forward_batch_order->remote_batch_order();
       auto batch_id = batch_order.batch_id();
       auto home = batch_order.home();
-      auto tag = MakeTag(home);
-
-      auto [regid, repid, partid] = UnpackMachineId(env->from());
-      VLOG(1) << "Received remote batch order " << batch_id << " (home = " << home << ") from [" << regid << ", "
-              << repid << ", " << partid << "]. Slot: " << batch_order.slot();
+      auto tag = MakeLogChannel(home);
+      bool first_time_region = from_region != local_region;
+      bool first_time_replica = first_time_region || from_replica != local_replica;
 
       // If this is the first time this order reaches the current region,
       // send it to other replicas
-      if (from_region != local_region) {
+      if (first_time_region) {
         Send(*env, other_replicas_, tag);
         // Ack back if needed
         if (batch_order.need_ack()) {
@@ -216,9 +233,13 @@ void LogManager::ProcessForwardBatchOrder(EnvelopePtr&& env) {
 
       // If this is the first time this order reaches the current replica,
       // send it to other partitions
-      if (from_region != local_region || from_replica != local_replica) {
+      if (first_time_replica) {
         Send(*env, other_partitions_, tag);
       }
+
+      VLOG(1) << "Received remote batch order " << batch_id << " (home = " << home << ") from [" << (int)from_region << ", "
+              << (int)from_replica << ", " << from_partition << "]. Slot: " << batch_order.slot()
+              << ". First time region: " << first_time_region << ". First time replica: " << first_time_replica;
 
       single_home_logs_[home].AddSlot(batch_order.slot(), batch_id);
       break;
@@ -267,10 +288,10 @@ void LogManager::AdvanceLog() {
         }
       }
 
-      Send(env, destinations, MakeTag(local_region));
+      Send(env, destinations, MakeLogChannel(local_region));
 
       forward_batch_order->set_need_ack(true);
-      Send(env, ack_destinations, MakeTag(local_region));
+      Send(env, ack_destinations, MakeLogChannel(local_region));
     }
 
     single_home_logs_[local_region].AddSlot(slot_id, batch_id, config()->replication_factor() - 1);

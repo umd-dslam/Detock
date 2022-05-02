@@ -31,8 +31,8 @@ class SequencerTest : public ::testing::TestWithParam<bool> {
       slog_[i] = make_unique<TestSlog>(configs_[i]);
       slog_[i]->AddSequencer();
       // There are 2 lock managers as set in the config
-      slog_[i]->AddOutputSocket(kLogManagerChannel, {LogManager::MakeTag(0)});
-      slog_[i]->AddOutputSocket(kLogManagerChannel + 1, {LogManager::MakeTag(1)});
+      slog_[i]->AddOutputSocket(kLogManagerChannel, {LogManager::MakeLogChannel(0)});
+      slog_[i]->AddOutputSocket(kLogManagerChannel + 1, {LogManager::MakeLogChannel(1)});
       senders_[i] = slog_[i]->NewSender();
     }
     for (auto& slog : slog_) {
@@ -390,7 +390,7 @@ TEST_P(SequencerTest, MultiHomeTransactionBypassedOrderer) {
   }
 }
 
-INSTANTIATE_TEST_SUITE_P(AllSequencerTests, SequencerTest, testing::Values(false),  //, true),
+INSTANTIATE_TEST_SUITE_P(AllSequencerTests, SequencerTest, testing::Values(false, true),
                          [](const testing::TestParamInfo<bool>& info) {
                            return info.param ? "Delayed" : "NotDelayed";
                          });

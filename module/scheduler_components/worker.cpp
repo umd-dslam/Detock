@@ -287,12 +287,13 @@ void Worker::Finish(const RunId& run_id) {
 
   RECORD(txn->mutable_internal(), TransactionEvent::EXIT_WORKER);
 
-  // Send the txn back to the coordinating server if it is in the same region.
+  // Send the txn back to the coordinating server if it is in the same replica.
   // This must happen before the sending to scheduler below. Otherwise,
   // the scheduler may destroy the transaction holder before we can
   // send the transaction to the server.
   auto coordinator = txn->internal().coordinating_server();
-  if (std::get<0>(UnpackMachineId(coordinator)) == config()->local_region()) {
+  auto [coord_reg, coord_rep, _] = UnpackMachineId(coordinator);
+  if (coord_reg == config()->local_region() && coord_rep == config()->local_replica()) {
     if (config()->return_dummy_txn()) {
       txn->mutable_keys()->Clear();
       txn->mutable_code()->Clear();

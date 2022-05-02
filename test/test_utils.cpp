@@ -155,7 +155,7 @@ void TestSlog::AddSequencer() {
 void TestSlog::AddLogManagers() {
   auto num_log_managers = broker_->config()->num_log_managers();
   for (int i = 0; i < num_log_managers; i++) {
-    std::vector<uint32_t> regions;
+    std::vector<RegionId> regions;
     for (int r = 0; r < broker_->config()->num_regions(); r++) {
       if (r % num_log_managers == i) {
         regions.push_back(r);

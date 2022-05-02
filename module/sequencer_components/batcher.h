@@ -32,7 +32,7 @@ class Batcher : public NetworkedModule {
   void BatchTxn(Transaction* txn);
   BatchId batch_id() const;
   void SendBatches();
-  EnvelopePtr NewBatchForwardingMessage(std::vector<internal::Batch*>&& batch, int home_position);
+  EnvelopePtr NewBatchForwardingMessage(std::vector<internal::Batch*>&& batch, int generator_position);
 
   void ProcessStatsRequest(const internal::StatsRequest& stats_request);
 

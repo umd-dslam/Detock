@@ -17,10 +17,14 @@
 using namespace std;
 using namespace slog;
 
-class E2ETest : public ::testing::Test {
- protected:
-  static const size_t NUM_MACHINES = 4;
+const int kNumRegions = 2;
+const int kNumReplicas = 2;
+const int kNumPartitions = 2;
+const int kNumMachines = kNumRegions * kNumReplicas * kNumPartitions;
+const int kDataItems = 2;
 
+class E2ETest : public ::testing::TestWithParam<tuple<int, int, int>> {
+ protected:
   virtual internal::Configuration CustomConfig() { return internal::Configuration(); }
 
   void SetUp() {
@@ -30,117 +34,154 @@ class E2ETest : public ::testing::Test {
     custom_config.add_replication_order("0");
     custom_config.set_num_workers(2);
     custom_config.set_num_log_managers(2);
-    configs =
-        MakeTestConfigurations("e2e", 2 /* num_regions */, 1 /* num_replicas */, 2 /* num_partitions */, custom_config);
+    auto configs = MakeTestConfigurations("e2e", kNumRegions, kNumReplicas, kNumPartitions, custom_config);
 
-    for (size_t i = 0; i < NUM_MACHINES; i++) {
-      test_slogs[i] = make_unique<TestSlog>(configs[i]);
+    std::pair<Key, Record> data[kNumPartitions][kDataItems] = {{{"A", {"valA", 0, 0}}, {"C", {"valC", 1, 1}}},
+                                                               {{"B", {"valB", 0, 1}}, {"X", {"valX", 1, 0}}}};
 
-      test_slogs[i]->AddServerAndClient();
-      test_slogs[i]->AddForwarder();
-      test_slogs[i]->AddMultiHomeOrderer();
-      test_slogs[i]->AddSequencer();
-      test_slogs[i]->AddLogManagers();
-      test_slogs[i]->AddScheduler();
-      test_slogs[i]->AddLocalPaxos();
+    int counter = 0;
+    for (int reg = 0; reg < kNumRegions; reg++) {
+      for (int rep = 0; rep < kNumReplicas; rep++) {
+        for (int p = 0; p < kNumPartitions; p++) {
+          auto id = MakeMachineId(reg, rep, p);
+          auto config = configs[counter++];
+          auto& slog = test_slogs_.emplace(id, config).first->second;
+          slog.AddServerAndClient();
+          slog.AddForwarder();
+          slog.AddMultiHomeOrderer();
+          slog.AddSequencer();
+          slog.AddLogManagers();
+          slog.AddScheduler();
+          slog.AddLocalPaxos();
+          // One region is selected to globally order the multihome batches
+          if (config->leader_region_for_multi_home_ordering() == config->local_region()) {
+            slog.AddGlobalPaxos();
+          }
 
-      // One region is selected to globally order the multihome batches
-      if (configs[i]->leader_region_for_multi_home_ordering() == configs[i]->local_region()) {
-        test_slogs[i]->AddGlobalPaxos();
+          for (int k = 0; k < kDataItems; k++) {
+            const auto& item = data[p][k];
+            slog.Data(Key(item.first), Record(item.second));
+          }
+        }
       }
     }
 
-    // Region 0
-    test_slogs[0]->Data("A", {"valA", 0, 0});
-    test_slogs[0]->Data("C", {"valC", 1, 1});
-    test_slogs[1]->Data("B", {"valB", 0, 1});
-    test_slogs[1]->Data("X", {"valX", 1, 0});
-    // Region 1
-    test_slogs[2]->Data("A", {"valA", 0, 0});
-    test_slogs[2]->Data("C", {"valC", 1, 1});
-    test_slogs[3]->Data("B", {"valB", 0, 1});
-    test_slogs[3]->Data("X", {"valX", 1, 0});
+    auto param = GetParam();
+    auto main_reg = std::get<0>(param);
+    auto main_rep = std::get<1>(param);
+    auto main_part = std::get<2>(param);
+    main_ = MakeMachineId(main_reg, main_rep, main_part);
+    CHECK(test_slogs_.find(main_) != test_slogs_.end())
+        << "Cannot find machine [" << main_reg << "," << main_rep << "," << main_part << "]";
 
-    for (const auto& test_slog : test_slogs) {
-      test_slog->StartInNewThreads();
+    for (auto& [_, slog] : test_slogs_) {
+      slog.StartInNewThreads();
     }
   }
 
-  unique_ptr<TestSlog> test_slogs[NUM_MACHINES];
-  ConfigVec configs;
+  Transaction SendAndReceiveResult(Transaction* txn) {
+    auto it = test_slogs_.find(main_);
+    CHECK(it != test_slogs_.end());
+    it->second.SendTxn(txn);
+    return it->second.RecvTxnResult();
+  }
+
+  // Send the transaction and check the result using the given callback function
+  // for all machines one by one.
+  void SendAndCheckAllOneByOne(Transaction* txn, std::function<void(Transaction)> cb) {
+    for (int reg = 0; reg < kNumRegions; reg++) {
+      for (int rep = 0; rep < kNumReplicas; rep++) {
+        for (int p = 0; p < kNumPartitions; p++) {
+          auto it = test_slogs_.find(MakeMachineId(reg, rep, p));
+          CHECK(it != test_slogs_.end());
+
+          auto copied_txn = new Transaction(*txn);
+
+          it->second.SendTxn(copied_txn);
+          auto resp = it->second.RecvTxnResult();
+
+          cb(resp);
+        }
+      }
+    }
+  }
+
+ private:
+  unordered_map<MachineId, TestSlog> test_slogs_;
+  MachineId main_;
 };
 
-// This test submits multiple transactions to the system serially and checks the
-// read values for correctness.
-TEST_F(E2ETest, BasicSingleHomeSingleParition) {
+TEST_P(E2ETest, SingleHomeSinglePartition) {
   auto txn1 = MakeTransaction({{"A", KeyType::WRITE}}, {{"SET", "A", "newA"}});
+  auto resp = SendAndReceiveResult(txn1);
+  ASSERT_EQ(resp.status(), TransactionStatus::COMMITTED);
+  ASSERT_EQ(resp.internal().type(), TransactionType::SINGLE_HOME);
+  ASSERT_EQ(resp.keys_size(), 1);
+  ASSERT_EQ(TxnValueEntry(resp, "A").value(), "valA");
+  ASSERT_EQ(TxnValueEntry(resp, "A").new_value(), "newA");
+
   auto txn2 = MakeTransaction({{"A", KeyType::READ}}, {{"GET", "A"}});
-
-  test_slogs[0]->SendTxn(txn1);
-  auto txn1_resp = test_slogs[0]->RecvTxnResult();
-  ASSERT_EQ(txn1_resp.status(), TransactionStatus::COMMITTED);
-  ASSERT_EQ(txn1_resp.internal().type(), TransactionType::SINGLE_HOME);
-  ASSERT_EQ(txn1_resp.keys_size(), 1);
-  ASSERT_EQ(TxnValueEntry(txn1_resp, "A").value(), "valA");
-  ASSERT_EQ(TxnValueEntry(txn1_resp, "A").new_value(), "newA");
-
-  test_slogs[0]->SendTxn(txn2);
-  auto txn2_resp = test_slogs[0]->RecvTxnResult();
-  ASSERT_EQ(txn2_resp.status(), TransactionStatus::COMMITTED);
-  ASSERT_EQ(txn2_resp.internal().type(), TransactionType::SINGLE_HOME);
-  ASSERT_EQ(txn2_resp.keys_size(), 1);
-  ASSERT_EQ(TxnValueEntry(txn2_resp, "A").value(), "newA");
+  SendAndCheckAllOneByOne(txn2, [this](Transaction resp) {
+    ASSERT_EQ(resp.status(), TransactionStatus::COMMITTED);
+    ASSERT_EQ(resp.internal().type(), TransactionType::SINGLE_HOME);
+    ASSERT_EQ(resp.keys_size(), 1);
+    ASSERT_EQ(TxnValueEntry(resp, "A").value(), "newA");
+  });
 }
 
-TEST_F(E2ETest, MultiPartitionTxn) {
-  for (size_t i = 2; i < 3; i++) {
-    auto txn = MakeTransaction({{"A", KeyType::READ}, {"B", KeyType::WRITE}}, {{"GET", "A"}, {"SET", "B", "newB"}});
+TEST_P(E2ETest, SingleHomeMultiPartition) {
+  auto txn1 = MakeTransaction({{"A", KeyType::READ}, {"B", KeyType::WRITE}}, {{"GET", "A"}, {"SET", "B", "newB"}});
+  auto resp = SendAndReceiveResult(txn1);
+  ASSERT_EQ(resp.status(), TransactionStatus::COMMITTED);
+  ASSERT_EQ(resp.internal().type(), TransactionType::SINGLE_HOME);
+  ASSERT_EQ(resp.keys().size(), 2);
+  ASSERT_EQ(TxnValueEntry(resp, "A").value(), "valA");
+  ASSERT_EQ(TxnValueEntry(resp, "B").new_value(), "newB");
 
-    test_slogs[i]->SendTxn(txn);
-    auto txn_resp = test_slogs[i]->RecvTxnResult();
-    ASSERT_EQ(txn_resp.status(), TransactionStatus::COMMITTED);
-    ASSERT_EQ(txn_resp.internal().type(), TransactionType::SINGLE_HOME);
-    ASSERT_EQ(txn_resp.keys().size(), 2);
-    ASSERT_EQ(TxnValueEntry(txn_resp, "A").value(), "valA");
-    ASSERT_EQ(TxnValueEntry(txn_resp, "B").new_value(), "newB");
-  }
+  auto txn2 = MakeTransaction({{"B", KeyType::READ}}, {{"GET", "B"}});
+  SendAndCheckAllOneByOne(txn2, [this](Transaction resp) {
+    ASSERT_EQ(resp.status(), TransactionStatus::COMMITTED);
+    ASSERT_EQ(resp.internal().type(), TransactionType::SINGLE_HOME);
+    ASSERT_EQ(resp.keys_size(), 1);
+    ASSERT_EQ(TxnValueEntry(resp, "B").value(), "newB");
+  });
 }
 
-TEST_F(E2ETest, MultiHomeTxn) {
-  for (size_t i = 0; i < NUM_MACHINES; i++) {
-    auto txn = MakeTransaction({{"A", KeyType::READ}, {"C", KeyType::WRITE}}, {{"GET", "A"}, {"SET", "C", "newC"}});
+TEST_P(E2ETest, MultiHomeSinglePartition) {
+  auto txn1 = MakeTransaction({{"A", KeyType::READ}, {"C", KeyType::WRITE}}, {{"GET", "A"}, {"SET", "C", "newC"}});
+  auto resp = SendAndReceiveResult(txn1);
+  ASSERT_EQ(resp.status(), TransactionStatus::COMMITTED);
+  ASSERT_EQ(resp.internal().type(), TransactionType::MULTI_HOME_OR_LOCK_ONLY);
+  ASSERT_EQ(resp.keys().size(), 2);
+  ASSERT_EQ(TxnValueEntry(resp, "A").value(), "valA");
+  ASSERT_EQ(TxnValueEntry(resp, "C").new_value(), "newC");
 
-    test_slogs[i]->SendTxn(txn);
-    auto txn_resp = test_slogs[i]->RecvTxnResult();
-    ASSERT_EQ(txn_resp.status(), TransactionStatus::COMMITTED);
-    ASSERT_EQ(txn_resp.internal().type(), TransactionType::MULTI_HOME_OR_LOCK_ONLY);
-    ASSERT_EQ(txn_resp.keys().size(), 2);
-    ASSERT_EQ(TxnValueEntry(txn_resp, "A").value(), "valA");
-    ASSERT_EQ(TxnValueEntry(txn_resp, "C").new_value(), "newC");
-  }
+  auto txn2 = MakeTransaction({{"C", KeyType::READ}}, {{"GET", "C"}});
+  SendAndCheckAllOneByOne(txn2, [this](Transaction resp) {
+    ASSERT_EQ(resp.status(), TransactionStatus::COMMITTED);
+    ASSERT_EQ(resp.internal().type(), TransactionType::SINGLE_HOME);
+    ASSERT_EQ(resp.keys_size(), 1);
+    ASSERT_EQ(TxnValueEntry(resp, "C").value(), "newC");
+  });
 }
 
-TEST_F(E2ETest, MultiHomeMultiPartitionTxn) {
-  for (size_t i = 0; i < NUM_MACHINES; i++) {
-    auto txn = MakeTransaction({{"A", KeyType::READ}, {"X", KeyType::READ}, {"C", KeyType::READ}});
-
-    test_slogs[i]->SendTxn(txn);
-    auto txn_resp = test_slogs[i]->RecvTxnResult();
-    ASSERT_EQ(txn_resp.status(), TransactionStatus::COMMITTED);
-    ASSERT_EQ(txn_resp.internal().type(), TransactionType::MULTI_HOME_OR_LOCK_ONLY);
-    ASSERT_EQ(txn_resp.keys().size(), 3);
-    ASSERT_EQ(TxnValueEntry(txn_resp, "A").value(), "valA");
-    ASSERT_EQ(TxnValueEntry(txn_resp, "X").value(), "valX");
-    ASSERT_EQ(TxnValueEntry(txn_resp, "C").value(), "valC");
-  }
+TEST_P(E2ETest, MultiHomeMultiPartition) {
+  auto txn = MakeTransaction({{"A", KeyType::READ}, {"X", KeyType::READ}, {"C", KeyType::READ}});
+  auto resp = SendAndReceiveResult(txn);
+  ASSERT_EQ(resp.status(), TransactionStatus::COMMITTED);
+  ASSERT_EQ(resp.internal().type(), TransactionType::MULTI_HOME_OR_LOCK_ONLY);
+  ASSERT_EQ(resp.keys().size(), 3);
+  ASSERT_EQ(TxnValueEntry(resp, "A").value(), "valA");
+  ASSERT_EQ(TxnValueEntry(resp, "X").value(), "valX");
+  ASSERT_EQ(TxnValueEntry(resp, "C").value(), "valC");
 }
 
 #ifdef ENABLE_REMASTER
-TEST_F(E2ETest, RemasterTxn) {
+TEST_P(E2ETest, RemasterTxn) {
   auto remaster_txn = MakeTransaction({{"A", KeyType::WRITE}}, {}, 1);
 
-  test_slogs[1]->SendTxn(remaster_txn);
-  auto remaster_txn_resp = test_slogs[1]->RecvTxnResult();
+  auto remaster_txn_resp = SendAndReceiveResult(remaster_txn);
+
   ASSERT_EQ(TransactionStatus::COMMITTED, remaster_txn_resp.status());
 
 #ifdef REMASTER_PROTOCOL_COUNTERLESS
@@ -153,8 +194,7 @@ TEST_F(E2ETest, RemasterTxn) {
 
   // Since replication factor is set to 2 for all tests in this file, it is
   // guaranteed that this txn will see the changes made by the remaster txn
-  test_slogs[1]->SendTxn(txn);
-  auto txn_resp = test_slogs[1]->RecvTxnResult();
+  auto txn_resp = SendAndReceiveResult(txn);
   ASSERT_EQ(txn_resp.status(), TransactionStatus::COMMITTED);
   ASSERT_EQ(txn_resp.internal().type(), TransactionType::SINGLE_HOME);  // used to be MH
   ASSERT_EQ(txn_resp.keys().size(), 2);
@@ -163,31 +203,28 @@ TEST_F(E2ETest, RemasterTxn) {
 }
 #endif
 
-TEST_F(E2ETest, AbortTxnBadCommand) {
+TEST_P(E2ETest, AbortTxnBadCommand) {
   // Multi-partition transaction where one of the partition will abort
   auto aborted_txn = MakeTransaction({{"A"}, {"B", KeyType::WRITE}}, {{"SET", "B", "notB"}, {"EQ", "A", "notA"}});
 
-  test_slogs[1]->SendTxn(aborted_txn);
-  auto aborted_txn_resp = test_slogs[1]->RecvTxnResult();
+  auto aborted_txn_resp = SendAndReceiveResult(aborted_txn);
   ASSERT_EQ(TransactionStatus::ABORTED, aborted_txn_resp.status());
   ASSERT_EQ(TransactionType::SINGLE_HOME, aborted_txn_resp.internal().type());
 
   auto txn = MakeTransaction({{"B"}}, {{"GET", "B"}});
 
-  test_slogs[1]->SendTxn(txn);
-  auto txn_resp = test_slogs[1]->RecvTxnResult();
+  auto txn_resp = SendAndReceiveResult(txn);
   ASSERT_EQ(txn_resp.status(), TransactionStatus::COMMITTED);
   ASSERT_EQ(txn_resp.internal().type(), TransactionType::SINGLE_HOME);
   // Value of B must not change because the previous txn was aborted
   ASSERT_EQ(TxnValueEntry(txn_resp, "B").value(), "valB");
 }
 
-TEST_F(E2ETest, AbortTxnEmptyKeySets) {
+TEST_P(E2ETest, AbortTxnEmptyKeySets) {
   // Multi-partition transaction where one of the partition will abort
   auto aborted_txn = MakeTransaction({});
 
-  test_slogs[1]->SendTxn(aborted_txn);
-  auto aborted_txn_resp = test_slogs[1]->RecvTxnResult();
+  auto aborted_txn_resp = SendAndReceiveResult(aborted_txn);
   ASSERT_EQ(TransactionStatus::ABORTED, aborted_txn_resp.status());
   ASSERT_EQ(TransactionType::UNKNOWN, aborted_txn_resp.internal().type());
 }
@@ -207,33 +244,37 @@ class E2ETestBypassMHOrderer : public E2ETest {
   }
 };
 
-TEST_F(E2ETestBypassMHOrderer, MultiHomeSinglePartitionTxn) {
-  for (size_t i = 0; i < NUM_MACHINES; i++) {
-    auto txn = MakeTransaction({{"A"}, {"C"}});
+TEST_P(E2ETestBypassMHOrderer, MultiHomeSinglePartition) {
+  auto txn1 = MakeTransaction({{"A", KeyType::READ}, {"C", KeyType::WRITE}}, {{"GET", "A"}, {"SET", "C", "newC"}});
+  auto resp = SendAndReceiveResult(txn1);
+  ASSERT_EQ(resp.status(), TransactionStatus::COMMITTED);
+  ASSERT_EQ(resp.internal().type(), TransactionType::MULTI_HOME_OR_LOCK_ONLY);
+  ASSERT_EQ(resp.keys().size(), 2);
+  ASSERT_EQ(TxnValueEntry(resp, "A").value(), "valA");
+  ASSERT_EQ(TxnValueEntry(resp, "C").new_value(), "newC");
 
-    test_slogs[i]->SendTxn(txn);
-    auto txn_resp = test_slogs[i]->RecvTxnResult();
-    ASSERT_EQ(TransactionStatus::COMMITTED, txn_resp.status());
-    ASSERT_EQ(TransactionType::MULTI_HOME_OR_LOCK_ONLY, txn_resp.internal().type());
-    ASSERT_EQ("valA", TxnValueEntry(txn_resp, "A").value());
-    ASSERT_EQ("valC", TxnValueEntry(txn_resp, "C").value());
-  }
+  auto txn2 = MakeTransaction({{"C", KeyType::READ}}, {{"GET", "C"}});
+  SendAndCheckAllOneByOne(txn2, [this](Transaction resp) {
+    ASSERT_EQ(resp.status(), TransactionStatus::COMMITTED);
+    ASSERT_EQ(resp.internal().type(), TransactionType::SINGLE_HOME);
+    ASSERT_EQ(resp.keys_size(), 1);
+    ASSERT_EQ(TxnValueEntry(resp, "C").value(), "newC");
+  });
 }
 
-TEST_F(E2ETestBypassMHOrderer, MultiHomeMultiPartitionTxn) {
-  for (size_t i = 0; i < NUM_MACHINES; i++) {
-    auto txn = MakeTransaction({{"A", KeyType::READ}, {"X", KeyType::READ}, {"C", KeyType::READ}});
-
-    test_slogs[i]->SendTxn(txn);
-    auto txn_resp = test_slogs[i]->RecvTxnResult();
-    ASSERT_EQ(txn_resp.status(), TransactionStatus::COMMITTED);
-    ASSERT_EQ(txn_resp.internal().type(), TransactionType::MULTI_HOME_OR_LOCK_ONLY);
-    ASSERT_EQ(txn_resp.keys().size(), 3);
-    ASSERT_EQ(TxnValueEntry(txn_resp, "A").value(), "valA");
-    ASSERT_EQ(TxnValueEntry(txn_resp, "X").value(), "valX");
-    ASSERT_EQ(TxnValueEntry(txn_resp, "C").value(), "valC");
-  }
+TEST_P(E2ETestBypassMHOrderer, MultiHomeMultiPartition) {
+  auto txn = MakeTransaction({{"A", KeyType::READ}, {"X", KeyType::READ}, {"C", KeyType::READ}});
+  auto resp = SendAndReceiveResult(txn);
+  ASSERT_EQ(resp.status(), TransactionStatus::COMMITTED);
+  ASSERT_EQ(resp.internal().type(), TransactionType::MULTI_HOME_OR_LOCK_ONLY);
+  ASSERT_EQ(resp.keys().size(), 3);
+  ASSERT_EQ(TxnValueEntry(resp, "A").value(), "valA");
+  ASSERT_EQ(TxnValueEntry(resp, "X").value(), "valX");
+  ASSERT_EQ(TxnValueEntry(resp, "C").value(), "valC");
 }
+
+INSTANTIATE_TEST_SUITE_P(AllE2ETests, E2ETest,
+                         testing::Combine(testing::Range(0, kNumRegions), testing::Range(0, 1), testing::Range(0, kNumPartitions)));
 
 int main(int argc, char* argv[]) {
   ::testing::InitGoogleTest(&argc, argv);

@@ -49,9 +49,9 @@ class LocalLog {
 
 class LogManager : public NetworkedModule {
  public:
-  static uint64_t MakeTag(uint32_t region) { return kMaxChannel + region; }
+  static uint64_t MakeLogChannel(RegionId region) { return kMaxChannel + region; }
 
-  LogManager(int id, const std::vector<uint32_t>& regions, const std::shared_ptr<Broker>& broker,
+  LogManager(int id, const std::vector<RegionId>& regions, const std::shared_ptr<Broker>& broker,
              const MetricsRepositoryManagerPtr& metrics_manager,
              std::chrono::milliseconds poll_timeout = kModuleTimeout);
 
@@ -67,7 +67,7 @@ class LogManager : public NetworkedModule {
   void AdvanceLog();
   void EmitBatch(BatchPtr&& batch);
 
-  std::unordered_map<uint32_t, BatchLog> single_home_logs_;
+  std::unordered_map<RegionId, BatchLog> single_home_logs_;
   LocalLog local_log_;
   std::vector<MachineId> other_partitions_;
   std::vector<MachineId> other_replicas_;

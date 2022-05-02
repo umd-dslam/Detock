@@ -62,10 +62,10 @@ LocalPaxos::LocalPaxos(const shared_ptr<Broker>& broker, std::chrono::millisecon
       local_log_channel_(kLogManagerChannel + broker->config()->local_region() % broker->config()->num_log_managers()) {
 }
 
-void LocalPaxos::OnCommit(uint32_t slot, uint32_t value, MachineId leader) {
+void LocalPaxos::OnCommit(uint32_t slot, MachineId value, MachineId leader) {
   auto env = NewEnvelope();
   auto order = env->mutable_request()->mutable_forward_batch_order()->mutable_local_batch_order();
-  order->set_queue_id(value);
+  order->set_generator(value);
   order->set_slot(slot);
   order->set_leader(leader);
   Send(std::move(env), local_log_channel_);
