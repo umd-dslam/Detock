@@ -44,6 +44,8 @@ def generate_config(settings: dict, template_path: str):
         ]
         region.distance_ranking = ",".join(distance_ranking)
 
+        region.num_replicas = settings["num_replicas"].get(r, 1)
+
         config.regions.append(region)
         config.num_partitions = len(region.addresses)
 
@@ -200,6 +202,7 @@ class Experiment:
         "sample": int,       // Sample rate, in percentage, of the measurements
         "regions": [string], // Regions involved in the experiment
         "distance_ranking": { string: [string] }, // Rank of distance to all other regions from closest to farthest for each region
+        "num_replicas": { string: int },          // Number of replicas in each region
         "servers_public": { string: [string] },   // Public IP addresses of all servers in each region
         "servers_private": { string: [string] },  // Private IP addresses of all servers in each region
         "clients": { string: [string] },          // Private IP addresses of all clients in each region

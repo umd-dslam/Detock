@@ -23,7 +23,6 @@ from docker.models.containers import Container
 from paramiko.ssh_exception import PasswordRequiredException
 
 from common import Command, initialize_and_run_commands
-from gen_data import add_exported_gen_data_arguments
 from netem import gen_netem_script
 from proto.configuration_pb2 import Configuration, Region
 
@@ -290,51 +289,6 @@ class AdminCommand(Command):
         )
 
 
-class GenDataCommand(AdminCommand):
-
-    NAME = "gen_data"
-    HELP = "Generate data for one or more SLOG servers"
-    DESCRIPTION = """
-    For data with non-numeric keys, there is no way for the benchmarking script
-    to know the location of a key so that it can, for example, vary the
-    percentage of single-home/multi-home transactions. In that case, we need to
-    generate two copies of data, one for the server, and one for the
-    benchmarking tool.
-    """
-
-    def add_arguments(self, parser):
-        super().add_arguments(parser)
-        add_exported_gen_data_arguments(parser)
-
-    def do_command(self, args):
-        shell_cmd = (
-            f"tools/gen_data.py {CONTAINER_DATA_DIR} "
-            f"--num-regions {len(self.config.regions)} "
-            f"--num-partitions {self.config.num_partitions} "
-            f"--partition-bytes {self.config.hash_partitioning.partition_key_num_bytes} "
-            f"--partition {args.partition} "
-            f"--size {args.size} "
-            f"--size-unit {args.size_unit} "
-            f"--record-size {args.record_size} "
-            f"--max-jobs {args.max_jobs} "
-        )
-        containers = []
-        for client, addr, *_ in self.remote_procs:
-            cleanup_container(client, self.NAME, addr=addr)
-            LOG.info("%s: Running command: %s", addr, shell_cmd)
-            c = client.containers.create(
-                args.image,
-                name=self.NAME,
-                command=shell_cmd,
-                # Mount a directory on the host into the container
-                mounts=[SLOG_DATA_MOUNT],
-            )
-            c.start()
-            containers.append((c, addr))
-
-        wait_for_containers(containers)
-
-
 class StartCommand(AdminCommand):
 
     NAME = "start"
@@ -570,6 +524,14 @@ class LocalCommand(AdminCommand):
     those used to interact with the remote machines.
     """
 
+    # Example command for running benchmark with local cluster:
+    #
+    #  docker run -i --network slog_nw                              \
+    #                --mount type=bind,src=/var/tmp,dst=/var/tmp    \
+    #                ctring/slog                                    \
+    #                benchmark                                      \
+    #                   --rate 1 --config /var/tmp/cluster.conf --txns 10 --params mp=100
+
     # Local network
     NETWORK_NAME = "slog_nw"
     SUBNET = "172.28.0.0/16"
@@ -604,8 +566,9 @@ class LocalCommand(AdminCommand):
         # Replace the addresses in the config with auto-generated addresses
         address_generator = ipaddress.ip_network(self.IP_RANGE).hosts()
         for reg in self.config.regions:
+            num_addresses = len(public_addresses(reg))
             del reg.addresses[:]
-            for p in range(self.config.num_partitions):
+            for _ in range(num_addresses):
                 ip_address = str(next(address_generator))
                 reg.addresses.append(ip_address.encode())
 
@@ -712,10 +675,10 @@ class LocalCommand(AdminCommand):
                 )
 
     def __stop(self):
-        for r in range(len(self.config.regions)):
-            for p in range(self.config.num_partitions):
+        for r, reg in enumerate(self.config.regions):
+            for a in range(len(public_addresses(reg))):
                 try:
-                    container_name = f"slog_{r}_{p}"
+                    container_name = f"slog_{r}_{a}"
                     LOG.info('Stopping "%s"', container_name)
                     c = self.client.containers.get(container_name)
                     c.stop(timeout=0)
@@ -723,18 +686,18 @@ class LocalCommand(AdminCommand):
                     pass
 
     def __remove(self):
-        for r in range(len(self.config.regions)):
-            for p in range(self.config.num_partitions):
-                container_name = f"slog_{r}_{p}"
+        for r, reg in enumerate(self.config.regions):
+            for a in range(len(public_addresses(reg))):
+                container_name = f"slog_{r}_{a}"
                 cleanup_container(self.client, container_name)
 
     def __status(self):
         for r, reg in enumerate(self.config.regions):
             print(f"Region {r}:")
-            for p, addr in enumerate(public_addresses(reg)):
-                container_name = f"slog_{r}_{p}"
+            for a, addr in enumerate(public_addresses(reg)):
+                container_name = f"slog_{r}_{a}"
                 status = get_container_status(self.client, container_name)
-                print(f"\tPartition {p} ({addr}): {status}")
+                print(f"\tAddress {a} ({addr}): {status}")
 
 
 class BenchmarkCommand(AdminCommand):
@@ -1146,7 +1109,6 @@ def main(args):
             BenchmarkCommand,
             CollectClientCommand,
             CollectServerCommand,
-            GenDataCommand,
             StartCommand,
             StopCommand,
             StatusCommand,
