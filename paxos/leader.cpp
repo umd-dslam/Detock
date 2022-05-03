@@ -15,8 +15,8 @@ using internal::Response;
 Leader::Leader(SimulatedMultiPaxos& paxos, const vector<MachineId>& members, MachineId me)
     : paxos_(paxos), members_(members), me_(me), next_empty_slot_(0) {
   // Number of acceptors is the largest odd number smaller than or equal to the number of members
-  size_t num_acceptors_ = ((members_.size() - 1) / 2) * 2 + 1;
-  for (size_t i = 0; i < num_acceptors_; i++) {
+  size_t num_acceptors = ((members_.size() - 1) / 2) * 2 + 1;
+  for (size_t i = 0; i < num_acceptors; i++) {
     acceptors_.push_back(members_[i]);
   }
   auto it = std::find(members.begin(), members.end(), me);

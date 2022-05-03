@@ -192,8 +192,7 @@ bool Server::OnCustomSocket() {
 void Server::OnInternalRequestReceived(EnvelopePtr&& env) {
   switch (env->request().type_case()) {
     case internal::Request::kSignal: {
-      auto [regid, repid, partid] = UnpackMachineId(env->from());
-      LOG(INFO) << "Machine [" << (int)regid << ", " << (int)repid << ", " << partid << "] is online";
+      LOG(INFO) << "Machine " << MACHINE_ID_STR(env->from()) << " is online";
       offline_machines_.erase(env->from());
       if (offline_machines_.empty()) {
         LOG(INFO) << "All machines are online";
@@ -221,7 +220,7 @@ void Server::ProcessFinishedSubtxn(EnvelopePtr&& env) {
     return;
   }
 
-  auto part = std::get<2>(UnpackMachineId(env->from()));
+  auto part = GET_PARTITION_ID(env->from());
 
   auto res = finished_txns_.try_emplace(txn_id, txn_internal->involved_partitions_size());
   auto& finished_txn = res.first->second;
@@ -297,7 +296,7 @@ void Server::SendTxnToClient(Transaction* txn) {
 void Server::SendResponseToClient(TxnId txn_id, api::Response&& res) {
   auto it = pending_responses_.find(txn_id);
   if (it == pending_responses_.end()) {
-    LOG(ERROR) << "Cannot find info to response back to client for txn: " << txn_id;
+    LOG(ERROR) << "Cannot find info to response back to client for txn: " << TXN_ID_STR(txn_id);
     return;
   }
   auto& socket = GetCustomSocket(0);

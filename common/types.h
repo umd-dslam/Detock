@@ -28,13 +28,20 @@ inline MachineId MakeMachineId(RegionId region, ReplicaId replica, PartitionId p
          (static_cast<MachineId>(replica) << kPartitionIdBits) | (static_cast<MachineId>(partition));
 }
 
-inline std::tuple<RegionId, ReplicaId, PartitionId> UnpackMachineId(MachineId id) {
-  RegionId region_id = (id >> (kReplicaIdBits + kPartitionIdBits)) & ((1 << kRegionIdBits) - 1);
-  ReplicaId replica_id = (id >> kPartitionIdBits) & ((1 << kReplicaIdBits) - 1);
-  PartitionId partition_id = id & ((1 << kPartitionIdBits) - 1);
+#define GET_REGION_ID(id) (((id) >> (kReplicaIdBits + kPartitionIdBits)) & ((1 << kRegionIdBits) - 1))
+#define GET_REPLICA_ID(id) (((id) >> kPartitionIdBits) & ((1 << kReplicaIdBits) - 1))
+#define GET_PARTITION_ID(id) ((id) & ((1 << kPartitionIdBits) - 1))
 
-  return std::make_tuple(region_id, replica_id, partition_id);
+#define MACHINE_ID_STR(id)                                                                    \
+  ("[" + std::to_string(GET_REGION_ID(id)) + "," + std::to_string(GET_REPLICA_ID(id)) + "," + \
+   std::to_string(GET_PARTITION_ID(id)) + "]")
+
+inline std::tuple<RegionId, ReplicaId, PartitionId> UnpackMachineId(MachineId id) {
+  return std::make_tuple(GET_REGION_ID(id), GET_REPLICA_ID(id), GET_PARTITION_ID(id));
 }
+
+#define TXN_ID_STR(id) \
+  (std::to_string((id) >> kMachineIdBits) + "/" + MACHINE_ID_STR((id) & ((1LL << kMachineIdBits) - 1)))
 
 struct Metadata {
   Metadata() = default;

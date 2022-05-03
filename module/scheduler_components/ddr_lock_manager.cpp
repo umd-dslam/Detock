@@ -620,7 +620,7 @@ vector<pair<TxnId, bool>> DDRLockManager::ReleaseLocks(TxnId txn_id) {
     }
     auto it = txn_info_.find(blocked_txn_id);
     if (it == txn_info_.end()) {
-      LOG(ERROR) << "Blocked txn " << blocked_txn_id << " does not exist";
+      LOG(ERROR) << "Blocked txn " << TXN_ID_STR(blocked_txn_id) << " does not exist";
       continue;
     }
     auto& blocked_txn = it->second;

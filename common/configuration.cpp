@@ -70,9 +70,13 @@ Configuration::Configuration(const internal::Configuration& config, const string
     auto num_rep = region.num_replicas();
     auto num_part = config_.num_partitions();
 
+    if (num_rep <= 0) {
+      LOG(WARNING) << "No num_replica set for region " << reg << ". Assume there is one replica.";
+      num_rep = 1;
+    }
+
     CHECK_EQ((uint32_t)region.addresses_size(), num_part * num_rep)
         << "Number of addresses in each region must match num_partitions * num_replicas";
-    CHECK_GE(num_rep, 1) << "There must be at least one replica per region";
 
     for (size_t rep = 0; rep < num_rep; rep++) {
       for (size_t p = 0; p < num_part; p++) {
@@ -131,7 +135,7 @@ const string& Configuration::address(MachineId machine_id) const {
 
 int Configuration::num_regions() const { return config_.regions_size(); }
 
-int Configuration::num_replicas(RegionId reg) const { return config_.regions(reg).num_replicas(); }
+int Configuration::num_replicas(RegionId reg) const { return std::max(config_.regions(reg).num_replicas(), 1U); }
 
 int Configuration::num_partitions() const { return config_.num_partitions(); }
 

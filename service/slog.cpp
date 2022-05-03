@@ -203,7 +203,8 @@ int main(int argc, char* argv[]) {
 
   INIT_RECORDING(config);
 
-  LOG(INFO) << "Local region: " << config->local_region();
+  LOG(INFO) << "Local region: " << (int)config->local_region();
+  LOG(INFO) << "Local replica: " << (int)config->local_replica();
   LOG(INFO) << "Local partition: " << config->local_partition();
   std::ostringstream os;
   for (auto r : config->replication_order()) {
@@ -285,7 +286,7 @@ int main(int argc, char* argv[]) {
   }
 
   // One region is selected to globally order the multihome batches
-  if (config->leader_region_for_multi_home_ordering() == config->local_region()) {
+  if (config->num_regions() > 1 && config->leader_region_for_multi_home_ordering() == config->local_region()) {
     modules.emplace_back(MakeRunnerFor<slog::GlobalPaxos>(broker), slog::ModuleId::GLOBALPAXOS);
   }
 
@@ -315,8 +316,6 @@ int main(int argc, char* argv[]) {
     module.first->Stop();
   }
   broker->Stop();
-
-  metrics_manager->AggregateAndFlushToDisk(".");
 
   return 0;
 }

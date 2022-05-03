@@ -71,8 +71,7 @@ class E2ETest : public ::testing::TestWithParam<tuple<int, int, int>> {
     auto main_rep = std::get<1>(param);
     auto main_part = std::get<2>(param);
     main_ = MakeMachineId(main_reg, main_rep, main_part);
-    CHECK(test_slogs_.find(main_) != test_slogs_.end())
-        << "Cannot find machine [" << main_reg << "," << main_rep << "," << main_part << "]";
+    CHECK(test_slogs_.find(main_) != test_slogs_.end()) << "Cannot find machine " << MACHINE_ID_STR(main_);
 
     for (auto& [_, slog] : test_slogs_) {
       slog.StartInNewThreads();
@@ -274,7 +273,8 @@ TEST_P(E2ETestBypassMHOrderer, MultiHomeMultiPartition) {
 }
 
 INSTANTIATE_TEST_SUITE_P(AllE2ETests, E2ETest,
-                         testing::Combine(testing::Range(0, kNumRegions), testing::Range(0, 1), testing::Range(0, kNumPartitions)));
+                         testing::Combine(testing::Range(0, kNumRegions), testing::Range(0, 1),
+                                          testing::Range(0, kNumPartitions)));
 
 int main(int argc, char* argv[]) {
   ::testing::InitGoogleTest(&argc, argv);

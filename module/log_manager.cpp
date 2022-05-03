@@ -139,7 +139,7 @@ void LogManager::ProcessForwardBatchData(EnvelopePtr&& env) {
   auto forward_batch_data = env->mutable_request()->mutable_forward_batch_data();
   MachineId generator = forward_batch_data->generator();
   auto generator_position = forward_batch_data->generator_position();
-  auto generator_home = std::get<0>(UnpackMachineId(generator));
+  auto generator_home = GET_REGION_ID(generator);
   auto [from_region, from_replica, from_partition] = UnpackMachineId(env->from());
   bool first_time_region = from_region != local_region;
   bool first_time_replica = first_time_region || from_replica != local_replica;
@@ -177,13 +177,13 @@ void LogManager::ProcessForwardBatchData(EnvelopePtr&& env) {
 
   RECORD(my_batch.get(), TransactionEvent::ENTER_LOG_MANAGER_IN_BATCH);
 
-  auto [regid, repid, partid] = UnpackMachineId(env->from());
-  VLOG(1) << "Received data for batch " << my_batch->id() << " (home = " << (int)generator_home << ") from [" << (int)regid << ", " << (int)repid << ", "
-          << partid << "]. Number of txns: " << my_batch->transactions_size()
+  VLOG(1) << "Received data for batch " << TXN_ID_STR(my_batch->id()) << " (home = " << (int)generator_home << ") from "
+          << MACHINE_ID_STR(env->from()) << ". Number of txns: " << my_batch->transactions_size()
           << ". First time region: " << first_time_region << ". First time replica: " << first_time_replica;
 
   if (generator_home == local_region) {
-    VLOG(1) << "Added batch " << my_batch->id() << " to local log at (" << generator << ", " << generator_position << ")";
+    VLOG(1) << "Added batch " << TXN_ID_STR(my_batch->id()) << " to local log at (" << generator << ", "
+            << generator_position << ")";
     local_log_.AddBatchId(generator, generator_position, my_batch->id());
   }
 
@@ -204,8 +204,8 @@ void LogManager::ProcessForwardBatchOrder(EnvelopePtr&& env) {
 
       local_log_.AddSlot(order.slot(), order.generator(), order.leader());
 
-      // If there are more than one replica in the current region, the partitions are not used for Paxos
-      // voting, so we need to tell them about the order.
+      // If there are more than one replica in the current region, the partitions are not used as Paxos acceptors.
+      // Thus, we need to tell the partitions about the order.
       if (config()->num_replicas(local_region) > 1 && from_partition == local_partition) {
         Send(*env, other_partitions_, MakeLogChannel(local_region));
       }
@@ -237,9 +237,10 @@ void LogManager::ProcessForwardBatchOrder(EnvelopePtr&& env) {
         Send(*env, other_partitions_, tag);
       }
 
-      VLOG(1) << "Received remote batch order " << batch_id << " (home = " << home << ") from [" << (int)from_region << ", "
-              << (int)from_replica << ", " << from_partition << "]. Slot: " << batch_order.slot()
-              << ". First time region: " << first_time_region << ". First time replica: " << first_time_replica;
+      VLOG(1) << "Received remote batch order " << TXN_ID_STR(batch_id) << " (home = " << home << ") from ["
+              << (int)from_region << ", " << (int)from_replica << ", " << from_partition
+              << "]. Slot: " << batch_order.slot() << ". First time region: " << first_time_region
+              << ". First time replica: " << first_time_replica;
 
       single_home_logs_[home].AddSlot(batch_order.slot(), batch_id);
       break;
@@ -318,7 +319,7 @@ void LogManager::AdvanceLog() {
 }
 
 void LogManager::EmitBatch(BatchPtr&& batch) {
-  VLOG(1) << "Processing batch " << batch->id() << " from global log";
+  VLOG(1) << "Processing batch " << TXN_ID_STR(batch->id()) << " from global log";
 
   auto transactions = Unbatch(batch.get());
   for (auto txn : transactions) {

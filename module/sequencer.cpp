@@ -58,8 +58,8 @@ void Sequencer::ProcessForwardRequest(EnvelopePtr&& env) {
 
   if (config()->bypass_mh_orderer() && config()->synchronized_batching()) {
     if (txn_internal->timestamp() <= now) {
-      VLOG(3) << "Txn " << txn_internal->id() << " has a timestamp " << (now - txn_internal->timestamp()) / 1000
-              << " us in the past";
+      VLOG(3) << "Txn " << TXN_ID_STR(txn_internal->id()) << " has a timestamp "
+              << (now - txn_internal->timestamp()) / 1000 << " us in the past";
 
 #if !defined(LOCK_MANAGER_DDR)
       // If not using DDR, restart the transaction
@@ -67,8 +67,8 @@ void Sequencer::ProcessForwardRequest(EnvelopePtr&& env) {
       txn->set_abort_reason("restarted");
 #endif
     } else {
-      VLOG(3) << "Txn " << txn_internal->id() << " has a timestamp " << (txn_internal->timestamp() - now) / 1000
-              << " us into the future";
+      VLOG(3) << "Txn " << TXN_ID_STR(txn_internal->id()) << " has a timestamp "
+              << (txn_internal->timestamp() - now) / 1000 << " us into the future";
 
       RECORD_WITH_TIME(txn_internal, TransactionEvent::EXPECTED_WAIT_TIME_UNTIL_ENTER_LOCAL_BATCH,
                        txn_internal->timestamp() - now);

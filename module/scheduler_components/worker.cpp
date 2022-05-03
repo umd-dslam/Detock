@@ -18,7 +18,7 @@ namespace {
 uint64_t MakeTag(const RunId& run_id) { return run_id.first * 10 + run_id.second; }
 
 inline std::ostream& operator<<(std::ostream& os, const RunId& run_id) {
-  os << "(" << run_id.first << ", " << run_id.second << ")";
+  os << "(" << TXN_ID_STR(run_id.first) << ", " << run_id.second << ")";
   return os;
 }
 }  // namespace

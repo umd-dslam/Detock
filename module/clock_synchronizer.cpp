@@ -77,7 +77,7 @@ void ClockSynchronizer::OnInternalResponseReceived(EnvelopePtr&& env) {
   const auto& pong = env->response().pong();
   auto it = latencies_ns_.find(pong.dst());
   if (it == latencies_ns_.end()) {
-    LOG(ERROR) << "Invalid clock sync peer: " << pong.dst();
+    LOG(ERROR) << "Invalid clock sync peer: " << MACHINE_ID_STR(pong.dst());
     return;
   }
 

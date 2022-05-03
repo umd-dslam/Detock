@@ -66,8 +66,8 @@ void MultiHomeOrderer::ProcessForwardBatchData(EnvelopePtr&& env) {
 
   RECORD(batch.get(), TransactionEvent::ENTER_MULTI_HOME_ORDERER_IN_BATCH);
 
-  VLOG(1) << "Received data for MULTI-HOME batch " << batch->id() << " from [" << env->from()
-          << "]. Number of txns: " << batch->transactions_size();
+  VLOG(1) << "Received data for MULTI-HOME batch " << TXN_ID_STR(batch->id()) << " from " << MACHINE_ID_STR(env->from())
+          << ". Number of txns: " << batch->transactions_size();
 
   multi_home_batch_log_.AddBatch(std::move(batch));
 
@@ -77,8 +77,8 @@ void MultiHomeOrderer::ProcessForwardBatchData(EnvelopePtr&& env) {
 void MultiHomeOrderer::ProcessForwardBatchOrder(EnvelopePtr&& env) {
   auto& batch_order = env->request().forward_batch_order().remote_batch_order();
 
-  VLOG(1) << "Received order for batch " << batch_order.batch_id() << " from [" << env->from()
-          << "]. Slot: " << batch_order.slot();
+  VLOG(1) << "Received order for batch " << TXN_ID_STR(batch_order.batch_id()) << " from "
+          << MACHINE_ID_STR(env->from()) << ". Slot: " << batch_order.slot();
 
   multi_home_batch_log_.AddSlot(batch_order.slot(), batch_order.batch_id());
 
@@ -90,7 +90,7 @@ void MultiHomeOrderer::AdvanceLog() {
     auto batch_and_slot = multi_home_batch_log_.NextBatch();
     auto& batch = batch_and_slot.second;
 
-    VLOG(1) << "Processing batch " << batch->id();
+    VLOG(1) << "Processing batch " << TXN_ID_STR(batch->id());
 
     auto transactions = Unbatch(batch.get());
     for (auto txn : transactions) {
@@ -129,7 +129,7 @@ void MultiHomeOrderer::AddToBatch(Transaction* txn) {
 }
 
 void MultiHomeOrderer::SendBatch() {
-  VLOG(3) << "Finished multi-home batch " << batch_id() << " of size " << batch_size_;
+  VLOG(3) << "Finished multi-home batch " << TXN_ID_STR(batch_id()) << " of size " << batch_size_;
 
   if (per_thread_metrics_repo != nullptr) {
     per_thread_metrics_repo->RecordMHOrdererBatch(batch_id(), batch_size_,
