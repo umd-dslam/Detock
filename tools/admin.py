@@ -1071,35 +1071,46 @@ class GenNetEmCommand(AdminCommand):
         pass
 
     def do_command(self, args):
+        regions_pub = []
+        regions_priv = []
+        
+        if len(self.config.regions) == 1:
+            n = self.config.num_partitions
+            pub_addresses = public_addresses(self.config.regions[0])
+            priv_addresses = private_addresses(self.config.regions[0])
+            regions_pub = [pub_addresses[i:i+n] for i in range(0, len(pub_addresses), n)]
+            regions_priv = [priv_addresses[i:i+n] for i in range(0, len(priv_addresses), n)]
+        else:
+            regions_pub = [public_addresses(reg) for reg in self.config.regions]
+            regions_priv = [private_addresses(reg) for reg in self.config.regions]
+
+        assert len(regions_pub) == len(regions_priv)
+
         latency = []
         with open(args.latency, "r") as f:
             for line in f:
                 arr = list(map(float, line.split(",")))
-                assert len(arr) == len(
-                    self.config.regions
-                ), "Number of regions must match config"
+                assert len(arr) == len(regions_pub), "Number of regions must match config"
                 latency.append(arr)
 
-        assert len(latency) == len(
-            self.config.regions
-        ), "Number of regions must match config"
+        assert len(latency) == len(regions_pub), "Number of regions must match config"
 
         commands = []
         preview = []
-        for i, r_from in enumerate(self.config.regions):
+        for i, r_from in enumerate(regions_pub):
             netems = []
             filters = []
-            for j, r_to in enumerate(self.config.regions):
+            for j, r_to in enumerate(regions_priv):
                 if i == j:
                     continue
 
                 netems.append(f"delay {latency[i][j] + args.offset}ms {args.jitter}ms")
-                filters.append([ip for ip in private_addresses(r_to)])
+                filters.append([ip for ip in r_to])
 
             script = gen_netem_script(netems, args.dev, filters)
 
             preview.append((i, script))
-            for ip in public_addresses(r_from):
+            for ip in r_from:
                 commands.append(
                     f'({SSH} {args.user}@{ip} "echo \\"{script}\\" > {args.out} && chmod +x {args.out}") & '
                 )
