@@ -61,13 +61,20 @@ const RawParamMap DEFAULT_PARAMS = {{MH_PCT, "0"},   {MH_HOMES, "2"},     {MH_ZI
                                     {WRITES, "10"},  {VALUE_SIZE, "100"}, {NEAREST, "1"},  {SP_PARTITION, "-1"},
                                     {SH_HOME, "-1"}};
 
+// For the Calvin experiment, there is a single region, so replace the regions by the replicas so that
+// we generate the same workload as other experiments
+int GetNumRegions(const ConfigurationPtr& config) {
+  return config->num_regions() == 1 ? config->num_replicas(config->local_region()) : config->num_regions();
+}
+
 }  // namespace
 
-BasicWorkload::BasicWorkload(const ConfigurationPtr& config, uint32_t region, const string& data_dir,
+BasicWorkload::BasicWorkload(const ConfigurationPtr& config, RegionId region, ReplicaId replica, const string& data_dir,
                              const string& params_str, const uint32_t seed, const RawParamMap& extra_default_params)
     : Workload(MergeParams(extra_default_params, DEFAULT_PARAMS), params_str),
       config_(config),
       local_region_(region),
+      local_replica_(replica),
       distance_ranking_(config->distance_ranking_from(region)),
       zipf_coef_(params_.GetInt32(MH_ZIPF)),
       partition_to_key_lists_(config->num_partitions()),
@@ -75,7 +82,7 @@ BasicWorkload::BasicWorkload(const ConfigurationPtr& config, uint32_t region, co
       rnd_str_(seed),
       client_txn_id_counter_(0) {
   name_ = "basic";
-  auto num_regions = config->num_regions();
+  auto num_regions = GetNumRegions(config);
   auto num_partitions = config->num_partitions();
   auto hot_keys_per_list = std::max(1U, params_.GetUInt32(HOT) / num_regions);
   const auto& proto_config = config->proto_config();
@@ -101,8 +108,8 @@ BasicWorkload::BasicWorkload(const ConfigurationPtr& config, uint32_t region, co
   }
 
   if (distance_ranking_.empty()) {
-    for (int i = 0; i < num_regions; i++) {
-      if (static_cast<RegionId>(i) != local_region_) {
+    for (size_t i = 0; i < static_cast<size_t>(num_regions); i++) {
+      if (i != static_cast<size_t>(local_region())) {
         distance_ranking_.push_back(i);
       }
     }
@@ -110,12 +117,19 @@ BasicWorkload::BasicWorkload(const ConfigurationPtr& config, uint32_t region, co
       LOG(WARNING) << "Distance ranking is not provided. MH_ZIPF is reset to 0.";
       zipf_coef_ = 0;
     }
+  } else if (config_->num_regions() == 1) {
+    // This case is for the Calvin experiment where there is only a single region.
+    // The num_regions variable is equal to num_replicas at this point
+    CHECK_EQ(distance_ranking_.size(), num_regions * (num_regions - 1));
+    size_t from = local_region() * (num_regions - 1);
+    std::copy_n(distance_ranking_.begin() + from, num_regions, distance_ranking_.begin());
+    distance_ranking_.resize(num_regions - 1);
   }
 
   CHECK_EQ(distance_ranking_.size(), num_regions - 1) << "Distance ranking size must match the number of regions";
 
   if (!params_.GetInt32(NEAREST)) {
-    distance_ranking_.insert(distance_ranking_.begin(), local_region_);
+    distance_ranking_.insert(distance_ranking_.begin(), local_region());
   }
 
   if (proto_config.partitioning_case() == internal::Configuration::kHashPartitioning) {
@@ -183,7 +197,7 @@ std::pair<Transaction*, TransactionProfile> BasicWorkload::NextTransaction() {
   }
 
   // Decide if this is a multi-home txn or not
-  auto num_regions = config_->num_regions();
+  auto num_regions = GetNumRegions(config_);
   auto multi_home_pct = params_.GetDouble(MH_PCT);
   bernoulli_distribution is_mh(multi_home_pct / 100);
   pro.is_multi_home = is_mh(rg_);
@@ -199,7 +213,7 @@ std::pair<Transaction*, TransactionProfile> BasicWorkload::NextTransaction() {
     selected_homes.reserve(num_homes);
 
     if (params_.GetInt32(NEAREST)) {
-      selected_homes.push_back(local_region_);
+      selected_homes.push_back(local_region());
       num_homes--;
     }
     auto sampled_homes = zipf_sample(rg_, zipf_coef_, distance_ranking_, num_homes);
@@ -209,7 +223,7 @@ std::pair<Transaction*, TransactionProfile> BasicWorkload::NextTransaction() {
       selected_homes.push_back(params_.GetInt32(SH_HOME));
     } else {
       if (params_.GetInt32(NEAREST)) {
-        selected_homes.push_back(local_region_);
+        selected_homes.push_back(local_region());
       } else {
         std::uniform_int_distribution<uint32_t> dis(0, num_regions - 1);
         selected_homes.push_back(dis(rg_));

@@ -123,8 +123,9 @@ const internal::Configuration& Configuration::proto_config() const { return conf
 
 const string& Configuration::protocol() const { return config_.protocol(); }
 
-const string& Configuration::address(uint32_t region, uint32_t partition) const {
-  return config_.regions(region).addresses(partition);
+const string& Configuration::address(RegionId region, ReplicaId replica, PartitionId partition) const {
+  auto idx = replica * config_.num_partitions() + partition;
+  return config_.regions(region).addresses(idx);
 }
 
 const string& Configuration::address(MachineId machine_id) const {

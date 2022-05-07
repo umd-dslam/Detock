@@ -22,7 +22,7 @@ class Configuration {
 
   const internal::Configuration& proto_config() const;
   const std::string& protocol() const;
-  const std::string& address(uint32_t region, uint32_t partition) const;
+  const std::string& address(RegionId region, ReplicaId replica, PartitionId partition) const;
   const std::string& address(MachineId machine_id) const;
   uint32_t broker_ports(int i) const;
   uint32_t broker_ports_size() const;

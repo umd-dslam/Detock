@@ -40,7 +40,8 @@ def generate_config(settings: dict, template_path: str):
         region.client_addresses.extend(clients)
 
         distance_ranking = [
-            str(regions_ids[other_r]) for other_r in settings["distance_ranking"][r]
+            str(other_r) if isinstance(other_r, int) else str(regions_ids[other_r])
+            for other_r in settings["distance_ranking"][r]
         ]
         region.distance_ranking = ",".join(distance_ranking)
 

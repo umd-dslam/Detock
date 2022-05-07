@@ -56,8 +56,8 @@ class SynchronousTxnGenerator : public Module, public TxnGenerator {
    * If num_txns is set to 0, the txns are generated on-the-fly
    */
   SynchronousTxnGenerator(const ConfigurationPtr& config, zmq::context_t& context, std::unique_ptr<Workload>&& workload,
-                          uint32_t region, uint32_t num_txns, int num_clients, int duration_s, int startup_spacing_us,
-                          bool dry_run);
+                          RegionId region, ReplicaId rep, uint32_t num_txns, int num_clients, int duration_s,
+                          int startup_spacing_us, bool dry_run);
   ~SynchronousTxnGenerator();
   void SetUp() final;
   bool Loop() final;
@@ -70,7 +70,8 @@ class SynchronousTxnGenerator : public Module, public TxnGenerator {
   ConfigurationPtr config_;
   zmq::socket_t socket_;
   Poller poller_;
-  uint32_t region_;
+  RegionId region_;
+  ReplicaId replica_;
   uint32_t num_txns_;
   int num_clients_;
   std::chrono::microseconds startup_spacing_;
@@ -84,8 +85,8 @@ class SynchronousTxnGenerator : public Module, public TxnGenerator {
 class ConstantRateTxnGenerator : public Module, public TxnGenerator {
  public:
   ConstantRateTxnGenerator(const ConfigurationPtr& config, zmq::context_t& context,
-                           std::unique_ptr<Workload>&& workload, uint32_t region, uint32_t num_txns, int tps,
-                           int duration_s, bool dry_run);
+                           std::unique_ptr<Workload>&& workload, RegionId region, ReplicaId rep, uint32_t num_txns,
+                           int tps, int duration_s, bool dry_run);
   ~ConstantRateTxnGenerator();
   void SetUp() final;
   bool Loop() final;
@@ -99,7 +100,8 @@ class ConstantRateTxnGenerator : public Module, public TxnGenerator {
   zmq::socket_t socket_;
   Poller poller_;
   std::chrono::microseconds interval_;
-  uint32_t region_;
+  RegionId region_;
+  ReplicaId replica_;
   uint32_t num_txns_;
   std::chrono::milliseconds duration_;
   bool dry_run_;

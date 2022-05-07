@@ -52,6 +52,7 @@ RemoteProcess = collections.namedtuple(
         "public_address",
         "private_address",
         "region",
+        "replica",
         "partition",
     ],
 )
@@ -231,13 +232,17 @@ class AdminCommand(Command):
         # Create a docker client for each node
         self.remote_procs = []
         for reg, reg_info in enumerate(self.config.regions):
-            for part, (pub_addr, priv_addr) in enumerate(
-                zip(public_addresses(reg_info), private_addresses(reg_info))
-            ):
-                # Use None as a placeholder for the first value
-                self.remote_procs.append(
-                    RemoteProcess(None, pub_addr, priv_addr, reg, part)
-                )
+            pub_addresses = public_addresses(reg_info)
+            priv_addresses = private_addresses(reg_info)
+            for rep in range(reg_info.num_replicas):
+                for p in range(self.config.num_partitions):
+                    idx = rep*self.config.num_partitions + p
+                    pub_addr = pub_addresses[idx]
+                    priv_addr = priv_addresses[idx]
+                    # Use None as a placeholder for the first value
+                    self.remote_procs.append(
+                        RemoteProcess(None, pub_addr, priv_addr, reg, rep, p)
+                    )
 
         def init_docker_client(remote_proc):
             addr = remote_proc.public_address
@@ -779,16 +784,24 @@ class BenchmarkCommand(AdminCommand):
         )
 
     def init_remote_processes(self, args):
-        """
-        Override this method because the clients of this command are created from
-        the addresses specified in a json file instead of from the configuration file
-        """
         self.remote_procs = []
         # Create a docker client for each node
         for reg, reg_info in enumerate(self.config.regions):
-            for i, addr in enumerate(reg_info.client_addresses):
-                # Use None as a placeholder for the first value
-                self.remote_procs.append(RemoteProcess(None, addr, None, reg, i))
+            num_addresses = len(reg_info.client_addresses)
+            step = max((num_addresses + 1) // reg_info.num_replicas, 1)
+            i = 0
+            for rep in range(reg_info.num_replicas - 1):
+                for j in range(step):
+                    if i < num_addresses:
+                        addr = reg_info.client_addresses[i]
+                        self.remote_procs.append(RemoteProcess(None, addr, None, reg, rep, j))
+                        i += 1
+            j = 0
+            while i < num_addresses:
+                addr = reg_info.client_addresses[i]
+                self.remote_procs.append(RemoteProcess(None, addr, None, reg, reg_info.num_replicas - 1, j))
+                i += 1
+                j += 1
 
         def init_docker_client(proc):
             client = None
@@ -854,13 +867,14 @@ class BenchmarkCommand(AdminCommand):
 
         def benchmark_runner(enumerated_proc):
             i, proc = enumerated_proc
-            client, addr, _, reg, *_ = proc
+            client, addr, _, reg, rep, *_ = proc
             rmdir_cmd = f"rm -rf {out_dir}"
             mkdir_cmd = f"mkdir -p {out_dir}"
             shell_cmd = (
                 f"benchmark "
                 f"--config {config_path} "
-                f"--r {reg} "
+                f"--region {reg} "
+                f"--replica {rep} "
                 f"--data-dir {CONTAINER_DATA_DIR} "
                 f"--out-dir {out_dir} "
                 f"--duration {args.duration} "

@@ -14,12 +14,14 @@ namespace slog {
 
 class TPCCWorkload : public Workload {
  public:
-  TPCCWorkload(const ConfigurationPtr& config, uint32_t region, const std::string& params_str,
+  TPCCWorkload(const ConfigurationPtr& config, RegionId region, ReplicaId replica, const std::string& params_str,
                std::pair<int, int> id_slot, const uint32_t seed = std::random_device()());
 
   std::pair<Transaction*, TransactionProfile> NextTransaction();
 
  private:
+  int local_region() { return config_->num_regions() == 1 ? local_replica_ : local_region_; }
+
   void NewOrder(Transaction& txn, TransactionProfile& pro, int w_id, int partition);
   void Payment(Transaction& txn, TransactionProfile& pro, int w_id, int partition);
   void OrderStatus(Transaction& txn, int w_id);
@@ -29,7 +31,8 @@ class TPCCWorkload : public Workload {
   std::vector<int> SelectRemoteWarehouses(int partition);
 
   ConfigurationPtr config_;
-  uint32_t local_region_;
+  RegionId local_region_;
+  ReplicaId local_replica_;
   std::vector<int> distance_ranking_;
   int zipf_coef_;
   vector<vector<vector<int>>> warehouse_index_;

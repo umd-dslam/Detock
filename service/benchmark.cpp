@@ -19,7 +19,8 @@
 
 DEFINE_string(config, "slog.conf", "Path to the configuration file");
 DEFINE_int32(generators, 1, "Number of generator threads");
-DEFINE_uint32(r, 0, "The region where the current machine is located");
+DEFINE_uint32(region, 0, "The region associated to current client");
+DEFINE_uint32(replica, 0, "The client associated to the current client");
 DEFINE_string(data_dir, "", "Directory containing intial data");
 DEFINE_string(out_dir, "", "Directory containing output data");
 DEFINE_int32(rate, 0, "Maximum number of transactions sent per second.");
@@ -64,14 +65,16 @@ vector<unique_ptr<ModuleRunner>> InitializeGenerators() {
     // Select the workload
     unique_ptr<Workload> workload;
     if (FLAGS_wl == "basic") {
-      workload = make_unique<BasicWorkload>(config, FLAGS_r, FLAGS_data_dir, FLAGS_params, seed + i);
-    } else if (FLAGS_wl == "cockroach") {
-      workload = make_unique<CockroachWorkload>(config, FLAGS_r, FLAGS_params, seed + i);
-    } else if (FLAGS_wl == "remastering") {
-      workload = make_unique<RemasteringWorkload>(config, FLAGS_r, FLAGS_data_dir, FLAGS_params, seed + i);
-    } else if (FLAGS_wl == "tpcc") {
       workload =
-          make_unique<TPCCWorkload>(config, FLAGS_r, FLAGS_params, std::make_pair(i + 1, FLAGS_generators), seed + i);
+          make_unique<BasicWorkload>(config, FLAGS_region, FLAGS_replica, FLAGS_data_dir, FLAGS_params, seed + i);
+    } else if (FLAGS_wl == "cockroach") {
+      workload = make_unique<CockroachWorkload>(config, FLAGS_region, FLAGS_params, seed + i);
+    } else if (FLAGS_wl == "remastering") {
+      workload =
+          make_unique<RemasteringWorkload>(config, FLAGS_region, FLAGS_replica, FLAGS_data_dir, FLAGS_params, seed + i);
+    } else if (FLAGS_wl == "tpcc") {
+      workload = make_unique<TPCCWorkload>(config, FLAGS_region, FLAGS_replica, FLAGS_params,
+                                           std::make_pair(i + 1, FLAGS_generators), seed + i);
     } else {
       LOG(FATAL) << "Unknown workload: " << FLAGS_wl;
     }
@@ -82,14 +85,14 @@ vector<unique_ptr<ModuleRunner>> InitializeGenerators() {
     }
     if (FLAGS_rate > 0) {
       auto tps_per_generator = FLAGS_rate / FLAGS_generators + (i < (FLAGS_rate % FLAGS_generators));
-      generators.push_back(MakeRunnerFor<ConstantRateTxnGenerator>(config, context, std::move(workload), FLAGS_r,
-                                                                   num_txns_per_generator, tps_per_generator,
-                                                                   FLAGS_duration, FLAGS_dry_run));
+      generators.push_back(MakeRunnerFor<ConstantRateTxnGenerator>(config, context, std::move(workload), FLAGS_region,
+                                                                   FLAGS_replica, num_txns_per_generator,
+                                                                   tps_per_generator, FLAGS_duration, FLAGS_dry_run));
     } else {
       int num_clients = FLAGS_clients / FLAGS_generators + (i < (FLAGS_clients % FLAGS_generators));
       generators.push_back(MakeRunnerFor<SynchronousTxnGenerator>(
-          config, context, std::move(workload), FLAGS_r, num_txns_per_generator, num_clients, FLAGS_duration,
-          FLAGS_generators * FLAGS_startup_spacing, FLAGS_dry_run));
+          config, context, std::move(workload), FLAGS_region, FLAGS_replica, num_txns_per_generator, num_clients,
+          FLAGS_duration, FLAGS_generators * FLAGS_startup_spacing, FLAGS_dry_run));
     }
   }
   return generators;

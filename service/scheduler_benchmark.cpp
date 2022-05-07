@@ -67,7 +67,7 @@ int main(int argc, char* argv[]) {
   scheduler->StartInNewThread();
 
   // Prepare the workload
-  BasicWorkload workload(config, 0, "", FLAGS_params);
+  BasicWorkload workload(config, 0, 0, "", FLAGS_params);
   vector<Transaction*> transactions;
   LOG(INFO) << "Generating " << FLAGS_txns << " transactions";
   for (size_t i = 0; i < FLAGS_txns; i++) {

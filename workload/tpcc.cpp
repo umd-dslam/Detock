@@ -48,13 +48,20 @@ T SampleOnce(G& g, const std::vector<T>& source) {
   return source[i];
 }
 
+// For the Calvin experiment, there is a single region, so replace the regions by the replicas so that
+// we generate the same workload as other experiments
+int GetNumRegions(const ConfigurationPtr& config) {
+  return config->num_regions() == 1 ? config->num_replicas(config->local_region()) : config->num_regions();
+}
+
 }  // namespace
 
-TPCCWorkload::TPCCWorkload(const ConfigurationPtr& config, uint32_t region, const string& params_str,
+TPCCWorkload::TPCCWorkload(const ConfigurationPtr& config, RegionId region, ReplicaId replica, const string& params_str,
                            std::pair<int, int> id_slot, const uint32_t seed)
     : Workload(DEFAULT_PARAMS, params_str),
       config_(config),
       local_region_(region),
+      local_replica_(replica),
       distance_ranking_(config->distance_ranking_from(region)),
       zipf_coef_(params_.GetInt32(MH_ZIPF)),
       rg_(seed),
@@ -62,10 +69,10 @@ TPCCWorkload::TPCCWorkload(const ConfigurationPtr& config, uint32_t region, cons
   name_ = "tpcc";
   CHECK(config_->proto_config().has_tpcc_partitioning()) << "TPC-C workload is only compatible with TPC-C partitioning";
 
-  auto num_regions = config_->num_regions();
+  auto num_regions = GetNumRegions(config_);
   if (distance_ranking_.empty()) {
     for (int i = 0; i < num_regions; i++) {
-      if ((uint32_t)i != local_region_) {
+      if (i != local_region()) {
         distance_ranking_.push_back(i);
       }
     }
@@ -73,6 +80,13 @@ TPCCWorkload::TPCCWorkload(const ConfigurationPtr& config, uint32_t region, cons
       LOG(WARNING) << "Distance ranking is not provided. MH_ZIPF is reset to 0.";
       zipf_coef_ = 0;
     }
+  } else if (config_->num_regions() == 1) {
+    // This case is for the Calvin experiment where there is only a single region.
+    // The num_regions variable is equal to num_replicas at this point
+    CHECK_EQ(distance_ranking_.size(), num_regions * (num_regions - 1));
+    size_t from = local_region() * (num_regions - 1);
+    std::copy_n(distance_ranking_.begin() + from, num_regions, distance_ranking_.begin());
+    distance_ranking_.resize(num_regions - 1);
   }
 
   CHECK_EQ(distance_ranking_.size(), num_regions - 1) << "Distance ranking size must match the number of regions";
@@ -110,7 +124,7 @@ std::pair<Transaction*, TransactionProfile> TPCCWorkload::NextTransaction() {
     partition = std::uniform_int_distribution<>(0, num_partitions - 1)(rg_);
   }
 
-  const auto& selectable_w = warehouse_index_[partition][local_region_];
+  const auto& selectable_w = warehouse_index_[partition][local_region()];
   CHECK(!selectable_w.empty()) << "Not enough warehouses";
   int w = SampleOnce(rg_, selectable_w);
 
@@ -149,7 +163,7 @@ void TPCCWorkload::NewOrder(Transaction& txn, TransactionProfile& pro, int w_id,
   int d_id = std::uniform_int_distribution<>(1, tpcc::kDistPerWare)(rg_);
   int c_id = NURand(rg_, 1023, 1, tpcc::kCustPerDist);
   int o_id = id_generator_.NextOId(w_id, d_id);
-  int i_w_id = partition + static_cast<int>(local_region_ * config_->num_partitions()) + 1;
+  int i_w_id = partition + static_cast<int>(local_region() * config_->num_partitions()) + 1;
   auto datetime = std::chrono::system_clock::now().time_since_epoch().count();
   std::array<tpcc::NewOrderTxn::OrderLine, tpcc::kLinePerOrder> ol;
   std::bernoulli_distribution is_remote(0.01);
@@ -296,10 +310,10 @@ void TPCCWorkload::StockLevel(Transaction& txn, int w_id) {
 
 std::vector<int> TPCCWorkload::SelectRemoteWarehouses(int partition) {
   if (params_.GetInt32(SH_ONLY) == 1) {
-    return {SampleOnce(rg_, warehouse_index_[partition][local_region_])};
+    return {SampleOnce(rg_, warehouse_index_[partition][local_region()])};
   }
 
-  auto num_regions = config_->num_regions();
+  auto num_regions = GetNumRegions(config_);
   auto max_num_homes = std::min(params_.GetInt32(HOMES), num_regions);
   if (max_num_homes < 2) {
     return {};

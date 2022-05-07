@@ -17,7 +17,7 @@ using std::chrono::operator""us;
 
 namespace slog {
 namespace {
-void ConnectToServer(const ConfigurationPtr& config, zmq::socket_t& socket, uint32_t region) {
+void ConnectToServers(const ConfigurationPtr& config, zmq::socket_t& socket, RegionId region, ReplicaId rep) {
   socket.set(zmq::sockopt::sndhwm, 0);
   socket.set(zmq::sockopt::rcvhwm, 0);
   for (int p = 0; p < config->num_partitions(); p++) {
@@ -25,7 +25,7 @@ void ConnectToServer(const ConfigurationPtr& config, zmq::socket_t& socket, uint
     if (config->protocol() == "ipc") {
       endpoint_s << "tcp://localhost:" << config->server_port();
     } else {
-      endpoint_s << "tcp://" << config->address(region, p) << ":" << config->server_port();
+      endpoint_s << "tcp://" << config->address(region, rep, p) << ":" << config->server_port();
     }
     auto endpoint = endpoint_s.str();
     LOG(INFO) << "Connecting to " << endpoint;
@@ -92,7 +92,7 @@ void TxnGenerator::StopTimer() {
 bool TxnGenerator::timer_running() const { return timer_running_; }
 
 SynchronousTxnGenerator::SynchronousTxnGenerator(const ConfigurationPtr& config, zmq::context_t& context,
-                                                 std::unique_ptr<Workload>&& workload, uint32_t region,
+                                                 std::unique_ptr<Workload>&& workload, RegionId region, ReplicaId rep,
                                                  uint32_t num_txns, int num_clients, int duration_s,
                                                  int startup_spacing_us, bool dry_run)
     : TxnGenerator(std::move(workload)),
@@ -100,6 +100,7 @@ SynchronousTxnGenerator::SynchronousTxnGenerator(const ConfigurationPtr& config,
       socket_(context, ZMQ_DEALER),
       poller_(kModuleTimeout),
       region_(region),
+      replica_(rep),
       num_txns_(num_txns),
       num_clients_(num_clients),
       startup_spacing_(startup_spacing_us),
@@ -130,7 +131,7 @@ void SynchronousTxnGenerator::SetUp() {
   }
 
   if (!dry_run_) {
-    ConnectToServer(config_, socket_, region_);
+    ConnectToServers(config_, socket_, region_, replica_);
     poller_.PushSocket(socket_);
     for (int i = 0; i < num_clients_; i++) {
       poller_.AddTimedCallback(startup_spacing_ * i, [this, i]() {
@@ -211,13 +212,14 @@ void SynchronousTxnGenerator::SendNextTxn() {
 }
 
 ConstantRateTxnGenerator::ConstantRateTxnGenerator(const ConfigurationPtr& config, zmq::context_t& context,
-                                                   unique_ptr<Workload>&& workload, uint32_t region, uint32_t num_txns,
-                                                   int tps, int duration_s, bool dry_run)
+                                                   unique_ptr<Workload>&& workload, RegionId region, ReplicaId replica,
+                                                   uint32_t num_txns, int tps, int duration_s, bool dry_run)
     : TxnGenerator(std::move(workload)),
       config_(config),
       socket_(context, ZMQ_DEALER),
       poller_(kModuleTimeout),
       region_(region),
+      replica_(replica),
       num_txns_(num_txns),
       duration_(duration_s * 1000),
       dry_run_(dry_run) {
@@ -249,7 +251,7 @@ void ConstantRateTxnGenerator::SetUp() {
   }
 
   if (!dry_run_) {
-    ConnectToServer(config_, socket_, region_);
+    ConnectToServers(config_, socket_, region_, replica_);
     poller_.PushSocket(socket_);
   }
 
