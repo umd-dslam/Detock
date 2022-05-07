@@ -47,7 +47,6 @@ def generate_config(settings: dict, template_path: str):
         region.num_replicas = settings["num_replicas"].get(r, 1)
 
         config.regions.append(region)
-        config.num_partitions = len(region.addresses)
 
     config_path = os.path.join(gettempdir(), os.path.basename(template_path))
     with open(config_path, "w") as f:
@@ -263,7 +262,8 @@ class Experiment:
 
     @classmethod
     def run(cls, args):
-        with open(os.path.join(args.config_dir, "settings.json"), "r") as f:
+        settings_dir = os.path.dirname(args.settings)
+        with open(args.settings, "r") as f:
             settings = json.load(f)
 
         sample = settings.get("sample", 10)
@@ -277,7 +277,7 @@ class Experiment:
 
         for server in workload_setting["servers"]:
             config_path = generate_config(
-                settings, os.path.join(args.config_dir, server["config"])
+                settings, os.path.join(settings_dir, server["config"])
             )
 
             LOG.info('============ GENERATED CONFIG "%s" ============', config_path)
@@ -590,7 +590,7 @@ if __name__ == "__main__":
         "experiment", choices=EXPERIMENTS.keys(), help="Name of the experiment to run"
     )
     parser.add_argument(
-        "--config-dir", "-c", default="config", help="Path to the configuration files"
+        "--settings", "-s", default="experiments/settings.json", help="Path to the settings file"
     )
     parser.add_argument(
         "--out-dir", "-o", default=".", help="Path to the output directory"
