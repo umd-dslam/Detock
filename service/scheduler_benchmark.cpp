@@ -15,7 +15,7 @@ DEFINE_uint32(records, 100000, "Number of records");
 DEFINE_uint32(record_size, 100, "Size of a record in bytes");
 DEFINE_string(params, "hot=0,hot_records=0", "Basic workload params");
 DEFINE_double(sample, 10, "Percent of sampled transactions to be written to result files");
-DEFINE_string(out_dir, ".", "Directory containing output data");
+DEFINE_string(out_dir, "", "Directory containing output data");
 DEFINE_string(execution, "key_value", "Execution type. Choose from (noop and key_value)");
 
 using namespace slog;
@@ -98,11 +98,18 @@ int main(int argc, char* argv[]) {
   // Receive the results
   LOG(INFO) << "Collecting results";
   vector<TxnInfo> results;
+  results.reserve(FLAGS_txns);
   for (size_t i = 0; i < transactions.size(); i++) {
-    auto env = RecvEnvelope(result_socket);
+    auto wrapped_env = RecvEnvelope(result_socket);
+    EnvelopePtr env;
+    env.reset(new slog::internal::Envelope());
+    if (DeserializeProto(*env, wrapped_env->raw().data(), wrapped_env->raw().size())) {
+      env->set_from(wrapped_env->from());
+    } 
     auto txn = env->mutable_request()->mutable_finished_subtxn()->release_txn();
     auto txn_id = txn->internal().id();
     results.push_back({.txn = txn, .sent_at = sent_at[txn_id]});
+    MONITOR_THROUGHPUT();
   }
 
   auto duration = duration_cast<milliseconds>(std::chrono::steady_clock::now() - start_time);
@@ -114,35 +121,37 @@ int main(int argc, char* argv[]) {
     LOG(INFO) << "Avg. Throughput: " << std::fixed << std::setprecision(3) << avg_throughput << " txn/s";
   }
 
-  // Sample a subset of the result
-  std::mt19937 rg(0);
-  std::shuffle(results.begin(), results.end(), rg);
-  auto sample_size = static_cast<size_t>(results.size() * FLAGS_sample / 100);
-  results.resize(sample_size);
+  if (!FLAGS_out_dir.empty()) {
+    // Sample a subset of the result
+    std::mt19937 rg(0);
+    std::shuffle(results.begin(), results.end(), rg);
+    auto sample_size = static_cast<size_t>(results.size() * FLAGS_sample / 100);
+    results.resize(sample_size);
 
-  // Output the results
-  const vector<string> kTxnColumns = {"txn_id", "sent_at", "reads", "writes"};
-  const vector<string> kEventsColumns = {"txn_id", "event", "time", "machine", "home"};
-  CSVWriter profiles(FLAGS_out_dir + "/transactions.csv", kTxnColumns);
-  CSVWriter events(FLAGS_out_dir + "/events.csv", kEventsColumns);
+    // Output the results
+    const vector<string> kTxnColumns = {"txn_id", "sent_at", "reads", "writes"};
+    const vector<string> kEventsColumns = {"txn_id", "event", "time", "machine", "home"};
+    CSVWriter profiles(FLAGS_out_dir + "/transactions.csv", kTxnColumns);
+    CSVWriter events(FLAGS_out_dir + "/events.csv", kEventsColumns);
 
-  for (const auto& info : results) {
-    auto txn = info.txn;
-    auto& txn_internal = txn->internal();
-    vector<string> reads, writes;
-    for (const auto& kv : txn->keys()) {
-      const auto& k = kv.key();
-      const auto& v = kv.value_entry();
-      if (v.type() == KeyType::READ) {
-        reads.push_back(k);
-      } else {
-        writes.push_back(k);
+    for (const auto& info : results) {
+      auto txn = info.txn;
+      auto& txn_internal = txn->internal();
+      vector<string> reads, writes;
+      for (const auto& kv : txn->keys()) {
+        const auto& k = kv.key();
+        const auto& v = kv.value_entry();
+        if (v.type() == KeyType::READ) {
+          reads.push_back(k);
+        } else {
+          writes.push_back(k);
+        }
       }
-    }
-    profiles << txn_internal.id() << info.sent_at.time_since_epoch().count() << Join(reads) << Join(writes) << csvendl;
-    for (auto& e : txn_internal.events()) {
-      events << txn_internal.id() << ENUM_NAME(e.event(), TransactionEvent) << e.time() << e.machine() << e.home()
-             << csvendl;
+      profiles << txn_internal.id() << info.sent_at.time_since_epoch().count() << Join(reads) << Join(writes) << csvendl;
+      for (auto& e : txn_internal.events()) {
+        events << txn_internal.id() << ENUM_NAME(e.event(), TransactionEvent) << e.time() << e.machine() << e.home()
+              << csvendl;
+      }
     }
   }
 }
