@@ -66,7 +66,7 @@ void LocalLog::UpdateReadyBatches() {
 LogManager::LogManager(int id, const std::vector<RegionId>& regions, const shared_ptr<Broker>& broker,
                        const MetricsRepositoryManagerPtr& metrics_manager, std::chrono::milliseconds poll_timeout)
     : NetworkedModule(broker, Broker::ChannelOption(kLogManagerChannel + id, true, RegionsToTags(regions)),
-                      metrics_manager, poll_timeout) {
+                      metrics_manager, poll_timeout, true /* is_long_sender */) {
   auto local_region = config()->local_region();
   auto local_replica = config()->local_replica();
   auto local_partition = config()->local_partition();
