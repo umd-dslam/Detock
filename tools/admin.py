@@ -950,9 +950,9 @@ class CollectClientCommand(AdminCommand):
     def do_command(self, args):
         client_out_dir = os.path.join(args.out_dir, args.tag, "client")
         machines = [
-            {"address": c, "name": str(i)}
+            {"address": c, "name": f"{i}-{j}"}
             for i, r in enumerate(self.config.regions)
-            for c in r.client_addresses
+            for j, c in enumerate(r.client_addresses)
         ]
         fetch_data(machines, args.user, args.tag, client_out_dir)
 

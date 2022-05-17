@@ -45,7 +45,8 @@ def generate_config(settings: dict, template_path: str):
         ]
         region.distance_ranking = ",".join(distance_ranking)
 
-        region.num_replicas = settings["num_replicas"].get(r, 1)
+        if "num_replicas" in settings:
+            region.num_replicas = settings["num_replicas"].get(r, 1)
 
         config.regions.append(region)
 
