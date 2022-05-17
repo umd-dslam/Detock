@@ -204,9 +204,9 @@ void LogManager::ProcessForwardBatchOrder(EnvelopePtr&& env) {
 
       local_log_.AddSlot(order.slot(), order.generator(), order.leader());
 
-      // If there are more than one replica in the current region, the partitions are not used as Paxos acceptors.
-      // Thus, we need to tell the partitions about the order.
-      if (config()->num_replicas(local_region) > 1 && from_partition == local_partition) {
+      // If the current replica is not the leader replica and this partition learns about the
+      // order directly from Paxos, distribute the order to other partitions in the same replica
+      if (GET_REPLICA_ID(order.leader()) != local_replica && from_partition == local_partition) {
         Send(*env, other_partitions_, MakeLogChannel(local_region));
       }
       break;

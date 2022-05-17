@@ -42,6 +42,7 @@ class Configuration {
   int sequencer_batch_size() const;
   bool sequencer_rrr() const;
   uint32_t replication_factor() const;
+  bool local_sync_replication() const;
 
   const std::string& local_address() const;
   RegionId local_region() const;
@@ -69,7 +70,7 @@ class Configuration {
   std::chrono::milliseconds clock_sync_interval() const;
   int64_t timestamp_buffer_us() const;
   uint32_t avg_latency_window_size() const;
-  std::vector<int> distance_ranking_from(int region_id) const;
+  std::vector<int> distance_ranking_from(RegionId region_id) const;
 
   int broker_rcvbuf() const;
   int long_sender_sndbuf() const;

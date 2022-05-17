@@ -27,7 +27,7 @@ const auto kTestModuleTimeout = std::chrono::milliseconds(5);
 using ConfigVec = std::vector<ConfigurationPtr>;
 
 ConfigVec MakeTestConfigurations(string&& prefix, int num_regions, int num_replicas, int num_partitions,
-                                 internal::Configuration common_config = {});
+                                 internal::Configuration common_config = {}, bool local_sync_rep = false);
 
 Transaction* MakeTestTransaction(const ConfigurationPtr& config, TxnId id, const std::vector<KeyMetadata>& keys,
                                  const std::vector<std::vector<std::string>> code = {{}},

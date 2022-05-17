@@ -176,6 +176,8 @@ bool Configuration::sequencer_rrr() const { return config_.sequencer_rrr(); }
 
 uint32_t Configuration::replication_factor() const { return std::max(config_.replication_factor(), 1U); }
 
+bool Configuration::local_sync_replication() const { return config_.regions(local_region_).sync_replication(); }
+
 vector<MachineId> Configuration::all_machine_ids() const { return all_machine_ids_; }
 
 const string& Configuration::local_address() const { return local_address_; }
@@ -239,7 +241,7 @@ int64_t Configuration::timestamp_buffer_us() const { return config_.timestamp_bu
 
 uint32_t Configuration::avg_latency_window_size() const { return std::max(config_.avg_latency_window_size(), 1U); }
 
-std::vector<int> Configuration::distance_ranking_from(int region_id) const {
+std::vector<int> Configuration::distance_ranking_from(RegionId region_id) const {
   auto ranking_str = Split(config_.regions(region_id).distance_ranking(), ",");
   std::vector<int> ranking;
   for (auto s : ranking_str) {

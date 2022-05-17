@@ -19,12 +19,10 @@ class SimulatedMultiPaxos : public NetworkedModule {
    * @param members       Machine Id of all members participating in this Paxos process
    * @param me            Machine Id of the current machine
    */
-  SimulatedMultiPaxos(Channel group_number, const shared_ptr<Broker>& broker, const vector<MachineId>& group_members,
-                      MachineId me, std::chrono::milliseconds poll_timeout = kModuleTimeout);
+  SimulatedMultiPaxos(Channel group_number, const shared_ptr<Broker>& broker, Members members, MachineId me,
+                      std::chrono::milliseconds poll_timeout = kModuleTimeout);
 
   std::string name() const override { return "Paxos-" + std::to_string(channel()); }
-
-  bool IsMember() const;
 
  protected:
   void OnInternalRequestReceived(EnvelopePtr&& env) final;

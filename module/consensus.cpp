@@ -9,27 +9,45 @@ using internal::Request;
 
 namespace {
 
-vector<MachineId> GetMembers(const ConfigurationPtr& config) {
+const ReplicaId kLeaderReplica = 0;
+const PartitionId kLeaderPartition = 0;
+
+Members GetMembers(const ConfigurationPtr& config) {
   auto local_reg = config->local_region();
   auto num_replicas = config->num_replicas(local_reg);
-  vector<MachineId> members;
-  if (num_replicas == 1) {
-    // For the experiment, we make the partitions in the current
-    // replica voters in Paxos
-    members.reserve(config->num_partitions());
-    for (int part = 0; part < config->num_partitions(); part++) {
-      members.push_back(MakeMachineId(local_reg, 0, part));
+  auto num_partitions = config->num_partitions();
+  vector<MachineId> acceptors;
+  vector<MachineId> learners;
+
+  // All machines in the leader's replica are always the learners
+  for (int part = 0; part < num_partitions; part++) {
+    learners.push_back(MakeMachineId(local_reg, kLeaderReplica, part));
+  }
+
+  // All leaders partition in other replicas are always the learners
+  for (int rep = 0; rep < num_replicas; rep++) {
+    if (rep != kLeaderReplica) learners.push_back(MakeMachineId(local_reg, rep, kLeaderPartition));
+  }
+
+  // If local synchronous replication is enabled, the leader
+  // partitons of local replicas are acceptors
+  if (config->local_sync_replication()) {
+    int cutoff = (num_replicas - 1) / 2 * 2 + 1;
+    acceptors.reserve(cutoff);
+    for (int rep = 0; rep < cutoff; rep++) {
+      acceptors.push_back(MakeMachineId(local_reg, rep, kLeaderPartition));
     }
-  } else {
-    // If there are more than 1 replica, create one voter in
-    // each replica
-    members.reserve(num_replicas);
-    for (int rep = 0; rep < num_replicas; rep++) {
-      members.push_back(MakeMachineId(local_reg, rep, 0));
+  }
+  // Otherwise, the partitions in the leader replica are acceptors
+  else {
+    int cutoff = (num_partitions - 1) / 2 * 2 + 1;
+    acceptors.reserve(cutoff);
+    for (int part = 0; part < cutoff; part++) {
+      acceptors.push_back(MakeMachineId(local_reg, kLeaderReplica, part));
     }
   }
 
-  return members;
+  return {acceptors, learners};
 }
 
 }  // namespace

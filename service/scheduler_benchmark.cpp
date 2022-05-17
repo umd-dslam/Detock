@@ -105,7 +105,7 @@ int main(int argc, char* argv[]) {
     env.reset(new slog::internal::Envelope());
     if (DeserializeProto(*env, wrapped_env->raw().data(), wrapped_env->raw().size())) {
       env->set_from(wrapped_env->from());
-    } 
+    }
     auto txn = env->mutable_request()->mutable_finished_subtxn()->release_txn();
     auto txn_id = txn->internal().id();
     results.push_back({.txn = txn, .sent_at = sent_at[txn_id]});
@@ -147,10 +147,11 @@ int main(int argc, char* argv[]) {
           writes.push_back(k);
         }
       }
-      profiles << txn_internal.id() << info.sent_at.time_since_epoch().count() << Join(reads) << Join(writes) << csvendl;
+      profiles << txn_internal.id() << info.sent_at.time_since_epoch().count() << Join(reads) << Join(writes)
+               << csvendl;
       for (auto& e : txn_internal.events()) {
         events << txn_internal.id() << ENUM_NAME(e.event(), TransactionEvent) << e.time() << e.machine() << e.home()
-              << csvendl;
+               << csvendl;
       }
     }
   }

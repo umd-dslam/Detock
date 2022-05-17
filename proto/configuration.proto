@@ -23,6 +23,8 @@ message Region {
     // num_replicas * num_partitions. The addresses list is split into num_replicas groups.
     // Each group has num_partitions addresses.
     uint32 num_replicas = 5;
+    // Use synchronous replication across all replicas
+    bool sync_replication = 6;
 }
 
 message ReplicationDelayExperiment {

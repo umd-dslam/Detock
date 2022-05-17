@@ -39,7 +39,7 @@ uint32_t NextUnusedPort() {
 }  // namespace
 
 ConfigVec MakeTestConfigurations(string&& prefix, int num_regions, int num_replicas, int num_partitions,
-                                 internal::Configuration common_config) {
+                                 internal::Configuration common_config, bool local_sync_rep) {
   int num_machines = num_regions * num_partitions;
   string addr = "/tmp/test_" + prefix;
 
@@ -60,6 +60,7 @@ ConfigVec MakeTestConfigurations(string&& prefix, int num_regions, int num_repli
       for (int p = 0; p < num_partitions; p++) {
         region->add_addresses(addr + to_string(counter++));
         region->set_num_replicas(num_replicas);
+        region->set_sync_replication(local_sync_rep);
       }
     }
   }

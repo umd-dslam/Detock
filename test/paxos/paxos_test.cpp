@@ -16,8 +16,8 @@ const Channel kTestChannel = 1;
 
 class TestSimulatedMultiPaxos : public SimulatedMultiPaxos {
  public:
-  TestSimulatedMultiPaxos(const shared_ptr<Broker>& broker, const vector<MachineId>& group_members, const MachineId& me)
-      : SimulatedMultiPaxos(kTestChannel, broker, group_members, me, kTestModuleTimeout) {}
+  TestSimulatedMultiPaxos(const shared_ptr<Broker>& broker, Members members, const MachineId& me)
+      : SimulatedMultiPaxos(kTestChannel, broker, members, me, kTestModuleTimeout) {}
 
   Pair Poll() {
     unique_lock<mutex> lock(m_);
@@ -50,12 +50,13 @@ class TestSimulatedMultiPaxos : public SimulatedMultiPaxos {
 class PaxosTest : public ::testing::Test {
  protected:
   void AddAndStartNewPaxos(const ConfigurationPtr& config) {
-    AddAndStartNewPaxos(config, config->all_machine_ids(), config->local_machine_id());
+    AddAndStartNewPaxos(config, config->all_machine_ids(), config->all_machine_ids(), config->local_machine_id());
   }
 
-  void AddAndStartNewPaxos(const ConfigurationPtr& config, const vector<MachineId>& members, MachineId me) {
+  void AddAndStartNewPaxos(const ConfigurationPtr& config, const vector<MachineId>& acceptors,
+                           const vector<MachineId>& learners, MachineId me) {
     auto broker = Broker::New(config, kTestModuleTimeout);
-    auto paxos = make_shared<TestSimulatedMultiPaxos>(broker, members, me);
+    auto paxos = make_shared<TestSimulatedMultiPaxos>(broker, Members(acceptors, learners), me);
     auto sender = make_unique<Sender>(broker->config(), broker->context());
     auto paxos_runner = new ModuleRunner(paxos);
 
@@ -139,24 +140,25 @@ TEST_F(PaxosTest, ProposeMultipleValues) {
   }
 }
 
-TEST_F(PaxosTest, MultiRegionsWithNonMembers) {
-  auto configs = MakeTestConfigurations("paxos", 2, 1, 2);
-  vector<MachineId> members;
-  auto member_part = configs.front()->leader_partition_for_multi_home_ordering();
-  for (int reg = 0; reg < configs.front()->num_regions(); reg++) {
-    members.emplace_back(MakeMachineId(reg, 0, member_part));
-  }
-  for (auto config : configs) {
-    AddAndStartNewPaxos(config, members, config->local_machine_id());
+TEST_F(PaxosTest, ExtraLearners) {
+  auto configs = MakeTestConfigurations("paxos", 2, 1, 3);
+  vector<MachineId> acceptors;
+  vector<MachineId> learners;
+  for (int p = 0; p < configs[0]->num_partitions(); p++) {
+    acceptors.push_back(MakeMachineId(0, 0, p));
+    learners.push_back(MakeMachineId(0, 0, p));
+    learners.push_back(MakeMachineId(1, 0, p));
   }
 
-  auto non_member = (member_part + 1) % configs.front()->num_partitions();
-  Propose(non_member, 111);
+  for (auto config : configs) {
+    AddAndStartNewPaxos(config, acceptors, learners, config->local_machine_id());
+  }
+
+  Propose(configs.size() - 1, 111);
+
   for (auto& paxos : paxi) {
-    if (paxos->IsMember()) {
-      auto ret = paxos->Poll();
-      ASSERT_EQ(0U, ret.first);
-      ASSERT_EQ(111U, ret.second);
-    }
+    auto ret = paxos->Poll();
+    ASSERT_EQ(0U, ret.first);
+    ASSERT_EQ(111U, ret.second);
   }
 }

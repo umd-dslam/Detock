@@ -18,23 +18,27 @@ using namespace std;
 using namespace slog;
 
 const int kNumRegions = 2;
-const int kNumReplicas = 2;
+const int kNumReplicas = 3;
 const int kNumPartitions = 2;
 const int kNumMachines = kNumRegions * kNumReplicas * kNumPartitions;
 const int kDataItems = 2;
 
-class E2ETest : public ::testing::TestWithParam<tuple<int, int, int>> {
+class E2ETest : public ::testing::TestWithParam<tuple<bool, int, int, int>> {
  protected:
   virtual internal::Configuration CustomConfig() { return internal::Configuration(); }
 
   void SetUp() {
+    auto param = GetParam();
+    bool local_sync_rep = std::get<0>(param);
+
     auto custom_config = CustomConfig();
     custom_config.set_replication_factor(2);
     custom_config.add_replication_order("1");
     custom_config.add_replication_order("0");
     custom_config.set_num_workers(2);
     custom_config.set_num_log_managers(2);
-    auto configs = MakeTestConfigurations("e2e", kNumRegions, kNumReplicas, kNumPartitions, custom_config);
+    auto configs =
+        MakeTestConfigurations("e2e", kNumRegions, kNumReplicas, kNumPartitions, custom_config, local_sync_rep);
 
     std::pair<Key, Record> data[kNumPartitions][kDataItems] = {{{"A", {"valA", 0, 0}}, {"C", {"valC", 1, 1}}},
                                                                {{"B", {"valB", 0, 1}}, {"X", {"valX", 1, 0}}}};
@@ -66,10 +70,9 @@ class E2ETest : public ::testing::TestWithParam<tuple<int, int, int>> {
       }
     }
 
-    auto param = GetParam();
-    auto main_reg = std::get<0>(param);
-    auto main_rep = std::get<1>(param);
-    auto main_part = std::get<2>(param);
+    auto main_reg = std::get<1>(param);
+    auto main_rep = std::get<2>(param);
+    auto main_part = std::get<3>(param);
     main_ = MakeMachineId(main_reg, main_rep, main_part);
     CHECK(test_slogs_.find(main_) != test_slogs_.end()) << "Cannot find machine " << MACHINE_ID_STR(main_);
 
@@ -89,18 +92,16 @@ class E2ETest : public ::testing::TestWithParam<tuple<int, int, int>> {
   // for all machines one by one.
   void SendAndCheckAllOneByOne(Transaction* txn, std::function<void(Transaction)> cb) {
     for (int reg = 0; reg < kNumRegions; reg++) {
-      for (int rep = 0; rep < kNumReplicas; rep++) {
-        for (int p = 0; p < kNumPartitions; p++) {
-          auto it = test_slogs_.find(MakeMachineId(reg, rep, p));
-          CHECK(it != test_slogs_.end());
+      for (int p = 0; p < kNumPartitions; p++) {
+        auto it = test_slogs_.find(MakeMachineId(reg, p % kNumReplicas, p));
+        CHECK(it != test_slogs_.end());
 
-          auto copied_txn = new Transaction(*txn);
+        auto copied_txn = new Transaction(*txn);
 
-          it->second.SendTxn(copied_txn);
-          auto resp = it->second.RecvTxnResult();
+        it->second.SendTxn(copied_txn);
+        auto resp = it->second.RecvTxnResult();
 
-          cb(resp);
-        }
+        cb(resp);
       }
     }
   }
@@ -273,8 +274,21 @@ TEST_P(E2ETestBypassMHOrderer, MultiHomeMultiPartition) {
 }
 
 INSTANTIATE_TEST_SUITE_P(AllE2ETests, E2ETest,
-                         testing::Combine(testing::Range(0, kNumRegions), testing::Range(0, 1),
-                                          testing::Range(0, kNumPartitions)));
+                         testing::Combine(testing::Values(false, true), testing::Range(0, kNumRegions),
+                                          testing::Range(0, 1), testing::Range(0, kNumPartitions)),
+                         [](const testing::TestParamInfo<E2ETest::ParamType>& info) {
+                           bool local_sync_rep = std::get<0>(info.param);
+                           auto reg = std::get<1>(info.param);
+                           auto rep = std::get<2>(info.param);
+                           auto part = std::get<3>(info.param);
+                           std::string out;
+                           out += (local_sync_rep ? "Sync" : "Async");
+                           out += "_";
+                           out += std::to_string(reg) + "_";
+                           out += std::to_string(rep) + "_";
+                           out += std::to_string(part);
+                           return out;
+                         });
 
 int main(int argc, char* argv[]) {
   ::testing::InitGoogleTest(&argc, argv);
