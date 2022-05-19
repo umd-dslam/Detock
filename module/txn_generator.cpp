@@ -33,25 +33,15 @@ void ConnectToServers(const ConfigurationPtr& config, zmq::socket_t& socket, Reg
   }
 }
 
-bool RecordFinishedTxn(TxnGenerator::TxnInfo& info, int generator_id, Transaction* txn, bool is_dummy) {
+bool RecordFinishedTxn(TxnGenerator::TxnInfo& info, int generator_id, Transaction* txn) {
   if (info.finished) {
     LOG(ERROR) << "Received response for finished txn";
     return false;
   }
   info.recv_at = system_clock::now();
   info.generator_id = generator_id;
-  if (is_dummy) {
-    if (info.txn == nullptr) {
-      LOG(ERROR) << "No transaction in the txn info";
-    } else {
-      info.txn->set_status(txn->status());
-      info.txn->mutable_internal()->CopyFrom(txn->internal());
-      delete txn;
-    }
-  } else {
-    delete info.txn;
-    info.txn = txn;
-  }
+  delete info.txn;
+  info.txn = txn;
   info.finished = true;
   return true;
 }
@@ -167,7 +157,7 @@ bool SynchronousTxnGenerator::Loop() {
         req.set_stream_id(res.stream_id());
         SendSerializedProtoWithEmptyDelim(socket_, req);
       } else {
-        if (RecordFinishedTxn(info, id_, txn, config_->return_dummy_txn())) {
+        if (RecordFinishedTxn(info, id_, txn)) {
           num_recv_txns_++;
           if (!duration_reached) {
             SendNextTxn();
@@ -309,7 +299,7 @@ bool ConstantRateTxnGenerator::Loop() {
         req.set_stream_id(res.stream_id());
         SendSerializedProtoWithEmptyDelim(socket_, req);
       } else {
-        num_recv_txns_ += RecordFinishedTxn(info, id_, txn, config_->return_dummy_txn());
+        num_recv_txns_ += RecordFinishedTxn(info, id_, txn);
       }
     }
   }

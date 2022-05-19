@@ -25,14 +25,13 @@ namespace {
 class BrokerThread : public Module {
  public:
   BrokerThread(const shared_ptr<zmq::context_t>& context, const string& internal_endpoint,
-               const string& external_endpoint, const vector<Broker::ChannelOption>& channels, int recv_retries_start_,
+               const string& external_endpoint, const vector<Broker::ChannelOption>& channels,
                std::chrono::milliseconds poll_timeout_ms, int rcvbuf)
       : external_socket_(*context, ZMQ_PULL),
         internal_socket_(*context, ZMQ_PULL),
         internal_endpoint_(internal_endpoint),
         external_endpoint_(external_endpoint),
         poll_timeout_ms_(poll_timeout_ms),
-        recv_retries_start_(recv_retries_start_),
         recv_retries_(0) {
     external_socket_.set(zmq::sockopt::rcvhwm, 0);
     external_socket_.set(zmq::sockopt::rcvbuf, rcvbuf);
@@ -67,12 +66,12 @@ class BrokerThread : public Module {
     }
 
     if (zmq::message_t msg; external_socket_.recv(msg, zmq::recv_flags::dontwait)) {
-      recv_retries_ = recv_retries_start_;
+      recv_retries_ = kRecvRetries;
       HandleIncomingMessage(move(msg));
     }
 
     if (auto env = RecvEnvelope(internal_socket_, true /* dont_wait */); env != nullptr) {
-      recv_retries_ = recv_retries_start_;
+      recv_retries_ = kRecvRetries;
 
       if (!env->has_request() || !env->request().has_broker_redirect()) {
         return false;
@@ -157,7 +156,6 @@ class BrokerThread : public Module {
   const string external_endpoint_;
   std::chrono::milliseconds poll_timeout_ms_;
   vector<zmq::pollitem_t> poll_items_;
-  int recv_retries_start_;
   int recv_retries_;
 
   struct ChannelEntry {
@@ -204,8 +202,7 @@ void Broker::StartInNewThreads() {
         MakeRemoteAddress(config_->protocol(), config_->local_address(), config_->broker_ports(i), true /* binding */);
 
     auto& t = threads_.emplace_back(MakeRunnerFor<BrokerThread>(context_, internal_endpoint, external_endpoint,
-                                                                channels_, config_->recv_retries(), poll_timeout_ms_,
-                                                                config_->broker_rcvbuf()));
+                                                                channels_, poll_timeout_ms_, config_->broker_rcvbuf()));
 
     std::optional<uint32_t> cpu = {};
     if (i < cpus.size()) {

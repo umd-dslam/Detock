@@ -60,8 +60,6 @@ class Configuration {
   bool bypass_mh_orderer() const;
   std::chrono::milliseconds ddr_interval() const;
   std::vector<int> cpu_pinnings(ModuleId module) const;
-  bool return_dummy_txn() const;
-  int recv_retries() const;
   internal::ExecutionType execution_type() const;
   const std::vector<uint32_t> replication_order() const;
   bool synchronized_batching() const;

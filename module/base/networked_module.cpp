@@ -28,7 +28,6 @@ NetworkedModule::NetworkedModule(const std::shared_ptr<zmq::context_t>& context,
       metrics_manager_(metrics_manager),
       sender_(config, context, is_long_sender),
       poller_(poll_timeout),
-      recv_retries_start_(config->recv_retries()),
       recv_retries_(0) {
   std::ostringstream os;
   os << "machine_id = " << MACHINE_ID_STR(config->local_machine_id());
@@ -89,20 +88,20 @@ bool NetworkedModule::Loop() {
   }
 
   if (OnEnvelopeReceived(RecvEnvelope(inproc_socket_, true /* dont_wait */))) {
-    recv_retries_ = recv_retries_start_;
+    recv_retries_ = kRecvRetries;
   }
 
   if (outproc_socket_.handle() != ZMQ_NULLPTR) {
     if (zmq::message_t msg; outproc_socket_.recv(msg, zmq::recv_flags::dontwait)) {
       auto env = DeserializeEnvelope(msg);
       if (OnEnvelopeReceived(move(env))) {
-        recv_retries_ = recv_retries_start_;
+        recv_retries_ = kRecvRetries;
       }
     }
   }
 
   if (OnCustomSocket()) {
-    recv_retries_ = recv_retries_start_;
+    recv_retries_ = kRecvRetries;
   }
 
   if (recv_retries_ > 0) {

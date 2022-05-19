@@ -294,11 +294,6 @@ void Worker::Finish(const RunId& run_id) {
   auto coordinator = txn->internal().coordinating_server();
   auto [coord_reg, coord_rep, _] = UnpackMachineId(coordinator);
   if (coord_reg == config()->local_region() && coord_rep == config()->local_replica()) {
-    if (config()->return_dummy_txn()) {
-      txn->mutable_keys()->Clear();
-      txn->mutable_code()->Clear();
-      txn->mutable_remaster()->Clear();
-    }
     Envelope env;
     auto finished_sub_txn = env.mutable_request()->mutable_finished_subtxn();
     finished_sub_txn->set_partition(config()->local_partition());

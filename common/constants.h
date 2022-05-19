@@ -45,6 +45,8 @@ const uint32_t kPaxosDefaultLeaderPosition = 0;
 
 const size_t kLockTableSizeLimit = 1000000;
 
+const int kRecvRetries = 4000;
+
 // We never use 0 for txn id
 const TxnId kSentinelTxnId = 0;
 
