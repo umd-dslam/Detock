@@ -7,8 +7,11 @@ using Clock = std::chrono::steady_clock;
 
 int main() {
   int requests = 200000;
-  RateLimiter limiter(29000);
+  int done = 0;
+  RateLimiter limiter(5000);
 
+  bool mute_started = false;
+  auto mute = Clock::now();
   auto last_report = Clock::now();
   auto last_request = Clock::now();
 
@@ -17,11 +20,30 @@ int main() {
   for (;;) {
     auto now = Clock::now();
 
+    bool make_request = false;
     if (now - last_request >= std::chrono::microseconds(10)) {
+      if (mute_started) {
+        if (now - mute >= std::chrono::seconds(2)) {
+          mute_started = false;
+          make_request = true;
+        }
+      } else {
+        make_request = true;
+      }
+    }
+
+    if (make_request) {
       last_request = now;
       if (limiter.Request()) {
         requests--;
+        done++;
         last_report_count++;
+
+        if (done == 10000 || done == 50000) {
+          mute_started = true;
+          mute = now;
+        }
+
         if (requests == 0)
           break;
       }
