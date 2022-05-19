@@ -252,4 +252,6 @@ int Configuration::long_sender_sndbuf() const {
   return config_.long_sender_sndbuf() <= 0 ? -1 : config_.long_sender_sndbuf();
 }
 
+int Configuration::tps_limit() const { return config_.tps_limit(); }
+
 }  // namespace slog

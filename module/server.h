@@ -12,6 +12,7 @@
 
 #include "common/configuration.h"
 #include "common/proto_utils.h"
+#include "common/rate_limiter.h"
 #include "common/types.h"
 #include "connection/broker.h"
 #include "module/base/networked_module.h"
@@ -61,6 +62,7 @@ class Server : public NetworkedModule {
 
   TxnId NextTxnId();
 
+  RateLimiter rate_limiter_;
   TxnId txn_id_counter_;
 
   struct PendingResponse {

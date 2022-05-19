@@ -55,7 +55,9 @@ Transaction* Server::FinishedTransaction::ReleaseTxn() {
 
 Server::Server(const std::shared_ptr<Broker>& broker, const MetricsRepositoryManagerPtr& metrics_manager,
                std::chrono::milliseconds poll_timeout)
-    : NetworkedModule(broker, kServerChannel, metrics_manager, poll_timeout), txn_id_counter_(0) {}
+    : NetworkedModule(broker, kServerChannel, metrics_manager, poll_timeout),
+      rate_limiter_(config()->tps_limit()),
+      txn_id_counter_(0) {}
 
 /***********************************************
                 Initialization
@@ -89,8 +91,8 @@ void Server::Initialize() {
 
 bool Server::OnCustomSocket() {
   auto& socket = GetCustomSocket(0);
-
   zmq::message_t identity;
+
   if (!socket.recv(identity, zmq::recv_flags::dontwait)) {
     return false;
   }
@@ -102,6 +104,14 @@ bool Server::OnCustomSocket() {
   if (!RecvDeserializedProtoWithEmptyDelim(socket, request)) {
     LOG(ERROR) << "Invalid message from client: Body is not a proto";
     return false;
+  }
+
+  if (!rate_limiter_.Request()) {
+    auto txn = request.mutable_txn()->release_txn();
+    txn->set_status(TransactionStatus::ABORTED);
+    txn->set_abort_reason("rate limited");
+    SendTxnToClient(txn);
+    return true;
   }
 
   // While this is called txn id, we use it for any kind of request
@@ -124,7 +134,7 @@ bool Server::OnCustomSocket() {
         txn->set_abort_reason("txn accesses no key");
       } else if (txn->has_remaster() && config()->num_regions() == 1) {
         txn->set_status(TransactionStatus::ABORTED);
-        txn->set_abort_reason("Remaster txn cannot be used when there is only a single region");
+        txn->set_abort_reason("remaster txn cannot be used when there is only a single region");
       }
 
       if (txn->status() == TransactionStatus::ABORTED) {

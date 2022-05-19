@@ -215,4 +215,6 @@ message Configuration {
     int32 broker_rcvbuf = 35;
     // Kernel sending buffer size (bytes) of long-distance sockets (e.g. those in the Forwarder and Sequencer)
     int32 long_sender_sndbuf = 36;
+    // Transaction admission rate limit at each server
+    int32 tps_limit = 37;
 }

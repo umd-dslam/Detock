@@ -72,6 +72,7 @@ class Configuration {
 
   int broker_rcvbuf() const;
   int long_sender_sndbuf() const;
+  int tps_limit() const;
 
  private:
   internal::Configuration config_;

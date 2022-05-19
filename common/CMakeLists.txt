@@ -18,6 +18,7 @@ target_sources(slog-core
     offline_data_reader.h
     proto_utils.cpp
     proto_utils.h
+    rate_limiter.h
     rwlatch.h
     sharder.cpp
     sharder.h
