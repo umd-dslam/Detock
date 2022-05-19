@@ -47,6 +47,10 @@ def generate_config(settings: dict, template_path: str):
 
         if "num_replicas" in settings:
             region.num_replicas = settings["num_replicas"].get(r, 1)
+        else:
+            region.num_replicas = 1
+
+        region.sync_replication = settings.get("local_sync_replication", False)
 
         config.regions.append(region)
 
@@ -603,7 +607,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--tag-keys",
         nargs="*",
-        help="Keys to include in the tag. If empty, only include",
+        help="Keys to include in the tag",
     )
     parser.add_argument(
         "--dry-run",
