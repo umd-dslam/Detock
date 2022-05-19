@@ -64,7 +64,7 @@ void Sequencer::ProcessForwardRequest(EnvelopePtr&& env) {
 #if !defined(LOCK_MANAGER_DDR)
       // If not using DDR, restart the transaction
       txn->set_status(TransactionStatus::ABORTED);
-      txn->set_abort_reason("restarted");
+      txn->set_abort_code(AbortCode::RESTARTED);
 #endif
     } else {
       VLOG(3) << "Txn " << TXN_ID_STR(txn_internal->id()) << " has a timestamp "

@@ -140,6 +140,7 @@ message RemoteReadResult {
     repeated KeyValueEntry reads = 4;
     bool will_abort = 5;
     string abort_reason = 6;
+    AbortCode abort_code = 7;
 }
 
 message FinishedSubtransaction {

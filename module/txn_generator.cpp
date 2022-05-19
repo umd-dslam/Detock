@@ -53,15 +53,23 @@ static int generator_id = 0;
 TxnGenerator::TxnGenerator(std::unique_ptr<Workload>&& workload)
     : id_(generator_id++),
       workload_(std::move(workload)),
-      num_sent_txns_(0),
-      num_recv_txns_(0),
       elapsed_time_(std::chrono::nanoseconds(0)),
-      timer_running_(false) {
+      timer_running_(false),
+      sent_txns_(0),
+      committed_txns_(0),
+      aborted_txns_(0),
+      restarted_txns_(0) {
   CHECK(workload_ != nullptr) << "Must provide a valid workload";
 }
 const Workload& TxnGenerator::workload() const { return *workload_; }
-size_t TxnGenerator::num_sent_txns() const { return num_sent_txns_; }
-size_t TxnGenerator::num_recv_txns() const { return num_recv_txns_; }
+size_t TxnGenerator::sent_txns() const { return sent_txns_; }
+size_t TxnGenerator::committed_txns() const { return committed_txns_; }
+size_t TxnGenerator::aborted_txns() const { return aborted_txns_; }
+size_t TxnGenerator::restarted_txns() const { return restarted_txns_; } 
+void TxnGenerator::IncSentTxns() { sent_txns_++; }
+void TxnGenerator::IncCommittedTxns() { committed_txns_++; };
+void TxnGenerator::IncAbortedTxns() { aborted_txns_++; };
+void TxnGenerator::IncRestartedTxns() { restarted_txns_++; };
 std::chrono::nanoseconds TxnGenerator::elapsed_time() const {
   if (timer_running_) {
     return std::chrono::steady_clock::now() - start_time_;
@@ -149,16 +157,18 @@ bool SynchronousTxnGenerator::Loop() {
       auto& info = txns_[res.stream_id()];
 
       auto txn = res.mutable_txn()->release_txn();
-      if (txn->status() == TransactionStatus::ABORTED && txn->abort_reason() == "restarted") {
-        info.restarts++;
-        // Restart the txn
-        api::Request req;
-        req.mutable_txn()->set_allocated_txn(txn);
-        req.set_stream_id(res.stream_id());
-        SendSerializedProtoWithEmptyDelim(socket_, req);
+      if (txn->status() == TransactionStatus::ABORTED) {
+        if (txn->abort_code() == AbortCode::RESTARTED || txn->abort_code() == AbortCode::RATE_LIMITED) {
+          info.restarts++;
+          std::this_thread::sleep_for(5us);
+          SendTxn(res.stream_id()); /* Restart */
+          IncRestartedTxns();
+        } else {
+          IncAbortedTxns();
+        }
       } else {
         if (RecordFinishedTxn(info, id_, txn)) {
-          num_recv_txns_++;
+          IncCommittedTxns();
           if (!duration_reached) {
             SendNextTxn();
           }
@@ -167,7 +177,7 @@ bool SynchronousTxnGenerator::Loop() {
     }
   }
 
-  if (duration_reached && num_recv_txns_ == txns_.size()) {
+  if (duration_reached && aborted_txns() + committed_txns() == txns_.size()) {
     StopTimer();
     return true;
   }
@@ -175,30 +185,37 @@ bool SynchronousTxnGenerator::Loop() {
 }
 
 void SynchronousTxnGenerator::SendNextTxn() {
-  std::pair<Transaction*, TransactionProfile> selected_txn;
-
-  api::Request req;
-  req.set_stream_id(num_sent_txns());
+  int id = sent_txns();
 
   TxnInfo info;
   if (generated_txns_.empty()) {
     auto [txn, profile] = workload_->NextTransaction();
-    req.mutable_txn()->set_allocated_txn(txn);
+    info.txn = txn;
     info.profile = profile;
   } else {
-    auto [txn, profile] = generated_txns_[num_sent_txns() % generated_txns_.size()];
-    req.mutable_txn()->set_allocated_txn(new Transaction(*txn));
+    auto [txn, profile] = generated_txns_[id % generated_txns_.size()];
+    info.txn = new Transaction(*txn);
     info.profile = profile;
   }
+  txns_.push_back(std::move(info));
+
+  SendTxn(id);
+
+  IncSentTxns();
+  CHECK_EQ(txns_.size(), sent_txns());
+}
+
+void SynchronousTxnGenerator::SendTxn(int i) {
+  auto& info = txns_[i];
+
+  api::Request req;
+  req.set_stream_id(i);
+  req.mutable_txn()->set_allocated_txn(info.txn);
 
   SendSerializedProtoWithEmptyDelim(socket_, req);
 
   info.sent_at = system_clock::now();
   info.txn = req.mutable_txn()->release_txn();
-
-  txns_.push_back(std::move(info));
-
-  ++num_sent_txns_;
 }
 
 ConstantRateTxnGenerator::ConstantRateTxnGenerator(const ConfigurationPtr& config, zmq::context_t& context,
@@ -256,15 +273,15 @@ void ConstantRateTxnGenerator::SendNextTxn() {
     if (elapsed_time() >= duration_) {
       return;
     }
-  } else if (num_sent_txns() >= generated_txns_.size()) {
+  } else if (sent_txns() >= generated_txns_.size()) {
     return;
   }
 
-  const auto& selected_txn = generated_txns_[num_sent_txns() % generated_txns_.size()];
+  const auto& selected_txn = generated_txns_[sent_txns() % generated_txns_.size()];
 
   api::Request req;
   req.mutable_txn()->set_allocated_txn(new Transaction(*selected_txn.first));
-  req.set_stream_id(num_sent_txns());
+  req.set_stream_id(sent_txns());
   if (!dry_run_) {
     SendSerializedProtoWithEmptyDelim(socket_, req);
   }
@@ -275,9 +292,11 @@ void ConstantRateTxnGenerator::SendNextTxn() {
   info.sent_at = system_clock::now();
   txns_.push_back(std::move(info));
 
-  ++num_sent_txns_;
+  IncSentTxns();
 
   poller_.AddTimedCallback(interval_, [this]() { SendNextTxn(); });
+
+  CHECK_EQ(txns_.size(), sent_txns());
 }
 
 bool ConstantRateTxnGenerator::Loop() {
@@ -291,26 +310,22 @@ bool ConstantRateTxnGenerator::Loop() {
 
       auto txn = res.mutable_txn()->release_txn();
       auto& info = txns_[res.stream_id()];
-      if (txn->status() == TransactionStatus::ABORTED && txn->abort_reason() == "restarted") {
-        info.restarts++;
-        // Restart the txn
-        api::Request req;
-        req.mutable_txn()->set_allocated_txn(txn);
-        req.set_stream_id(res.stream_id());
-        SendSerializedProtoWithEmptyDelim(socket_, req);
-      } else {
-        num_recv_txns_ += RecordFinishedTxn(info, id_, txn);
+      if (txn->status() == TransactionStatus::ABORTED) {
+        IncAbortedTxns();
+      } else if (RecordFinishedTxn(info, id_, txn)) {
+        IncCommittedTxns();
       }
     }
   }
 
   bool stop = false;
+  auto recv_txns = aborted_txns() + committed_txns();
   // If duration is set, keep sending txn until duration is reached, otherwise send until all generated txns are sent
   if (duration_ > 0ms) {
     bool duration_reached = elapsed_time() >= duration_;
-    stop = duration_reached && (dry_run_ || num_recv_txns_ == num_sent_txns_);
+    stop = duration_reached && (dry_run_ || recv_txns == sent_txns());
   } else {
-    stop = num_sent_txns_ >= generated_txns_.size() && (dry_run_ || num_recv_txns_ >= txns_.size());
+    stop = sent_txns() >= generated_txns_.size() && (dry_run_ || recv_txns >= txns_.size());
   }
   if (stop) {
     StopTimer();

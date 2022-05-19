@@ -120,7 +120,9 @@ void RunBenchmark(vector<unique_ptr<ModuleRunner>>& generators) {
 
   // Status report until all generators finish running
   size_t last_num_sent_txns = 0;
-  size_t last_num_recv_txns = 0;
+  size_t last_num_committed_txns = 0;
+  size_t last_num_aborted_txns = 0;
+  size_t last_num_restarted_txns = 0;
   auto last_print_time = std::chrono::steady_clock::now();
   timespec sigpoll_time = {.tv_sec = 0, .tv_nsec = 0};
   for (;;) {
@@ -128,26 +130,36 @@ void RunBenchmark(vector<unique_ptr<ModuleRunner>>& generators) {
 
     bool running = false;
     size_t num_sent_txns = 0;
-    size_t num_recv_txns = 0;
+    size_t num_committed_txns = 0;
+    size_t num_aborted_txns = 0;
+    size_t num_restarted_txns = 0;
     for (auto& w : generators) {
       running |= w->is_running();
       auto gen = dynamic_cast<const TxnGenerator*>(w->module().get());
-      num_sent_txns += gen->num_sent_txns();
-      num_recv_txns += gen->num_recv_txns();
+      num_sent_txns += gen->sent_txns();
+      num_committed_txns += gen->committed_txns();
+      num_aborted_txns += gen->aborted_txns();
+      num_restarted_txns += gen->restarted_txns();
     }
     auto now = std::chrono::steady_clock::now();
     auto t = duration_cast<std::chrono::milliseconds>(now - last_print_time);
     auto send_tps = (num_sent_txns - last_num_sent_txns) * 1000 / t.count();
-    auto recv_tps = (num_recv_txns - last_num_recv_txns) * 1000 / t.count();
+    auto commit_tps = (num_committed_txns - last_num_committed_txns) * 1000 / t.count();
+    auto abort_tps = (num_aborted_txns - last_num_aborted_txns) * 1000 / t.count();
+    auto restart_tps = (num_restarted_txns - last_num_restarted_txns) * 1000 / t.count();
 
     // Effectively skip the first log since it is usually inaccurate.
     if (last_num_sent_txns > 0) {
-      LOG(INFO) << "Sent: " << num_sent_txns << "; Received: " << num_recv_txns << "; Sent tps: " << send_tps
-                << "; Recv tps: " << recv_tps << "\n";
+      LOG(INFO) << "S: " << send_tps << " (" << num_sent_txns << ")"
+                << "; C: " << commit_tps << " (" << num_committed_txns << ")"
+                << "; A: " << abort_tps << " (" << num_aborted_txns << ")"
+                << "; R: " << restart_tps << " (" << num_restarted_txns << ")";
     }
 
     last_num_sent_txns = num_sent_txns;
-    last_num_recv_txns = num_recv_txns;
+    last_num_committed_txns = num_committed_txns;
+    last_num_aborted_txns = num_aborted_txns;
+    last_num_restarted_txns = num_restarted_txns;
     last_print_time = now;
 
     if (!running) {

@@ -26,8 +26,15 @@ class TxnGenerator {
 
   TxnGenerator(std::unique_ptr<Workload>&& workload);
   const Workload& workload() const;
-  size_t num_sent_txns() const;
-  size_t num_recv_txns() const;
+  size_t sent_txns() const;
+  size_t committed_txns() const;
+  size_t aborted_txns() const;
+  size_t restarted_txns() const;
+  void IncSentTxns();
+  void IncCommittedTxns();
+  void IncAbortedTxns();
+  void IncRestartedTxns();
+
   std::chrono::nanoseconds elapsed_time() const;
 
   virtual const std::vector<TxnInfo>& txn_infos() const = 0;
@@ -39,13 +46,15 @@ class TxnGenerator {
 
   int id_;
   std::unique_ptr<Workload> workload_;
-  std::atomic<size_t> num_sent_txns_;
-  std::atomic<size_t> num_recv_txns_;
 
  private:
   std::chrono::steady_clock::time_point start_time_;
   std::atomic<std::chrono::nanoseconds> elapsed_time_;
   bool timer_running_;
+  std::atomic<size_t> sent_txns_;
+  std::atomic<size_t> committed_txns_;
+  std::atomic<size_t> aborted_txns_;
+  std::atomic<size_t> restarted_txns_;
 };
 
 // This generators simulates synchronous clients, each of which sends a new
@@ -66,6 +75,7 @@ class SynchronousTxnGenerator : public Module, public TxnGenerator {
 
  private:
   void SendNextTxn();
+  void SendTxn(int i);
 
   ConfigurationPtr config_;
   zmq::socket_t socket_;

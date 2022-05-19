@@ -12,7 +12,6 @@ namespace slog {
 namespace {
 void PreprocessTxn(Transaction* txn) {
   txn->set_status(TransactionStatus::NOT_STARTED);
-  txn->set_abort_reason("");
   for (auto& kv : *(txn->mutable_keys())) {
     kv.mutable_value_entry()->clear_metadata();
   }
@@ -106,18 +105,10 @@ bool Server::OnCustomSocket() {
     return false;
   }
 
-  if (!rate_limiter_.Request()) {
-    auto txn = request.mutable_txn()->release_txn();
-    txn->set_status(TransactionStatus::ABORTED);
-    txn->set_abort_reason("rate limited");
-    SendTxnToClient(txn);
-    return true;
-  }
-
   // While this is called txn id, we use it for any kind of request
   auto txn_id = NextTxnId();
   auto res = pending_responses_.try_emplace(txn_id, move(identity), request.stream_id());
-  CHECK(res.second) << "Duplicate transaction id: " << txn_id;
+  DCHECK(res.second) << "Duplicate transaction id: " << txn_id;
 
   switch (request.type_case()) {
     case api::Request::kTxn: {
@@ -126,6 +117,13 @@ bool Server::OnCustomSocket() {
 
       txn_internal->set_id(txn_id);
       txn_internal->set_coordinating_server(config()->local_machine_id());
+
+      if (!rate_limiter_.Request()) {
+        txn->set_status(TransactionStatus::ABORTED);
+        txn->set_abort_code(AbortCode::RATE_LIMITED);
+        SendTxnToClient(txn);
+        break;
+      }
 
       RECORD(txn_internal, TransactionEvent::ENTER_SERVER);
 

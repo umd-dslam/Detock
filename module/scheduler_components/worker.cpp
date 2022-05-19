@@ -79,6 +79,7 @@ void Worker::OnInternalRequestReceived(EnvelopePtr&& env) {
       // TODO: optimize by returning an aborting transaction to the scheduler immediately.
       // later remote reads will need to be garbage collected.
       txn.set_status(TransactionStatus::ABORTED);
+      txn.set_abort_code(read_result.abort_code());
       txn.set_abort_reason(read_result.abort_reason());
     } else {
       // Apply remote reads.
@@ -350,6 +351,7 @@ void Worker::BroadcastReads(const RunId& run_id) {
   rrr->set_deadlocked(run_id.second);
   rrr->set_partition(local_partition);
   rrr->set_will_abort(aborted);
+  rrr->set_abort_code(txn.abort_code());
   rrr->set_abort_reason(txn.abort_reason());
   if (!aborted) {
     auto reads_to_be_sent = rrr->mutable_reads();

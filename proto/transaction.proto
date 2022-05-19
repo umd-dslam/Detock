@@ -13,6 +13,12 @@ enum TransactionStatus {
     ABORTED = 2;
 }
 
+enum AbortCode {
+    OTHER = 0;
+    RATE_LIMITED = 1;
+    RESTARTED = 2;
+}
+
 enum KeyType {
     READ = 0;
     WRITE = 1;
@@ -145,5 +151,6 @@ message Transaction {
     repeated bytes deleted_keys = 5;
 
     TransactionStatus status = 6;
-    string abort_reason = 7;
+    AbortCode abort_code = 7;
+    string abort_reason = 8;
 }
