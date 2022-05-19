@@ -313,6 +313,9 @@ target_link_libraries(scheduler_benchmark
     gflags::gflags
 )
 
+add_executable(rate service/rate.cpp common/rate_limiter.h)
+target_include_directories(rate PRIVATE ${CMAKE_SOURCE_DIR})
+
 #========================================
 #                Tests
 #========================================
