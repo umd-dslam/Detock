@@ -9,7 +9,7 @@ class GlobalPaxos : public SimulatedMultiPaxos {
   GlobalPaxos(const std::shared_ptr<Broker>& broker, std::chrono::milliseconds poll_timeout = kModuleTimeout);
 
  protected:
-  void OnCommit(uint32_t slot, uint32_t value, MachineId leader) final;
+  void OnCommit(uint32_t slot, int64_t value, MachineId leader) final;
 
  private:
   MachineId local_machine_id_;
@@ -21,7 +21,7 @@ class LocalPaxos : public SimulatedMultiPaxos {
   LocalPaxos(const std::shared_ptr<Broker>& broker, std::chrono::milliseconds poll_timeout = kModuleTimeout);
 
  protected:
-  void OnCommit(uint32_t slot, MachineId value, MachineId leader) final;
+  void OnCommit(uint32_t slot, int64_t value, MachineId leader) final;
 
  private:
   Channel local_log_channel_;
