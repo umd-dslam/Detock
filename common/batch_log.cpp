@@ -1,4 +1,5 @@
 #include "common/batch_log.h"
+#include "common/metrics.h"
 
 #include <glog/logging.h>
 
@@ -21,7 +22,8 @@ void BatchLog::AckReplication(BatchId batch_id) {
 }
 
 void BatchLog::AddSlot(SlotId slot_id, BatchId batch_id, int replication_factor) {
-  slots_.Insert(slot_id, batch_id);
+  auto time = std::chrono::system_clock::now().time_since_epoch().count();
+  slots_.Insert(slot_id, {batch_id, time});
   replication_[batch_id] += replication_factor;
   UpdateReadyBatches();
 }
@@ -33,10 +35,13 @@ std::pair<SlotId, BatchPtr> BatchLog::NextBatch() {
     throw std::runtime_error("NextBatch() was called when there is no ready batch");
   }
   auto next_slot = ready_batches_.front().first;
-  auto next_batch_id = ready_batches_.front().second;
+  auto [next_batch_id, time] = ready_batches_.front().second;
   ready_batches_.pop();
 
   auto it = batches_.find(next_batch_id);
+
+  RECORD_WITH_TIME(it->second.get(), TransactionEvent::ENTER_LOG_MANAGER_ORDER, time);
+
   auto res = make_pair(move(next_slot), move(it->second));
   batches_.erase(it);
 
@@ -45,7 +50,7 @@ std::pair<SlotId, BatchPtr> BatchLog::NextBatch() {
 
 void BatchLog::UpdateReadyBatches() {
   while (slots_.HasNext()) {
-    auto next_batch_id = slots_.Peek();
+    auto next_batch_id = slots_.Peek().first;
     auto batch_it = batches_.find(next_batch_id);
     auto rep_it = replication_.find(next_batch_id);
     if (batch_it != batches_.end() && rep_it != replication_.end() && rep_it->second == 0) {

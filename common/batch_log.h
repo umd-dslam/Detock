@@ -31,10 +31,10 @@ class BatchLog {
  private:
   void UpdateReadyBatches();
 
-  AsyncLog<BatchId> slots_;
+  AsyncLog<std::pair<BatchId, int64_t>> slots_;
   std::unordered_map<BatchId, BatchPtr> batches_;
   std::unordered_map<BatchId, int> replication_;
-  std::queue<std::pair<SlotId, BatchId>> ready_batches_;
+  std::queue<std::pair<SlotId, std::pair<BatchId, int64_t>>> ready_batches_;
 };
 
 }  // namespace slog
