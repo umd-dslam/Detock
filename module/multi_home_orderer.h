@@ -39,7 +39,7 @@ class MultiHomeOrderer : public NetworkedModule {
   void AdvanceLog();
 
   void NewBatch();
-  BatchId batch_id() const { return batch_id_counter_ * kMaxNumMachines + config()->local_machine_id(); }
+  BatchId batch_id() const { return (batch_id_counter_ << kMachineIdBits) | config()->local_machine_id(); }
   void AddToBatch(Transaction* txn);
   void SendBatch();
 
