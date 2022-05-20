@@ -11,8 +11,7 @@ class RateLimiter {
   using Resolution = std::chrono::nanoseconds;
 
  public:
-  RateLimiter(int req_per_sec)
-      : time_per_req_(0), time_(0), last_check_(Clock::now()) {
+  RateLimiter(int req_per_sec) : time_per_req_(0), time_(0), last_check_(Clock::now()) {
     if (req_per_sec > 0) {
       time_per_req_ = Resolution::period::den / req_per_sec;
     }

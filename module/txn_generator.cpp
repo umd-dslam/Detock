@@ -65,7 +65,7 @@ const Workload& TxnGenerator::workload() const { return *workload_; }
 size_t TxnGenerator::sent_txns() const { return sent_txns_; }
 size_t TxnGenerator::committed_txns() const { return committed_txns_; }
 size_t TxnGenerator::aborted_txns() const { return aborted_txns_; }
-size_t TxnGenerator::restarted_txns() const { return restarted_txns_; } 
+size_t TxnGenerator::restarted_txns() const { return restarted_txns_; }
 void TxnGenerator::IncSentTxns() { sent_txns_++; }
 void TxnGenerator::IncCommittedTxns() { committed_txns_++; };
 void TxnGenerator::IncAbortedTxns() { aborted_txns_++; };

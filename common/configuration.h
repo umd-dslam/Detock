@@ -30,6 +30,7 @@ class Configuration {
   uint32_t forwarder_port() const;
   uint32_t sequencer_port() const;
   uint32_t clock_synchronizer_port() const;
+  uint32_t log_manager_port(int i) const;
   int num_regions() const;
   int num_replicas(RegionId reg) const;
   int num_partitions() const;

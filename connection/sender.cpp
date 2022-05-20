@@ -65,8 +65,10 @@ void Sender::Send(EnvelopePtr&& envelope, const std::vector<MachineId>& to_machi
 
 Sender::SocketPtr& Sender::GetRemoteSocket(MachineId machine_id, Channel channel) {
   uint32_t port;
-  if (channel >= kMaxChannel) {
+  if (IS_TAG(channel)) {
     port = config_->broker_ports(config_->broker_ports_size() - 1);
+  } else if (IS_LOG_MANAGER_CHANNEL(channel)) {
+    port = config_->log_manager_port(LOG_MANAGER_ID_FROM_CHANNEL(channel));
   } else {
     switch (channel) {
       case kForwarderChannel:

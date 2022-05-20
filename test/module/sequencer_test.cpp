@@ -12,38 +12,55 @@ using namespace slog;
 using internal::Envelope;
 using internal::Request;
 
+const int kNumRegions = 2;
+const int kNumReplicas = 1;
+const int kNumPartitions = 2;
 class SequencerTest : public ::testing::TestWithParam<bool> {
  public:
   void SetUp() {
     auto delayed = GetParam();
 
+    internal::Configuration extra_config;
+    extra_config.set_num_log_managers(2);
+
     if (delayed) {
-      internal::Configuration extra_config;
       extra_config.mutable_replication_delay()->set_delay_pct(100);
       extra_config.mutable_replication_delay()->set_delay_amount_ms(5);
-      extra_config.set_num_log_managers(2);
-      configs_ = MakeTestConfigurations("sequencer", 2, 1, 2, extra_config);
+      configs_ = MakeTestConfigurations("sequencer", kNumRegions, kNumReplicas, kNumPartitions, extra_config);
     } else {
-      configs_ = MakeTestConfigurations("sequencer", 2, 1, 2);
+      configs_ = MakeTestConfigurations("sequencer", kNumRegions, kNumReplicas, kNumPartitions, extra_config);
     }
 
-    for (int i = 0; i < 4; i++) {
-      slog_[i] = make_unique<TestSlog>(configs_[i]);
-      slog_[i]->AddSequencer();
-      // There are 2 lock managers as set in the config
-      slog_[i]->AddOutputSocket(kLogManagerChannel, {LogManager::MakeLogChannel(0)});
-      slog_[i]->AddOutputSocket(kLogManagerChannel + 1, {LogManager::MakeLogChannel(1)});
-      senders_[i] = slog_[i]->NewSender();
+    int counter = 0;
+    for (int reg = 0; reg < kNumRegions; reg++) {
+      for (int rep = 0; rep < kNumReplicas; rep++) {
+        for (int p = 0; p < kNumPartitions; p++) {
+          auto id = MakeMachineId(reg, rep, p);
+          auto config = configs_[counter++];
+          auto& slog = slogs_.emplace(id, config).first->second;
+          slog.AddSequencer();
+          slog.AddOutputSocket(LOG_MANAGER_CHANNEL(0));
+          slog.AddOutputSocket(LOG_MANAGER_CHANNEL(1));
+          senders_.emplace(id, slog.NewSender());
+        }
+      }
     }
-    for (auto& slog : slog_) {
-      slog->StartInNewThreads();
+
+    for (auto& [_, slog] : slogs_) {
+      slog.StartInNewThreads();
     }
   }
 
-  void SendToSequencer(int i, EnvelopePtr&& req) { senders_[i]->Send(std::move(req), kSequencerChannel); }
+  void SendToSequencer(MachineId id, EnvelopePtr&& req) {
+    auto it = senders_.find(id);
+    CHECK(it != senders_.end());
+    it->second->Send(std::move(req), kSequencerChannel);
+  }
 
-  vector<internal::Batch> ReceiveBatches(int i, int log_id) {
-    auto req_env = slog_[i]->ReceiveFromOutputSocket(kLogManagerChannel + log_id);
+  vector<internal::Batch> ReceiveBatches(MachineId id, int log_id) {
+    auto it = slogs_.find(id);
+    CHECK(it != slogs_.end());
+    auto req_env = it->second.ReceiveFromOutputSocket(LOG_MANAGER_CHANNEL(log_id), false);
     if (req_env == nullptr) {
       return {};
     }
@@ -61,8 +78,8 @@ class SequencerTest : public ::testing::TestWithParam<bool> {
     return batches;
   }
 
-  unique_ptr<Sender> senders_[4];
-  unique_ptr<TestSlog> slog_[4];
+  unordered_map<MachineId, unique_ptr<Sender>> senders_;
+  unordered_map<MachineId, TestSlog> slogs_;
   ConfigVec configs_;
 };
 
@@ -73,11 +90,11 @@ TEST_P(SequencerTest, SingleHomeTransaction1) {
 
   auto env = make_unique<Envelope>();
   env->mutable_request()->mutable_forward_txn()->mutable_txn()->CopyFrom(*txn);
-  SendToSequencer(0, move(env));
+  SendToSequencer(MakeMachineId(0, 0, 0), move(env));
 
   // Batch partitions are distributed to corresponding local partitions
   {
-    auto batches = ReceiveBatches(0, 0);
+    auto batches = ReceiveBatches(MakeMachineId(0, 0, 0), 0);
     ASSERT_EQ(batches.size(), 1);
     ASSERT_EQ(batches[0].transactions_size(), 1);
     ASSERT_EQ(batches[0].transaction_type(), TransactionType::SINGLE_HOME);
@@ -89,7 +106,7 @@ TEST_P(SequencerTest, SingleHomeTransaction1) {
   }
 
   {
-    auto batches = ReceiveBatches(1, 0);
+    auto batches = ReceiveBatches(MakeMachineId(0, 0, 1), 0);
     ASSERT_EQ(batches.size(), 1);
     ASSERT_EQ(batches[0].transactions_size(), 1);
     ASSERT_EQ(batches[0].transaction_type(), TransactionType::SINGLE_HOME);
@@ -101,7 +118,7 @@ TEST_P(SequencerTest, SingleHomeTransaction1) {
 
   // All batch partitions are sent to a machine in the remote replica
   {
-    auto batches = ReceiveBatches(3, 0);
+    auto batches = ReceiveBatches(MakeMachineId(1, 0, 1), 0);
     ASSERT_EQ(batches.size(), 2);
     ASSERT_EQ(batches[0].transactions_size(), 1);
     ASSERT_EQ(batches[0].transaction_type(), TransactionType::SINGLE_HOME);
@@ -130,11 +147,11 @@ TEST_P(SequencerTest, SingleHomeTransaction2) {
 
   auto env = make_unique<Envelope>();
   env->mutable_request()->mutable_forward_txn()->mutable_txn()->CopyFrom(*txn);
-  SendToSequencer(2, move(env));
+  SendToSequencer(MakeMachineId(1, 0, 0), move(env));
 
   // Batch partitions are distributed to corresponding local partitions
   {
-    auto batches = ReceiveBatches(2, 1);
+    auto batches = ReceiveBatches(MakeMachineId(1, 0, 0), 1);
     ASSERT_EQ(batches.size(), 1);
     ASSERT_EQ(batches[0].transactions_size(), 1);
     ASSERT_EQ(batches[0].transaction_type(), TransactionType::SINGLE_HOME);
@@ -146,7 +163,7 @@ TEST_P(SequencerTest, SingleHomeTransaction2) {
   }
 
   {
-    auto batches = ReceiveBatches(3, 1);
+    auto batches = ReceiveBatches(MakeMachineId(1, 0, 1), 1);
     ASSERT_EQ(batches.size(), 1);
     ASSERT_EQ(batches[0].transactions_size(), 1);
     ASSERT_EQ(batches[0].transaction_type(), TransactionType::SINGLE_HOME);
@@ -158,7 +175,7 @@ TEST_P(SequencerTest, SingleHomeTransaction2) {
 
   // All batch partitions are sent to a machine in the remote replica
   {
-    auto batches = ReceiveBatches(1, 1);
+    auto batches = ReceiveBatches(MakeMachineId(0, 0, 1), 1);
     ASSERT_EQ(batches.size(), 2);
     ASSERT_EQ(batches[0].transactions_size(), 1);
     ASSERT_EQ(batches[0].transaction_type(), TransactionType::SINGLE_HOME);
@@ -189,12 +206,12 @@ TEST_P(SequencerTest, MultiHomeTransaction1) {
   auto env = make_unique<Envelope>();
   env->mutable_request()->mutable_forward_txn()->mutable_txn()->CopyFrom(*txn);
 
-  SendToSequencer(0, move(env));
+  SendToSequencer(MakeMachineId(0, 0, 0), move(env));
 
   // The txn was sent to region 0, which generates two subtxns, each for each partitions. These subtxns are
   // also replicated to region 1.
   {
-    auto batches = ReceiveBatches(0, 0);
+    auto batches = ReceiveBatches(MakeMachineId(0, 0, 0), 0);
     ASSERT_EQ(batches.size(), 1);
     auto lo_txn = batches[0].transactions().at(0);
     ASSERT_EQ(lo_txn.internal().id(), 1000);
@@ -206,7 +223,7 @@ TEST_P(SequencerTest, MultiHomeTransaction1) {
   }
 
   {
-    auto batches = ReceiveBatches(1, 0);
+    auto batches = ReceiveBatches(MakeMachineId(0, 0, 1), 0);
     ASSERT_EQ(batches.size(), 1);
     auto lo_txn = batches[0].transactions().at(0);
     ASSERT_EQ(lo_txn.internal().id(), 1000);
@@ -218,7 +235,7 @@ TEST_P(SequencerTest, MultiHomeTransaction1) {
   }
 
   {
-    auto batches = ReceiveBatches(3, 0);
+    auto batches = ReceiveBatches(MakeMachineId(1, 0, 1), 0);
     ASSERT_FALSE(batches.empty());
     ASSERT_EQ(batches.size(), 2);
     {
@@ -251,18 +268,18 @@ TEST_P(SequencerTest, MultiHomeTransaction2) {
   auto env = make_unique<Envelope>();
   env->mutable_request()->mutable_forward_txn()->mutable_txn()->CopyFrom(*txn);
 
-  SendToSequencer(0, move(env));
+  SendToSequencer(MakeMachineId(0, 0, 0), move(env));
 
   // The txn was sent to region 0, which only generates one subtxn for partition 1 because the subtxn for partition
   // 0 is redundant (both A and C are homed at region 1)
   {
-    auto batches = ReceiveBatches(0, 0);
+    auto batches = ReceiveBatches(MakeMachineId(0, 0, 0), 0);
     ASSERT_EQ(batches.size(), 1);
     ASSERT_EQ(batches[0].transactions_size(), 0);
   }
 
   {
-    auto batches = ReceiveBatches(1, 0);
+    auto batches = ReceiveBatches(MakeMachineId(0, 0, 1), 0);
 
     ASSERT_EQ(batches.size(), 1);
 
@@ -276,7 +293,7 @@ TEST_P(SequencerTest, MultiHomeTransaction2) {
   }
 
   {
-    auto batches = ReceiveBatches(3, 0);
+    auto batches = ReceiveBatches(MakeMachineId(1, 0, 1), 0);
     ASSERT_FALSE(batches.empty());
     ASSERT_EQ(batches.size(), 2);
 
@@ -298,10 +315,10 @@ TEST_P(SequencerTest, RemasterTransaction) {
   auto env = make_unique<Envelope>();
   env->mutable_request()->mutable_forward_txn()->mutable_txn()->CopyFrom(*txn);
 
-  SendToSequencer(0, move(env));
+  SendToSequencer(MakeMachineId(0, 0, 0), move(env));
 
   {
-    auto batches = ReceiveBatches(0, 0);
+    auto batches = ReceiveBatches(MakeMachineId(0, 0, 0), 0);
 
     ASSERT_EQ(batches.size(), 1);
     ASSERT_EQ(batches[0].transactions_size(), 1);
@@ -316,14 +333,14 @@ TEST_P(SequencerTest, RemasterTransaction) {
   }
 
   {
-    auto batches = ReceiveBatches(1, 0);
+    auto batches = ReceiveBatches(MakeMachineId(0, 0, 1), 0);
 
     ASSERT_EQ(batches.size(), 1);
     ASSERT_EQ(batches[0].transactions_size(), 0);
   }
 
   {
-    auto batches = ReceiveBatches(3, 0);
+    auto batches = ReceiveBatches(MakeMachineId(1, 0, 1), 0);
 
     ASSERT_EQ(batches.size(), 2);
     ASSERT_EQ(batches[0].transactions_size(), 1);
@@ -348,12 +365,12 @@ TEST_P(SequencerTest, MultiHomeTransactionBypassedOrderer) {
   auto env = make_unique<Envelope>();
   env->mutable_request()->mutable_forward_txn()->mutable_txn()->CopyFrom(*txn);
 
-  SendToSequencer(0, move(env));
+  SendToSequencer(MakeMachineId(0, 0, 0), move(env));
 
   // The txn was sent to region 0, which only generates one subtxns for partition 0 because B of partition 1
   // does not have any key homed at 0.
   {
-    auto batches = ReceiveBatches(0, 0);
+    auto batches = ReceiveBatches(MakeMachineId(0, 0, 0), 0);
 
     ASSERT_EQ(batches.size(), 1);
     ASSERT_EQ(batches[0].transactions_size(), 1);
@@ -367,14 +384,14 @@ TEST_P(SequencerTest, MultiHomeTransactionBypassedOrderer) {
   }
 
   {
-    auto batches = ReceiveBatches(1, 0);
+    auto batches = ReceiveBatches(MakeMachineId(0, 0, 1), 0);
 
     ASSERT_EQ(batches.size(), 1);
     ASSERT_EQ(batches[0].transactions_size(), 0);
   }
 
   {
-    auto batches = ReceiveBatches(3, 0);
+    auto batches = ReceiveBatches(MakeMachineId(1, 0, 1), 0);
 
     ASSERT_EQ(batches.size(), 2);
     ASSERT_EQ(batches[0].transactions_size(), 1);

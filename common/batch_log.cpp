@@ -1,7 +1,8 @@
 #include "common/batch_log.h"
-#include "common/metrics.h"
 
 #include <glog/logging.h>
+
+#include "common/metrics.h"
 
 using std::make_pair;
 using std::move;

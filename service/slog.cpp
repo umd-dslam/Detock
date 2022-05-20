@@ -272,13 +272,7 @@ int main(int argc, char* argv[]) {
 
   auto num_log_managers = broker->config()->num_log_managers();
   for (int i = 0; i < num_log_managers; i++) {
-    std::vector<slog::RegionId> regions;
-    for (int r = 0; r < broker->config()->num_regions(); r++) {
-      if (r % num_log_managers == i) {
-        regions.push_back(r);
-      }
-    }
-    modules.emplace_back(MakeRunnerFor<slog::LogManager>(i, regions, broker, metrics_manager),
+    modules.emplace_back(MakeRunnerFor<slog::LogManager>(i, broker->context(), broker->config(), metrics_manager),
                          slog::ModuleId::LOG_MANAGER);
   }
 

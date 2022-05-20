@@ -48,6 +48,7 @@ ConfigVec MakeTestConfigurations(string&& prefix, int num_regions, int num_repli
   common_config.add_broker_ports(1);
   common_config.set_forwarder_port(2);
   common_config.set_sequencer_port(3);
+  common_config.set_log_manager_base_port(100);
   common_config.set_num_partitions(num_partitions);
   common_config.mutable_hash_partitioning()->set_partition_key_num_bytes(1);
   common_config.set_sequencer_batch_duration(1);
@@ -156,13 +157,8 @@ void TestSlog::AddSequencer() {
 void TestSlog::AddLogManagers() {
   auto num_log_managers = broker_->config()->num_log_managers();
   for (int i = 0; i < num_log_managers; i++) {
-    std::vector<RegionId> regions;
-    for (int r = 0; r < broker_->config()->num_regions(); r++) {
-      if (r % num_log_managers == i) {
-        regions.push_back(r);
-      }
-    }
-    log_managers_.push_back(MakeRunnerFor<slog::LogManager>(i, regions, broker_, nullptr, kTestModuleTimeout));
+    log_managers_.push_back(
+        MakeRunnerFor<slog::LogManager>(i, broker_->context(), broker_->config(), nullptr, kTestModuleTimeout));
   }
 }
 
@@ -177,23 +173,30 @@ void TestSlog::AddMultiHomeOrderer() {
 }
 
 void TestSlog::AddOutputSocket(Channel channel, const std::vector<uint64_t>& tags) {
-  switch (channel) {
-    case kForwarderChannel: {
-      zmq::socket_t outproc_socket(*broker_->context(), ZMQ_PULL);
-      outproc_socket.bind(
-          MakeRemoteAddress(config_->protocol(), config_->local_address(), config_->forwarder_port(), true));
-      outproc_sockets_[channel] = std::move(outproc_socket);
-      break;
+  if (IS_LOG_MANAGER_CHANNEL(channel)) {
+    zmq::socket_t outproc_socket(*broker_->context(), ZMQ_PULL);
+    outproc_socket.bind(MakeRemoteAddress(config_->protocol(), config_->local_address(),
+                                          config_->log_manager_port(LOG_MANAGER_ID_FROM_CHANNEL(channel)), true));
+    outproc_sockets_[channel] = std::move(outproc_socket);
+  } else {
+    switch (channel) {
+      case kForwarderChannel: {
+        zmq::socket_t outproc_socket(*broker_->context(), ZMQ_PULL);
+        outproc_socket.bind(
+            MakeRemoteAddress(config_->protocol(), config_->local_address(), config_->forwarder_port(), true));
+        outproc_sockets_[channel] = std::move(outproc_socket);
+        break;
+      }
+      case kSequencerChannel: {
+        zmq::socket_t outproc_socket(*broker_->context(), ZMQ_PULL);
+        outproc_socket.bind(
+            MakeRemoteAddress(config_->protocol(), config_->local_address(), config_->sequencer_port(), true));
+        outproc_sockets_[channel] = std::move(outproc_socket);
+        break;
+      }
+      default:
+        broker_->AddChannel(Broker::ChannelOption(channel, false, tags));
     }
-    case kSequencerChannel: {
-      zmq::socket_t outproc_socket(*broker_->context(), ZMQ_PULL);
-      outproc_socket.bind(
-          MakeRemoteAddress(config_->protocol(), config_->local_address(), config_->sequencer_port(), true));
-      outproc_sockets_[channel] = std::move(outproc_socket);
-      break;
-    }
-    default:
-      broker_->AddChannel(Broker::ChannelOption(channel, false, tags));
   }
 
   zmq::socket_t inproc_socket(*broker_->context(), ZMQ_PULL);

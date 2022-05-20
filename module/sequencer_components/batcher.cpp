@@ -160,6 +160,7 @@ void Batcher::SendBatches() {
   auto num_regions = config()->num_regions();
   auto num_replicas = config()->num_replicas(local_region);
   auto num_partitions = config()->num_partitions();
+  auto log_manager_channel = LOG_MANAGER_CHANNEL(local_region % config()->num_log_managers());
 
   int generator_position = batch_id_counter_ - batches_.size();
   for (auto& batch : batches_) {
@@ -179,7 +180,7 @@ void Batcher::SendBatches() {
       RECORD(batch_partition, TransactionEvent::EXIT_SEQUENCER_IN_BATCH);
 
       auto env = NewBatchForwardingMessage({batch_partition}, generator_position);
-      Send(*env, MakeMachineId(local_region, local_replica, p), LogManager::MakeLogChannel(local_region));
+      Send(*env, MakeMachineId(local_region, local_replica, p), log_manager_channel);
       // Collect back the batch partition to send to other regions
       batch_partitions.push_back(
           env->mutable_request()->mutable_forward_batch_data()->mutable_batch_data()->ReleaseLast());
@@ -222,18 +223,18 @@ void Batcher::SendBatches() {
 
         VLOG(3) << "Delay batch " << TXN_ID_STR(batch_id) << " for " << delay_ms << " ms";
 
-        NewTimedCallback(milliseconds(delay_ms),
-                         [this, destinations, local_region, batch_id, delayed_env = env.release()]() {
-                           VLOG(3) << "Sending delayed batch " << TXN_ID_STR(batch_id);
-                           Send(*delayed_env, destinations, LogManager::MakeLogChannel(local_region));
-                           delete delayed_env;
-                         });
+        NewTimedCallback(milliseconds(delay_ms), [this, destinations, local_region, batch_id, log_manager_channel,
+                                                  delayed_env = env.release()]() {
+          VLOG(3) << "Sending delayed batch " << TXN_ID_STR(batch_id);
+          Send(*delayed_env, destinations, log_manager_channel);
+          delete delayed_env;
+        });
 
         return;
       }
     }
 
-    Send(*env, destinations, LogManager::MakeLogChannel(local_region));
+    Send(*env, destinations, log_manager_channel);
 
     generator_position++;
   }

@@ -48,7 +48,6 @@ Configuration::Configuration(const internal::Configuration& config, const string
   CHECK_NE(config_.sequencer_port(), 0) << "Sequencer port must be set";
   CHECK_LT(config_.num_workers(), kMaxNumWorkers) << "Too many workers";
   CHECK_LT(config_.num_log_managers(), kMaxNumLogManagers) << "Too many log managers";
-  CHECK_LT(config_.regions_size(), kMaxNumLogs) << "Too many reigons";
   CHECK_LE(config_.num_log_managers(), config_.regions_size())
       << "Number of log managers cannot exceed number of regions";
 
@@ -148,12 +147,10 @@ uint32_t Configuration::broker_ports(int i) const { return config_.broker_ports(
 uint32_t Configuration::broker_ports_size() const { return config_.broker_ports_size(); }
 
 uint32_t Configuration::server_port() const { return config_.server_port(); }
-
 uint32_t Configuration::forwarder_port() const { return config_.forwarder_port(); }
-
 uint32_t Configuration::sequencer_port() const { return config_.sequencer_port(); }
-
 uint32_t Configuration::clock_synchronizer_port() const { return config_.clock_synchronizer_port(); }
+uint32_t Configuration::log_manager_port(int i) const { return config_.log_manager_base_port() + i; }
 
 std::chrono::milliseconds Configuration::mh_orderer_batch_duration() const {
   return milliseconds(config_.mh_orderer_batch_duration());

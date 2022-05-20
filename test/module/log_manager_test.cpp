@@ -145,7 +145,7 @@ class LogManagerTest : public ::testing::Test {
   void SendToLogManager(MachineId from, MachineId to, const Envelope& req, int home) {
     auto it = senders_.find(from);
     CHECK(it != senders_.end());
-    it->second->Send(req, to, kLogManagerChannel + home);
+    it->second->Send(req, to, LOG_MANAGER_CHANNEL(home));
   }
 
   Transaction* ReceiveTxn(MachineId id) {
