@@ -6,6 +6,7 @@
 #include <vector>
 #include <zmq.hpp>
 
+#include "common/rate_limiter.h"
 #include "connection/poller.h"
 #include "module/base/module.h"
 #include "workload/workload.h"
@@ -66,7 +67,7 @@ class SynchronousTxnGenerator : public Module, public TxnGenerator {
    */
   SynchronousTxnGenerator(const ConfigurationPtr& config, zmq::context_t& context, std::unique_ptr<Workload>&& workload,
                           RegionId region, ReplicaId rep, uint32_t num_txns, int num_clients, int duration_s,
-                          int startup_spacing_us, bool dry_run);
+                          std::shared_ptr<RateLimiter> rate_limiter, bool dry_run);
   ~SynchronousTxnGenerator();
   void SetUp() final;
   bool Loop() final;
@@ -84,8 +85,8 @@ class SynchronousTxnGenerator : public Module, public TxnGenerator {
   ReplicaId replica_;
   uint32_t num_txns_;
   int num_clients_;
-  std::chrono::microseconds startup_spacing_;
   std::chrono::milliseconds duration_;
+  std::shared_ptr<RateLimiter> rate_limiter_;
   bool dry_run_;
   std::vector<std::pair<Transaction*, TransactionProfile>> generated_txns_;
   std::vector<TxnInfo> txns_;
@@ -96,7 +97,7 @@ class ConstantRateTxnGenerator : public Module, public TxnGenerator {
  public:
   ConstantRateTxnGenerator(const ConfigurationPtr& config, zmq::context_t& context,
                            std::unique_ptr<Workload>&& workload, RegionId region, ReplicaId rep, uint32_t num_txns,
-                           int tps, int duration_s, bool dry_run);
+                           int duration_s, std::shared_ptr<RateLimiter> rate_limiter, bool dry_run);
   ~ConstantRateTxnGenerator();
   void SetUp() final;
   bool Loop() final;
@@ -109,11 +110,11 @@ class ConstantRateTxnGenerator : public Module, public TxnGenerator {
   ConfigurationPtr config_;
   zmq::socket_t socket_;
   Poller poller_;
-  std::chrono::microseconds interval_;
   RegionId region_;
   ReplicaId replica_;
   uint32_t num_txns_;
   std::chrono::milliseconds duration_;
+  std::shared_ptr<RateLimiter> rate_limiter_;
   bool dry_run_;
 
   std::vector<std::pair<Transaction*, TransactionProfile>> generated_txns_;

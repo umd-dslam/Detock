@@ -241,7 +241,7 @@ class Experiment:
     # Parameters of the workload
     WORKLOAD_PARAMS = []
     # Parameters of the benchmark tool and the environment other than the 'params' argument of the workload
-    OTHER_PARAMS = ["clients", "txns", "duration", "startup_spacing"]
+    OTHER_PARAMS = ["clients", "txns", "duration"]
 
     @classmethod
     def pre_run_hook(cls, _settings: dict, _dry_run: bool):
@@ -337,7 +337,6 @@ class Experiment:
                         "--generators", f"{GENERATORS}",
                         "--txns", f"{val['txns']}",
                         "--duration", f"{val['duration']}",
-                        "--startup-spacing", f"{val['startup_spacing']}",
                         "--sample", f"{sample}",
                         "--seed", f"{args.seed}",
                         "--params", params,

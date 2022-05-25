@@ -65,7 +65,7 @@ const Workload& TxnGenerator::workload() const { return *workload_; }
 size_t TxnGenerator::sent_txns() const { return sent_txns_; }
 size_t TxnGenerator::committed_txns() const { return committed_txns_; }
 size_t TxnGenerator::aborted_txns() const { return aborted_txns_; }
-size_t TxnGenerator::restarted_txns() const { return restarted_txns_; } 
+size_t TxnGenerator::restarted_txns() const { return restarted_txns_; }
 void TxnGenerator::IncSentTxns() { sent_txns_++; }
 void TxnGenerator::IncCommittedTxns() { committed_txns_++; };
 void TxnGenerator::IncAbortedTxns() { aborted_txns_++; };
@@ -92,7 +92,7 @@ bool TxnGenerator::timer_running() const { return timer_running_; }
 SynchronousTxnGenerator::SynchronousTxnGenerator(const ConfigurationPtr& config, zmq::context_t& context,
                                                  std::unique_ptr<Workload>&& workload, RegionId region, ReplicaId rep,
                                                  uint32_t num_txns, int num_clients, int duration_s,
-                                                 int startup_spacing_us, bool dry_run)
+                                                 std::shared_ptr<RateLimiter> rate_limiter, bool dry_run)
     : TxnGenerator(std::move(workload)),
       config_(config),
       socket_(context, ZMQ_DEALER),
@@ -101,8 +101,8 @@ SynchronousTxnGenerator::SynchronousTxnGenerator(const ConfigurationPtr& config,
       replica_(rep),
       num_txns_(num_txns),
       num_clients_(num_clients),
-      startup_spacing_(startup_spacing_us),
       duration_(duration_s * 1000),
+      rate_limiter_(rate_limiter),
       dry_run_(dry_run) {
   CHECK_GT(duration_s, 0) << "Duration must be set for synchronous txn generator";
 }
@@ -132,12 +132,7 @@ void SynchronousTxnGenerator::SetUp() {
     ConnectToServers(config_, socket_, region_, replica_);
     poller_.PushSocket(socket_);
     for (int i = 0; i < num_clients_; i++) {
-      poller_.AddTimedCallback(startup_spacing_ * i, [this, i]() {
-        SendNextTxn();
-        if (i == num_clients_ - 1) {
-          LOG(INFO) << "Started all clients";
-        }
-      });
+      SendNextTxn();
     }
   }
 
@@ -185,6 +180,10 @@ bool SynchronousTxnGenerator::Loop() {
 }
 
 void SynchronousTxnGenerator::SendNextTxn() {
+  while (!rate_limiter_->RequestWithMutex()) {
+    std::this_thread::sleep_for(5us);
+  }
+
   int id = sent_txns();
 
   TxnInfo info;
@@ -220,7 +219,8 @@ void SynchronousTxnGenerator::SendTxn(int i) {
 
 ConstantRateTxnGenerator::ConstantRateTxnGenerator(const ConfigurationPtr& config, zmq::context_t& context,
                                                    unique_ptr<Workload>&& workload, RegionId region, ReplicaId replica,
-                                                   uint32_t num_txns, int tps, int duration_s, bool dry_run)
+                                                   uint32_t num_txns, int duration_s,
+                                                   std::shared_ptr<RateLimiter> rate_limiter, bool dry_run)
     : TxnGenerator(std::move(workload)),
       config_(config),
       socket_(context, ZMQ_DEALER),
@@ -229,15 +229,8 @@ ConstantRateTxnGenerator::ConstantRateTxnGenerator(const ConfigurationPtr& confi
       replica_(replica),
       num_txns_(num_txns),
       duration_(duration_s * 1000),
-      dry_run_(dry_run) {
-  CHECK_LT(tps, 1000000) << "Transaction/sec is too high (max. 1000000)";
-  int overhead_estimate = !dry_run_ * 10;
-  if (1000000 / tps > overhead_estimate) {
-    interval_ = std::chrono::microseconds(1000000 / tps - overhead_estimate);
-  } else {
-    interval_ = 0us;
-  }
-}
+      rate_limiter_(rate_limiter),
+      dry_run_(dry_run) {}
 
 ConstantRateTxnGenerator::~ConstantRateTxnGenerator() {
   for (auto& txn : generated_txns_) {
@@ -263,8 +256,10 @@ void ConstantRateTxnGenerator::SetUp() {
   }
 
   // Schedule sending new txns
-  poller_.AddTimedCallback(interval_, [this]() { SendNextTxn(); });
+  poller_.AddTimedCallback(1us, [this]() { SendNextTxn(); });
   LOG(INFO) << "Start sending transactions";
+
+  StartTimer();
 }
 
 void ConstantRateTxnGenerator::SendNextTxn() {
@@ -275,6 +270,10 @@ void ConstantRateTxnGenerator::SendNextTxn() {
     }
   } else if (sent_txns() >= generated_txns_.size()) {
     return;
+  }
+
+  while (!rate_limiter_->RequestWithMutex()) {
+    std::this_thread::sleep_for(5us);
   }
 
   const auto& selected_txn = generated_txns_[sent_txns() % generated_txns_.size()];
@@ -294,7 +293,7 @@ void ConstantRateTxnGenerator::SendNextTxn() {
 
   IncSentTxns();
 
-  poller_.AddTimedCallback(interval_, [this]() { SendNextTxn(); });
+  poller_.AddTimedCallback(1us, [this]() { SendNextTxn(); });
 
   CHECK_EQ(txns_.size(), sent_txns());
 }
@@ -303,10 +302,6 @@ bool ConstantRateTxnGenerator::Loop() {
   if (poller_.NextEvent()) {
     if (api::Response res; RecvDeserializedProtoWithEmptyDelim(socket_, res)) {
       CHECK_LT(res.stream_id(), txns_.size());
-
-      if (!timer_running()) {
-        StartTimer();
-      }
 
       auto txn = res.mutable_txn()->release_txn();
       auto& info = txns_[res.stream_id()];

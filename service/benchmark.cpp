@@ -24,7 +24,7 @@ DEFINE_uint32(replica, 0, "The client associated to the current client");
 DEFINE_string(data_dir, "", "Directory containing intial data");
 DEFINE_string(out_dir, "", "Directory containing output data");
 DEFINE_int32(rate, 0, "Maximum number of transactions sent per second.");
-DEFINE_int32(clients, 0, "Number of concurrent client. This option does nothing if 'rate' is set");
+DEFINE_int32(clients, 0, "Number of concurrent client. If set to 0, the txn are sent at a constant rate");
 DEFINE_int32(duration, 0, "Maximum duration in seconds to run the benchmark");
 DEFINE_uint32(txns, 100, "Total number of txns to be generated");
 DEFINE_string(wl, "basic", "Name of the workload to use (options: basic, cockroach, remastering)");
@@ -36,7 +36,6 @@ DEFINE_int32(
     seed, -1,
     "Seed for any randomization in the benchmark. If set to negative, seed will be picked from std::random_device()");
 DEFINE_bool(txn_profiles, false, "Output transaction profiles");
-DEFINE_int32(startup_spacing, 1, "Spacing between startup of the clients in microseconds");
 
 using namespace slog;
 
@@ -61,6 +60,7 @@ vector<unique_ptr<ModuleRunner>> InitializeGenerators() {
   auto remaining_txns = FLAGS_txns;
   auto num_txns_per_generator = FLAGS_txns / FLAGS_generators;
   vector<std::unique_ptr<ModuleRunner>> generators;
+  auto rate_limiter = std::make_shared<RateLimiter>(FLAGS_rate);
   for (int i = 0; i < FLAGS_generators; i++) {
     // Select the workload
     unique_ptr<Workload> workload;
@@ -83,16 +83,16 @@ vector<unique_ptr<ModuleRunner>> InitializeGenerators() {
     } else {
       num_txns_per_generator = remaining_txns;
     }
-    if (FLAGS_rate > 0) {
-      auto tps_per_generator = FLAGS_rate / FLAGS_generators + (i < (FLAGS_rate % FLAGS_generators));
+    if (FLAGS_clients > 0) {
+      int num_clients = FLAGS_clients / FLAGS_generators + (i < (FLAGS_clients % FLAGS_generators));
+      generators.push_back(MakeRunnerFor<SynchronousTxnGenerator>(config, context, std::move(workload), FLAGS_region,
+                                                                  FLAGS_replica, num_txns_per_generator, num_clients,
+                                                                  FLAGS_duration, rate_limiter, FLAGS_dry_run));
+
+    } else {
       generators.push_back(MakeRunnerFor<ConstantRateTxnGenerator>(config, context, std::move(workload), FLAGS_region,
                                                                    FLAGS_replica, num_txns_per_generator,
-                                                                   tps_per_generator, FLAGS_duration, FLAGS_dry_run));
-    } else {
-      int num_clients = FLAGS_clients / FLAGS_generators + (i < (FLAGS_clients % FLAGS_generators));
-      generators.push_back(MakeRunnerFor<SynchronousTxnGenerator>(
-          config, context, std::move(workload), FLAGS_region, FLAGS_replica, num_txns_per_generator, num_clients,
-          FLAGS_duration, FLAGS_generators * FLAGS_startup_spacing, FLAGS_dry_run));
+                                                                   FLAGS_duration, rate_limiter, FLAGS_dry_run));
     }
   }
   return generators;
