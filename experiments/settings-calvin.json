@@ -109,19 +109,19 @@
       }
     ],
     "workload": "basic",
-    "txns": [2000000],
-    "duration": [60],
-    "clients": [3000],
-    "startup_spacing": [3333],
-    "writes": [10],
-    "records": [10],
-    "hot_records": [2],
-    "mp_parts": [2],
-    "mh_homes": [2],
-    "mh_zipf": [1],
+    "txns": 2000000,
+    "duration": 60,
+    "clients": 3000,
+    "startup_spacing": 3333,
+    "writes": 10,
+    "records": 10,
+    "hot_records": 2,
+    "mp_parts": 2,
+    "mh_homes": 2,
+    "mh_zipf": 1,
     "hot": [10000, 100],
     "mp": [0, 50, 100],
-    "mh": [0, 25, 50, 75, 100]
+    "mh": [0, 5, 15, 25, 50, 75, 100]
   },
   "ycsb-latency": {
     "servers": [
@@ -131,27 +131,22 @@
       }
     ],
     "workload": "basic",
-    "txns": [2000000],
-    "duration": [20],
-    "clients": [200],
-    "startup_spacing": [1000],
-    "writes": [10],
-    "records": [10],
-    "hot_records": [2],
-    "mp_parts": [2],
-    "mh_homes": [2],
-    "mh_zipf": [1],
+    "txns": 2000000,
+    "duration": 20,
+    "startup_spacing": 1000,
+    "writes": 10,
+    "records": 10,
+    "hot_records": 2,
+    "mp_parts": 2,
+    "mh_homes": 2,
+    "mh_zipf": 1,
     "hot": [10000, 100],
     "mp": [0, 50, 100],
-    "mh": [0, 25, 50, 75, 100],
-    "filters": [
-      {
-        "match": [{"mh": [0]}],
-        "action": "change",
-        "args": {
-          "clients": 20
-        }
-      }
+    "mh": [0, 5, 10, 15, 20, 25, 50, 75, 100],
+    "include": [
+      {"clients": 200},
+      {"mh": 0, "clients": 20},
+      {"mh": 5, "clients": 20}
     ]
   },
   "tpcc": {
@@ -162,11 +157,11 @@
       }
     ],
     "workload": "tpcc",
-    "txns": [0],
-    "duration": [30],
+    "txns": 0,
+    "duration": 30,
     "clients": [1, 25, 50, 75, 100, 125, 150, 175, 200, 225],
-    "startup_spacing": [1],
-    "sh_only": [0],
-    "mh_zipf": [1]
+    "startup_spacing": 1,
+    "sh_only": 0,
+    "mh_zipf": 1
   }
 }

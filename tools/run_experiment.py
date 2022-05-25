@@ -6,12 +6,15 @@ import itertools
 import json
 import os
 import logging
+import shlex
 import random
 from tempfile import gettempdir
 from time import sleep
 from multiprocessing import Process
+from pprint import pprint
 
 import google.protobuf.text_format as text_format
+from numpy import isin
 
 import admin
 from proto.configuration_pb2 import Configuration, Region
@@ -77,70 +80,6 @@ def cleanup(username: str, config_path: str, image: str):
     # fmt: on
 
 
-def apply_filters(workload_settings: dict, val: dict):
-    if "filters" not in workload_settings:
-        return val
-
-    for filter in workload_settings["filters"]:
-        v, changed = apply_filter(filter, val)
-        if changed:
-            return v
-
-    return val
-
-
-def apply_filter(filter, val):
-    matched = False
-    for cond in filter["match"]:
-        if eval_cond_and(cond, val):
-            matched = True
-            break
-    if matched:
-        action = filter["action"]
-        if action == "change":
-            v = action_change(filter["args"], val)
-            return v, True
-        elif action == "remove":
-            return None, True
-        else:
-            raise Exception(f"Invalid action: {action}")
-
-    return val, False
-
-
-def eval_cond_and(cond, val):
-    for op in cond:
-        if not eval_op(op, cond[op], val):
-            return False
-    return True
-
-
-def eval_cond_or(cond, val):
-    print(cond, val)
-    for op in cond:
-        print(op)
-        if eval_op(op, cond[op], val):
-            return True
-    return False
-
-
-def eval_op(op, op_val, val):
-    if op == "or":
-        return eval_cond_or(op_val, val)
-    if op == "and":
-        return eval_cond_and(op_val, val)
-    not_in = op.endswith("~")
-    key = op[:-1] if not_in else op
-    return (not_in and val[key] not in op_val) or (not not_in and val[key] in op_val)
-
-
-def action_change(args, val):
-    new_val = dict.copy(val)
-    for k, v in args.items():
-        new_val[k] = v
-    return new_val
-
-
 def collect_client_data(username: str, config_path: str, out_dir: str, tag: str):
     admin.main(
         ["collect_client", config_path, tag, "--user", username, "--out-dir", out_dir]
@@ -195,6 +134,68 @@ def collect_data(
         p.join()
 
 
+def combine_parameters(params, workload_setting):
+    common_values = {}
+    ordered_value_lists = []
+    for p in params:
+        if p in workload_setting:
+            value_list = workload_setting[p]
+            if isinstance(value_list, list):
+                ordered_value_lists.append([(p, v) for v in value_list])
+            else:
+                common_values[p] = value_list
+  
+    combinations = [
+        dict(v) for v in
+        itertools.product(*ordered_value_lists)
+    ]
+
+    # Apply combinations exclusion
+    if "exclude" in workload_setting:
+        patterns = workload_setting["exclude"]
+        combinations = [
+            c for c in combinations if
+            not any([c.items() >= p.items() for p in patterns])
+        ]
+
+    # Apply combinations inclusion
+    if "include" in workload_setting:
+        patterns = workload_setting["include"]
+        # Resize extra to be the same size as combinations
+        extra = [{} for _ in range(len(combinations))]
+        # List of extra combinations
+        new = []
+        for p in patterns:
+            is_new = True
+            for c, e in zip(combinations, extra):
+                overlap_keys = p.keys() & c.keys()
+                if all([c[k] == p[k] for k in overlap_keys]):
+                    is_new = False
+                    e.update(
+                        {k:p[k] for k in p if k not in overlap_keys}
+                    )
+            if is_new:
+                new.append(p)
+
+        for c, e in zip(combinations, extra):
+            c.update(e)
+        combinations += new
+
+    # Populate common values and check for missing/unknown params
+    params_set = set(params)
+    for c in combinations:
+        c.update(common_values)
+        missing = params_set - c.keys()
+        if missing:
+            raise KeyError(f"Missing required param(s) {missing} in {c}")
+
+        unknown = c.keys() - params_set
+        if unknown:
+            raise KeyError(f"Unknown param(s) {unknown} in {c}")
+    
+    return combinations
+    
+
 class Experiment:
     """
     A base class for an experiment.
@@ -211,41 +212,29 @@ class Experiment:
         "servers_public": { string: [string] },   // Public IP addresses of all servers in each region
         "servers_private": { string: [string] },  // Private IP addresses of all servers in each region
         "clients": { string: [string] },          // Private IP addresses of all clients in each region
-
         // The objects from this point correspond to the experiments. Each object contains parameters
         // to run for an experiment. The experiment is run for all cross-combinations of all these parameters.
         <experiment name>: {
             "servers": [ { "config": string, "image": string } ], // A list of objects containing path to a config file and the Docker image used
             "workload": string,                                   // Name of the workload to use in this experiment
-            <parameters>: [<parameter value>]                     // Parameters of the experiment
-            "filters": [{                                         // A list of "if 'match' then do 'action'" over the parameter combinations.
-                                                                  // The evaluation stops at the first match
-                "match": [{<parameter>}],                         // A list of conditions that AND together. Each condition is an object listing
-                                                                  // the values that need to match for some parameter. If a parameter name ends
-                                                                  // with "~" then it is a NOT condition. An "or" object can be used for OR-ing the
-                                                                  // conditions.
-                "action": <"change" or "remove">                  // Action to perform on match
-                "args": {}                                        // Arguments for the "change" action
-            }],
+
+            // Parameters of the experiment. All possible combinations of the parameters 
+            // will be generated and possibly modified by "exclude" and "include". This is
+            // similar to Github's matrix:
+            //      https://docs.github.com/en/actions/using-jobs/using-a-matrix-for-your-jobs#excluding-matrix-configurations
+            <parameter1>: [<parameter1 values>]
+            <parameter2>: [<parameter2 values>]
+            ...
+            "exclude": [
+                { <parameterX>: <parameterX value>, ... },
+                ...
+            ]
+            "include": [
+                { <parameterY>: <parameterY value>, ... },
+                ...
+            ]
         }
     }
-
-    Example filters:
-        "filters": [
-            {
-                // Remove every combination where hot is not 10000 or mh is not 50
-                "match": [{"or": {"hot~": [10000], "mh~": [50]}}],
-                "action": "remove"
-            },
-            {
-                // Changes duration to 20 for all combinations with clients equals to 200
-                "match": [{"clients": [200]}],
-                "action": "change",
-                "args": {
-                    "duration": 20
-                }
-            }
-        ]
     """
 
     NAME = ""
@@ -312,39 +301,31 @@ class Experiment:
                     ["collect_server", *common_args, "--flush-only", "--no-pull"]
                 )
 
-            # Compute the Cartesian product of all varying values
-            varying_keys = cls.OTHER_PARAMS + cls.WORKLOAD_PARAMS
-            ordered_value_lists = []
-            for k in varying_keys:
-                if k not in workload_setting:
-                    raise KeyError(f"Missing required key in workload setting: {k}")
-                ordered_value_lists.append(workload_setting[k])
+            params = cls.OTHER_PARAMS + cls.WORKLOAD_PARAMS
 
-            varying_values = itertools.product(*ordered_value_lists)
-            values = [dict(zip(varying_keys, v)) for v in varying_values]
+            values = combine_parameters(params, workload_setting)
 
             if args.tag_keys:
                 tag_keys = args.tag_keys
             else:
-                tag_keys = [k for k in varying_keys if len(workload_setting[k]) > 1]
+                # Only use keys that have varying values
+                tag_keys = [
+                    k for k in params if
+                    any([v[k] != values[0][k] for v in values])
+                ]
 
             for val in values:
-                v = apply_filters(settings[cls.NAME], val)
-                if v is None:
-                    print(f"SKIP {val}")
-                    continue
-
                 cls.pre_run_per_val_hook(val, args.dry_run)
 
                 for t in range(trials):
                     tag = config_name
-                    tag_suffix = "".join([f"{k}{v[k]}" for k in tag_keys])
+                    tag_suffix = "".join([f"{k}{val[k]}" for k in tag_keys])
                     if tag_suffix:
                         tag += "-" + tag_suffix
                     if trials > 1:
                         tag += f"-{t}"
 
-                    params = ",".join(f"{k}={v[k]}" for k in cls.WORKLOAD_PARAMS)
+                    params = ",".join(f"{k}={val[k]}" for k in cls.WORKLOAD_PARAMS)
 
                     LOG.info("RUN BENCHMARK")
                     # fmt: off
@@ -352,11 +333,11 @@ class Experiment:
                         "benchmark",
                         *common_args,
                         "--workload", workload_setting["workload"],
-                        "--clients", f"{v['clients']}",
+                        "--clients", f"{val['clients']}",
                         "--generators", f"{GENERATORS}",
-                        "--txns", f"{v['txns']}",
-                        "--duration", f"{v['duration']}",
-                        "--startup-spacing", f"{v['startup_spacing']}",
+                        "--txns", f"{val['txns']}",
+                        "--duration", f"{val['duration']}",
+                        "--startup-spacing", f"{val['startup_spacing']}",
                         "--sample", f"{sample}",
                         "--seed", f"{args.seed}",
                         "--params", params,
@@ -377,6 +358,9 @@ class Experiment:
                         args.no_client_data,
                         args.no_server_data,
                     )
+
+            if args.dry_run:
+                pprint([{ k:v for k, v in p.items() if k in tag_keys} for p in values])
 
 
 class YCSBExperiment(Experiment):
@@ -476,6 +460,9 @@ class YCSBAsymmetryExperiment(YCSBNetworkExperiment):
         workload_setting = settings[cls.NAME]
         if "asym_ratio" not in workload_setting:
             raise KeyError(f"Missing required key: asym_ratio")
+
+        if dry_run:
+            return
 
         ratios = workload_setting["asym_ratio"]
         for r in ratios:
@@ -629,7 +616,7 @@ if __name__ == "__main__":
     if args.dry_run:
 
         def noop(cmd):
-            print("\t" + " ".join(cmd))
+            print(f"\t{shlex.join(cmd)}\n")
 
         admin.main = noop
 
