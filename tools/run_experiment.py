@@ -134,7 +134,7 @@ def collect_data(
         p.join()
 
 
-def combine_parameters(params, workload_setting):
+def combine_parameters(params, default_params, workload_setting):
     common_values = {}
     ordered_value_lists = []
     for p in params:
@@ -185,6 +185,10 @@ def combine_parameters(params, workload_setting):
     params_set = set(params)
     for c in combinations:
         c.update(common_values)
+        for k, v in default_params.items():
+            if k not in c:
+                c[k] = v
+
         missing = params_set - c.keys()
         if missing:
             raise KeyError(f"Missing required param(s) {missing} in {c}")
@@ -241,7 +245,11 @@ class Experiment:
     # Parameters of the workload
     WORKLOAD_PARAMS = []
     # Parameters of the benchmark tool and the environment other than the 'params' argument of the workload
-    OTHER_PARAMS = ["clients", "txns", "duration"]
+    OTHER_PARAMS = ["clients", "txns", "duration", "rate_limit"]
+    DEFAULT_PARAMS = {
+        "rate_limit": 0,
+        "txns": 2000000,
+    }
 
     @classmethod
     def pre_run_hook(cls, _settings: dict, _dry_run: bool):
@@ -303,7 +311,7 @@ class Experiment:
 
             params = cls.OTHER_PARAMS + cls.WORKLOAD_PARAMS
 
-            values = combine_parameters(params, workload_setting)
+            values = combine_parameters(params, cls.DEFAULT_PARAMS, workload_setting)
 
             if args.tag_keys:
                 tag_keys = args.tag_keys
@@ -334,6 +342,7 @@ class Experiment:
                         *common_args,
                         "--workload", workload_setting["workload"],
                         "--clients", f"{val['clients']}",
+                        "--rate", f"{val['rate_limit']}",
                         "--generators", f"{GENERATORS}",
                         "--txns", f"{val['txns']}",
                         "--duration", f"{val['duration']}",
@@ -375,6 +384,14 @@ class YCSBExperiment(Experiment):
         "mp",
         "mh",
     ]
+    DEFAULT_PARAMS = Experiment.DEFAULT_PARAMS | {
+        "writes": 10,
+        "records": 10,
+        "hot_records": 2,
+        "mp_parts": 2,
+        "mh_homes": 2,
+        "mh_zipf": 1,
+    }
 
 
 class YCSBLatencyExperiment(Experiment):
@@ -390,6 +407,14 @@ class YCSBLatencyExperiment(Experiment):
         "mp",
         "mh",
     ]
+    DEFAULT_PARAMS = Experiment.DEFAULT_PARAMS | {
+        "writes": 10,
+        "records": 10,
+        "hot_records": 2,
+        "mp_parts": 2,
+        "mh_homes": 2,
+        "mh_zipf": 1,
+    }
 
 
 class YCSBNetworkExperiment(Experiment):
@@ -449,6 +474,14 @@ class YCSBAsymmetryExperiment(YCSBNetworkExperiment):
         "mh",
     ]
     OTHER_PARAMS = Experiment.OTHER_PARAMS + ["asym_ratio"]
+    DEFAULT_PARAMS = Experiment.DEFAULT_PARAMS | {
+        "writes": 10,
+        "records": 10,
+        "hot_records": 2,
+        "mp_parts": 2,
+        "mh_homes": 2,
+        "mh_zipf": 1,
+    }
 
     FILE_NAME = "netem_asym_{}"
 
@@ -513,6 +546,14 @@ class YCSBJitterExperiment(YCSBNetworkExperiment):
         "mh",
     ]
     OTHER_PARAMS = Experiment.OTHER_PARAMS + ["jitter"]
+    DEFAULT_PARAMS = Experiment.DEFAULT_PARAMS | {
+        "writes": 10,
+        "records": 10,
+        "hot_records": 2,
+        "mp_parts": 2,
+        "mh_homes": 2,
+        "mh_zipf": 1,
+    }
 
     FILE_NAME = "netem_jitter"
 

@@ -736,10 +736,16 @@ class BenchmarkCommand(AdminCommand):
         parser.add_argument("--params", default="", help="Parameters of the workload")
         group = parser.add_mutually_exclusive_group(required=True)
         group.add_argument(
-            "--rate", type=int, help="Maximum number of transactions sent per second"
+            "--rate",
+            type=int,
+            default=0,
+            help="Maximum number of transactions sent per second"
         )
         group.add_argument(
-            "--clients", type=int, help="Number of clients sending synchronized txns"
+            "--clients",
+            type=int,
+            default=0,
+            help="Number of clients sending synchronized txns"
         )
         parser.add_argument(
             "--generators",
@@ -878,11 +884,8 @@ class BenchmarkCommand(AdminCommand):
                 f"--sample {args.sample} "
                 f"--seed {args.seed} "
                 f"--txn_profiles={args.txn_profiles} "
-            )
-            shell_cmd += (
                 f"--rate {args.rate} "
-                if args.rate is not None
-                else f"--clients {args.clients}"
+                f"--clients {args.clients} "
             )
             delay = max(delays) - delays[i]
             LOG.info(

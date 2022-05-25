@@ -349,9 +349,6 @@ int main(int argc, char* argv[]) {
   }
 
   CHECK(FLAGS_clients > 0 || FLAGS_rate > 0) << "Either 'clients' or 'rate' must be set";
-  if (FLAGS_clients > 0 && FLAGS_rate > 0) {
-    LOG(WARNING) << "The 'rate' flag is set, the 'client' flag will be ignored";
-  }
 
   LOG(INFO) << "Arguments:\n"
             << "Workload: " << FLAGS_wl << "\nParams: " << FLAGS_params << "\nNum txns: " << FLAGS_txns
