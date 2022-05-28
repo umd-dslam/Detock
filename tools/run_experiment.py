@@ -24,7 +24,7 @@ LOG = logging.getLogger("experiment")
 GENERATORS = 2
 
 
-def generate_config(settings: dict, template_path: str):
+def generate_config(settings: dict, workload_settingss: dict, template_path: str):
     config = Configuration()
     with open(template_path, "r") as f:
         text_format.Parse(f.read(), config)
@@ -54,6 +54,9 @@ def generate_config(settings: dict, template_path: str):
             region.num_replicas = 1
 
         region.sync_replication = settings.get("local_sync_replication", False)
+        
+        if "num_log_managers" in workload_settingss:
+            config.num_log_managers = workload_settingss["num_log_managers"]
 
         config.regions.append(region)
 
@@ -134,12 +137,12 @@ def collect_data(
         p.join()
 
 
-def combine_parameters(params, default_params, workload_setting):
+def combine_parameters(params, default_params, workload_settings):
     common_values = {}
     ordered_value_lists = []
     for p in params:
-        if p in workload_setting:
-            value_list = workload_setting[p]
+        if p in workload_settings:
+            value_list = workload_settings[p]
             if isinstance(value_list, list):
                 ordered_value_lists.append([(p, v) for v in value_list])
             else:
@@ -151,16 +154,16 @@ def combine_parameters(params, default_params, workload_setting):
     ]
 
     # Apply combinations exclusion
-    if "exclude" in workload_setting:
-        patterns = workload_setting["exclude"]
+    if "exclude" in workload_settings:
+        patterns = workload_settings["exclude"]
         combinations = [
             c for c in combinations if
             not any([c.items() >= p.items() for p in patterns])
         ]
 
     # Apply combinations inclusion
-    if "include" in workload_setting:
-        patterns = workload_setting["include"]
+    if "include" in workload_settings:
+        patterns = workload_settings["include"]
         # Resize extra to be the same size as combinations
         extra = [{} for _ in range(len(combinations))]
         # List of extra combinations
@@ -271,16 +274,16 @@ class Experiment:
 
         sample = settings.get("sample", 10)
         trials = settings.get("trials", 1)
-        workload_setting = settings[cls.NAME]
+        workload_settings = settings[cls.NAME]
         out_dir = os.path.join(
             args.out_dir, cls.NAME if args.name is None else args.name
         )
 
         cls.pre_run_hook(settings, args.dry_run)
 
-        for server in workload_setting["servers"]:
+        for server in workload_settings["servers"]:
             config_path = generate_config(
-                settings, os.path.join(settings_dir, server["config"])
+                settings, workload_settings, os.path.join(settings_dir, server["config"])
             )
 
             LOG.info('============ GENERATED CONFIG "%s" ============', config_path)
@@ -311,7 +314,7 @@ class Experiment:
 
             params = cls.OTHER_PARAMS + cls.WORKLOAD_PARAMS
 
-            values = combine_parameters(params, cls.DEFAULT_PARAMS, workload_setting)
+            values = combine_parameters(params, cls.DEFAULT_PARAMS, workload_settings)
 
             if args.tag_keys:
                 tag_keys = args.tag_keys
@@ -340,7 +343,7 @@ class Experiment:
                     benchmark_args = [
                         "benchmark",
                         *common_args,
-                        "--workload", workload_setting["workload"],
+                        "--workload", workload_settings["workload"],
                         "--clients", f"{val['clients']}",
                         "--rate", f"{val['rate_limit']}",
                         "--generators", f"{GENERATORS}",
@@ -392,6 +395,10 @@ class YCSBExperiment(Experiment):
         "mh_homes": 2,
         "mh_zipf": 1,
     }}
+
+
+class YCSB2Experiment(YCSBExperiment):
+    NAME = "ycsb2"
 
 
 class YCSBLatencyExperiment(Experiment):
@@ -489,14 +496,14 @@ class YCSBAsymmetryExperiment(YCSBNetworkExperiment):
     def post_config_gen_hook(cls, settings: dict, config_path: str, dry_run: bool):
         delay = copy.deepcopy(cls.DELAY)
 
-        workload_setting = settings[cls.NAME]
-        if "asym_ratio" not in workload_setting:
+        workload_settings = settings[cls.NAME]
+        if "asym_ratio" not in workload_settings:
             raise KeyError(f"Missing required key: asym_ratio")
 
         if dry_run:
             return
 
-        ratios = workload_setting["asym_ratio"]
+        ratios = workload_settings["asym_ratio"]
         for r in ratios:
             for i in range(len(delay)):
                 for j in range(i + 1, len(delay[i])):
@@ -559,8 +566,8 @@ class YCSBJitterExperiment(YCSBNetworkExperiment):
 
     @classmethod
     def post_config_gen_hook(cls, settings: dict, config_path: str, dry_run: bool):
-        workload_setting = settings[cls.NAME]
-        if "jitter" not in workload_setting:
+        workload_settings = settings[cls.NAME]
+        if "jitter" not in workload_settings:
             raise KeyError(f"Missing required key: jitter")
 
         delay_path = os.path.join(gettempdir(), cls.FILE_NAME + ".csv")
@@ -568,7 +575,7 @@ class YCSBJitterExperiment(YCSBNetworkExperiment):
             writer = csv.writer(f)
             writer.writerows(cls.DELAY)
 
-        jitters = workload_setting["jitter"]
+        jitters = workload_settings["jitter"]
         for j in jitters:
             # fmt: off
             admin.main(
@@ -610,6 +617,7 @@ if __name__ == "__main__":
 
     EXPERIMENTS = {
         "ycsb": YCSBExperiment(),
+        "ycsb2": YCSB2Experiment(),
         "ycsb-latency": YCSBLatencyExperiment(),
         "ycsb-asym": YCSBAsymmetryExperiment(),
         "ycsb-jitter": YCSBJitterExperiment(),
