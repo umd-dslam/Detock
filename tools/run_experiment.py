@@ -73,7 +73,7 @@ def cleanup(username: str, config_path: str, image: str):
             "--user", username,
             "--image", image,
             "--cleanup",
-            "--clients", "0",
+            "--clients", "1",
             "--txns", "0",
         ]
     )
@@ -384,14 +384,14 @@ class YCSBExperiment(Experiment):
         "mp",
         "mh",
     ]
-    DEFAULT_PARAMS = Experiment.DEFAULT_PARAMS | {
+    DEFAULT_PARAMS = {**Experiment.DEFAULT_PARAMS, **{
         "writes": 10,
         "records": 10,
         "hot_records": 2,
         "mp_parts": 2,
         "mh_homes": 2,
         "mh_zipf": 1,
-    }
+    }}
 
 
 class YCSBLatencyExperiment(Experiment):
@@ -407,14 +407,14 @@ class YCSBLatencyExperiment(Experiment):
         "mp",
         "mh",
     ]
-    DEFAULT_PARAMS = Experiment.DEFAULT_PARAMS | {
+    DEFAULT_PARAMS = {**Experiment.DEFAULT_PARAMS, **{
         "writes": 10,
         "records": 10,
         "hot_records": 2,
         "mp_parts": 2,
         "mh_homes": 2,
         "mh_zipf": 1,
-    }
+    }}
 
 
 class YCSBNetworkExperiment(Experiment):
@@ -474,14 +474,14 @@ class YCSBAsymmetryExperiment(YCSBNetworkExperiment):
         "mh",
     ]
     OTHER_PARAMS = Experiment.OTHER_PARAMS + ["asym_ratio"]
-    DEFAULT_PARAMS = Experiment.DEFAULT_PARAMS | {
+    DEFAULT_PARAMS = {**Experiment.DEFAULT_PARAMS, **{
         "writes": 10,
         "records": 10,
         "hot_records": 2,
         "mp_parts": 2,
         "mh_homes": 2,
         "mh_zipf": 1,
-    }
+    }}
 
     FILE_NAME = "netem_asym_{}"
 
@@ -546,14 +546,14 @@ class YCSBJitterExperiment(YCSBNetworkExperiment):
         "mh",
     ]
     OTHER_PARAMS = Experiment.OTHER_PARAMS + ["jitter"]
-    DEFAULT_PARAMS = Experiment.DEFAULT_PARAMS | {
+    DEFAULT_PARAMS = {**Experiment.DEFAULT_PARAMS, **{
         "writes": 10,
         "records": 10,
         "hot_records": 2,
         "mp_parts": 2,
         "mh_homes": 2,
         "mh_zipf": 1,
-    }
+    }}
 
     FILE_NAME = "netem_jitter"
 

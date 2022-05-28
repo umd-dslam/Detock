@@ -734,14 +734,13 @@ class BenchmarkCommand(AdminCommand):
             help="Name of the workload to run benchmark with",
         )
         parser.add_argument("--params", default="", help="Parameters of the workload")
-        group = parser.add_mutually_exclusive_group(required=True)
-        group.add_argument(
+        parser.add_argument(
             "--rate",
             type=int,
             default=0,
             help="Maximum number of transactions sent per second"
         )
-        group.add_argument(
+        parser.add_argument(
             "--clients",
             type=int,
             default=0,
