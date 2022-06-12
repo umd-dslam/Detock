@@ -33,6 +33,8 @@ class MultiHomeOrderer : public NetworkedModule {
   void OnInternalRequestReceived(EnvelopePtr&& env) final;
 
  private:
+  using PartitionedBatch = std::vector<std::unique_ptr<internal::Batch>>;
+
   void ProcessForwardBatchData(EnvelopePtr&& env);
   void ProcessForwardBatchOrder(EnvelopePtr&& env);
   void ProcessStatsRequest(const internal::StatsRequest& stats_request);
@@ -43,7 +45,8 @@ class MultiHomeOrderer : public NetworkedModule {
   void AddToBatch(Transaction* txn);
   void SendBatch();
 
-  std::vector<std::unique_ptr<internal::Batch>> batch_per_reg_;
+  std::vector<MachineId> other_partitions_;
+  std::vector<PartitionedBatch> batch_per_reg_;
   BatchId batch_id_counter_;
   int batch_size_;
 

@@ -347,6 +347,17 @@ bool operator==(const Transaction& txn1, const Transaction txn2) {
   return true;
 }
 
+EnvelopePtr NewBatchForwardingMessage(std::vector<internal::Batch*>&& batch, int generator, int generator_position) {
+  auto env = std::make_unique<internal::Envelope>();
+  auto forward_batch = env->mutable_request()->mutable_forward_batch_data();
+  forward_batch->set_generator(generator);
+  forward_batch->set_generator_position(generator_position);
+  for (auto b : batch) {
+    forward_batch->mutable_batch_data()->AddAllocated(b);
+  }
+  return env;
+}
+
 vector<Transaction*> Unbatch(internal::Batch* batch) {
   auto transactions = batch->mutable_transactions();
 

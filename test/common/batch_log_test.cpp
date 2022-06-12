@@ -18,7 +18,7 @@ class BatchLogTest : public ::testing::Test {
     }
   }
 
-  bool BatchEQ(pair<uint32_t, uint32_t> expected_id, pair<SlotId, BatchPtr> batch) {
+  bool BatchEQ(pair<uint64_t, uint32_t> expected_id, pair<SlotId, BatchPtr> batch) {
     return batch.second != nullptr && expected_id.second == batch.second->id() && expected_id.first == batch.first;
   }
 

@@ -7,6 +7,7 @@
 #include "common/configuration.h"
 #include "common/sharder.h"
 #include "common/types.h"
+#include "connection/zmq_utils.h"
 
 #define ENUM_NAME(enum, enum_type) enum_type##_descriptor()->FindValueByNumber(enum)->name()
 #define CASE_NAME(case, type) type::descriptor()->FindFieldByNumber(case)->name()
@@ -89,6 +90,9 @@ bool operator==(const MasterMetadata& metadata1, const MasterMetadata& metadata2
 bool operator==(const ValueEntry& val1, const ValueEntry& val2);
 bool operator==(const KeyValueEntry& kv1, const KeyValueEntry& kv2);
 bool operator==(const Transaction& txn1, const Transaction txn2);
+
+EnvelopePtr NewBatchForwardingMessage(std::vector<internal::Batch*>&& batch, int generator = 0,
+                                      int generator_position = 0);
 
 /**
  * Extract txns from a batch

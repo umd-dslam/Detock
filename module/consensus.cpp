@@ -19,7 +19,7 @@ Members GetMembers(const ConfigurationPtr& config) {
   vector<MachineId> acceptors;
   vector<MachineId> learners;
 
-  // All machines in the leader's replica are always the learners
+  // All machines in the leader replica are always the learners
   for (int part = 0; part < num_partitions; part++) {
     learners.push_back(MakeMachineId(local_reg, kLeaderReplica, part));
   }
@@ -59,7 +59,13 @@ GlobalPaxos::GlobalPaxos(const shared_ptr<Broker>& broker, std::chrono::millisec
   auto& config = broker->config();
   auto part = config->leader_partition_for_multi_home_ordering();
   for (int reg = 0; reg < config->num_regions(); reg++) {
-    multihome_orderers_.push_back(MakeMachineId(reg, 0, part));
+    if (reg == config->local_region()) {
+      for (int p = 0; p < config->num_partitions(); p++) {
+        multihome_orderers_.push_back(MakeMachineId(reg, 0, p));
+      }
+    } else {
+      multihome_orderers_.push_back(MakeMachineId(reg, 0, part));
+    }
   }
 }
 

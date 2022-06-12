@@ -79,6 +79,7 @@ LogManager::LogManager(int id, const std::vector<RegionId>& regions, const share
 
   for (int r = 0; r < config()->num_replicas(local_region); r++) {
     if (static_cast<ReplicaId>(r) != local_replica) {
+      // It is important that local_partition is used here
       other_replicas_.push_back(MakeMachineId(local_region, r, local_partition));
     }
   }
@@ -150,11 +151,9 @@ void LogManager::ProcessForwardBatchData(EnvelopePtr&& env) {
   }
 
   BatchPtr my_batch;
-  if (first_time_replica) {
-    // If this is the first time the batch reaches our replica, distribute the batch partitions
-    // to the local partitions
-
-    CHECK_EQ(forward_batch_data->batch_data_size(), config()->num_partitions());
+  // If this is the first time the batch reaches our replica, distribute the batch partitions
+  // to the local partitions
+  if (first_time_replica && forward_batch_data->batch_data_size() == config()->num_partitions()) {
     PartitionId p = config()->num_partitions() - 1;
     while (!forward_batch_data->mutable_batch_data()->empty()) {
       auto batch_partition = forward_batch_data->mutable_batch_data()->ReleaseLast();
@@ -171,7 +170,9 @@ void LogManager::ProcessForwardBatchData(EnvelopePtr&& env) {
       p--;
     }
   } else {
-    // If the batch comes from the same region and replica, no need to distribute further
+    // If the batch comes from the same region and replica, or there is a single partition in the
+    // batch no need to distribute further
+    CHECK_EQ(forward_batch_data->batch_data_size(), 1);
     my_batch = BatchPtr(forward_batch_data->mutable_batch_data()->ReleaseLast());
   }
 

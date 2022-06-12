@@ -257,8 +257,6 @@ int main(int argc, char* argv[]) {
   // clang-format off
   modules.emplace_back(MakeRunnerFor<slog::Server>(broker, metrics_manager),
                        slog::ModuleId::SERVER);
-  modules.emplace_back(MakeRunnerFor<slog::MultiHomeOrderer>(broker, metrics_manager),
-                       slog::ModuleId::MHORDERER);
   modules.emplace_back(MakeRunnerFor<slog::LocalPaxos>(broker),
                        slog::ModuleId::LOCALPAXOS);
   modules.emplace_back(MakeRunnerFor<slog::Forwarder>(broker->context(), broker->config(), storage,
@@ -282,9 +280,14 @@ int main(int argc, char* argv[]) {
                          slog::ModuleId::LOG_MANAGER);
   }
 
-  // One region is selected to globally order the multihome batches
-  if (config->num_regions() > 1 && config->leader_region_for_multi_home_ordering() == config->local_region()) {
-    modules.emplace_back(MakeRunnerFor<slog::GlobalPaxos>(broker), slog::ModuleId::GLOBALPAXOS);
+  if (config->num_regions() > 1) {
+    if (config->local_replica() == 0) {
+      modules.emplace_back(MakeRunnerFor<slog::MultiHomeOrderer>(broker, metrics_manager), slog::ModuleId::MHORDERER);
+      // One region is selected to globally order the multihome batches
+      if (config->local_region() == config->leader_region_for_multi_home_ordering()) {
+        modules.emplace_back(MakeRunnerFor<slog::GlobalPaxos>(broker), slog::ModuleId::GLOBALPAXOS);
+      }
+    }
   }
 
   // Block SIGINT from here so that the new threads inherit the block mask

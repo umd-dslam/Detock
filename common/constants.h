@@ -50,6 +50,8 @@ const int kRecvRetries = 4000;
 // We never use 0 for txn id
 const TxnId kSentinelTxnId = 0;
 
+const uint16_t kLockOnlyTxnGenerator = 10000;
+
 /****************************
  *      Statistic Keys
  ****************************/

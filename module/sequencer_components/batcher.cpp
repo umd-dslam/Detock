@@ -178,7 +178,7 @@ void Batcher::SendBatches() {
 
       RECORD(batch_partition, TransactionEvent::EXIT_SEQUENCER_IN_BATCH);
 
-      auto env = NewBatchForwardingMessage({batch_partition}, generator_position);
+      auto env = NewBatchForwardingMessage({batch_partition}, local_machine_id, generator_position);
       Send(*env, MakeMachineId(local_region, local_replica, p), LogManager::MakeLogChannel(local_region));
       // Collect back the batch partition to send to other regions
       batch_partitions.push_back(
@@ -187,7 +187,7 @@ void Batcher::SendBatches() {
 
     // Distribute the batch data to other regions and other replicas in the local region.
     // All partitions of current batch are contained in a single message
-    auto env = NewBatchForwardingMessage(move(batch_partitions), generator_position);
+    auto env = NewBatchForwardingMessage(move(batch_partitions), local_machine_id, generator_position);
     std::vector<MachineId> destinations;
     destinations.reserve(num_regions);
     for (int reg = 0; reg < num_regions; reg++) {
@@ -237,17 +237,6 @@ void Batcher::SendBatches() {
 
     generator_position++;
   }
-}
-
-EnvelopePtr Batcher::NewBatchForwardingMessage(std::vector<internal::Batch*>&& batch, int generator_position) {
-  auto env = NewEnvelope();
-  auto forward_batch = env->mutable_request()->mutable_forward_batch_data();
-  forward_batch->set_generator(config()->local_machine_id());
-  forward_batch->set_generator_position(generator_position);
-  for (auto b : batch) {
-    forward_batch->mutable_batch_data()->AddAllocated(b);
-  }
-  return env;
 }
 
 /**

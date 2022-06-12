@@ -11,7 +11,7 @@ using KeyRegion = std::string;
 using Value = std::string;
 using TxnId = uint64_t;
 using BatchId = uint64_t;
-using SlotId = uint32_t;
+using SlotId = uint64_t;
 using Channel = uint64_t;
 using MachineId = uint32_t;
 using RegionId = uint8_t;
@@ -22,6 +22,7 @@ const int kRegionIdBits = sizeof(RegionId) * 8;
 const int kReplicaIdBits = sizeof(ReplicaId) * 8;
 const int kPartitionIdBits = sizeof(PartitionId) * 8;
 const int kMachineIdBits = kRegionIdBits + kReplicaIdBits + kPartitionIdBits;
+const int kBatchIdCounterBits = 31;
 
 inline MachineId MakeMachineId(RegionId region, ReplicaId replica, PartitionId partition) {
   return (static_cast<MachineId>(region) << (kReplicaIdBits + kPartitionIdBits)) |

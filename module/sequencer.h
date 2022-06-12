@@ -39,10 +39,12 @@ class Sequencer : public NetworkedModule {
 
  private:
   void ProcessForwardRequest(EnvelopePtr&& env);
+  void ProcessForwardBatchData(EnvelopePtr&& env);
   void ProcessPingRequest(EnvelopePtr&& env);
 
   std::shared_ptr<Batcher> batcher_;
   ModuleRunner batcher_runner_;
+  const SharderPtr sharder_;
 };
 
 }  // namespace slog

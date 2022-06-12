@@ -102,7 +102,7 @@ TxnHolder MakeTestTxnHolder(const ConfigurationPtr& config, TxnId id, const std:
   auto sharder = Sharder::MakeSharder(config);
   vector<Transaction*> lo_txns;
   for (int i = 0; i < txn->internal().involved_regions_size(); ++i) {
-    auto lo = GenerateLockOnlyTxn(txn, txn->internal().involved_regions(i));
+    auto lo = GenerateLockOnlyTxn(txn, txn->internal().involved_regions(i), false /* in_place */);
     auto partitioned_lo = GeneratePartitionedTxn(sharder, lo, sharder->local_partition(), true);
     if (partitioned_lo != nullptr) {
       lo_txns.push_back(partitioned_lo);
