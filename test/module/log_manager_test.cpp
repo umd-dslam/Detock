@@ -18,13 +18,13 @@ TEST(LocalLogTest, InOrder) {
   ASSERT_FALSE(log.HasNextBatch());
 
   log.AddSlot(0 /* slot_id */, 111 /* queue_id */, 0 /* leader */);
-  ASSERT_EQ(make_pair(0U, make_pair(100UL, 0U)), log.NextBatch());
+  ASSERT_EQ(make_pair(0UL, make_pair(100UL, 0U)), log.NextBatch());
 
   log.AddBatchId(222 /* queue_id */, 0 /* position */, 200 /* batch_id */);
   ASSERT_FALSE(log.HasNextBatch());
 
   log.AddSlot(1 /* slot_id */, 222 /* queue_id */, 1 /* leader */);
-  ASSERT_EQ(make_pair(1U, make_pair(200UL, 1U)), log.NextBatch());
+  ASSERT_EQ(make_pair(1UL, make_pair(200UL, 1U)), log.NextBatch());
 
   ASSERT_FALSE(log.HasNextBatch());
 }
@@ -38,16 +38,16 @@ TEST(LocalLogTest, BatchesComeFirst) {
   log.AddBatchId(333 /* queue_id */, 1 /* position */, 400 /* batch_id */);
 
   log.AddSlot(0 /* slot_id */, 111 /* queue_id */, 0 /* leader */);
-  ASSERT_EQ(make_pair(0U, make_pair(200UL, 0U)), log.NextBatch());
+  ASSERT_EQ(make_pair(0UL, make_pair(200UL, 0U)), log.NextBatch());
 
   log.AddSlot(1 /* slot_id */, 333 /* queue_id */, 1 /* leader */);
-  ASSERT_EQ(make_pair(1U, make_pair(300UL, 1U)), log.NextBatch());
+  ASSERT_EQ(make_pair(1UL, make_pair(300UL, 1U)), log.NextBatch());
 
   log.AddSlot(2 /* slot_id */, 222 /* queue_id */, 2 /* leader */);
-  ASSERT_EQ(make_pair(2U, make_pair(100UL, 2U)), log.NextBatch());
+  ASSERT_EQ(make_pair(2UL, make_pair(100UL, 2U)), log.NextBatch());
 
   log.AddSlot(3 /* slot_id */, 333 /* queue_id */, 3 /* leader */);
-  ASSERT_EQ(make_pair(3U, make_pair(400UL, 3U)), log.NextBatch());
+  ASSERT_EQ(make_pair(3UL, make_pair(400UL, 3U)), log.NextBatch());
 
   ASSERT_FALSE(log.HasNextBatch());
 }
@@ -61,16 +61,16 @@ TEST(LocalLogTest, SlotsComeFirst) {
   log.AddSlot(0 /* slot_id */, 111 /* queue_id */, 0 /* leader */);
 
   log.AddBatchId(111 /* queue_id */, 0 /* position */, 200 /* batch_id */);
-  ASSERT_EQ(make_pair(0U, make_pair(200UL, 0U)), log.NextBatch());
+  ASSERT_EQ(make_pair(0UL, make_pair(200UL, 0U)), log.NextBatch());
 
   log.AddBatchId(333 /* queue_id */, 0 /* position */, 300 /* batch_id */);
-  ASSERT_EQ(make_pair(1U, make_pair(300UL, 0U)), log.NextBatch());
+  ASSERT_EQ(make_pair(1UL, make_pair(300UL, 0U)), log.NextBatch());
 
   log.AddBatchId(222 /* queue_id */, 0 /* position */, 100 /* batch_id */);
-  ASSERT_EQ(make_pair(2U, make_pair(100UL, 0U)), log.NextBatch());
+  ASSERT_EQ(make_pair(2UL, make_pair(100UL, 0U)), log.NextBatch());
 
   log.AddBatchId(333 /* queue_id */, 1 /* position */, 400 /* batch_id */);
-  ASSERT_EQ(make_pair(3U, make_pair(400UL, 0U)), log.NextBatch());
+  ASSERT_EQ(make_pair(3UL, make_pair(400UL, 0U)), log.NextBatch());
 
   ASSERT_FALSE(log.HasNextBatch());
 }
@@ -88,10 +88,10 @@ TEST(LocalLogTest, MultipleNextBatches) {
   log.AddSlot(2 /* slot_id */, 111 /* queue_id */, 1 /* leader */);
   log.AddSlot(0 /* slot_id */, 222 /* queue_id */, 1 /* leader */);
 
-  ASSERT_EQ(make_pair(0U, make_pair(100UL, 1U)), log.NextBatch());
-  ASSERT_EQ(make_pair(1U, make_pair(400UL, 1U)), log.NextBatch());
-  ASSERT_EQ(make_pair(2U, make_pair(300UL, 1U)), log.NextBatch());
-  ASSERT_EQ(make_pair(3U, make_pair(200UL, 1U)), log.NextBatch());
+  ASSERT_EQ(make_pair(0UL, make_pair(100UL, 1U)), log.NextBatch());
+  ASSERT_EQ(make_pair(1UL, make_pair(400UL, 1U)), log.NextBatch());
+  ASSERT_EQ(make_pair(2UL, make_pair(300UL, 1U)), log.NextBatch());
+  ASSERT_EQ(make_pair(3UL, make_pair(200UL, 1U)), log.NextBatch());
 
   ASSERT_FALSE(log.HasNextBatch());
 }
@@ -113,9 +113,9 @@ TEST(LocalLogTest, SameOriginOutOfOrder) {
   log.AddSlot(2 /* slot_id */, 111 /* queue_id */, 0 /* leader */);
   ASSERT_TRUE(log.HasNextBatch());
 
-  ASSERT_EQ(make_pair(0U, make_pair(100UL, 0U)), log.NextBatch());
-  ASSERT_EQ(make_pair(1U, make_pair(200UL, 0U)), log.NextBatch());
-  ASSERT_EQ(make_pair(2U, make_pair(300UL, 0U)), log.NextBatch());
+  ASSERT_EQ(make_pair(0UL, make_pair(100UL, 0U)), log.NextBatch());
+  ASSERT_EQ(make_pair(1UL, make_pair(200UL, 0U)), log.NextBatch());
+  ASSERT_EQ(make_pair(2UL, make_pair(300UL, 0U)), log.NextBatch());
 
   ASSERT_FALSE(log.HasNextBatch());
 }
