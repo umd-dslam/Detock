@@ -55,7 +55,7 @@ class LogManager : public NetworkedModule {
              const MetricsRepositoryManagerPtr& metrics_manager,
              std::chrono::milliseconds poll_timeout = kModuleTimeout);
 
-  std::string name() const override { return "LogManager"; }
+  std::string name() const override { return "LogManager-" + std::to_string(id_); }
 
  protected:
   void OnInternalRequestReceived(EnvelopePtr&& env) final;
@@ -67,6 +67,7 @@ class LogManager : public NetworkedModule {
   void AdvanceLog();
   void EmitBatch(BatchPtr&& batch);
 
+  int id_;
   std::unordered_map<RegionId, BatchLog> single_home_logs_;
   LocalLog local_log_;
   std::vector<MachineId> other_partitions_;

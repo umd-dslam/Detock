@@ -113,7 +113,7 @@ void Sequencer::ProcessForwardBatchData(EnvelopePtr&& env) {
   auto lo_batch = forward_batch_data->mutable_batch_data()->Add();
   lo_batch->set_id(batch->id());
   lo_batch->set_transaction_type(batch->transaction_type());
-  lo_batch->mutable_events()->CopyFrom(batch->events());  
+  lo_batch->mutable_events()->CopyFrom(batch->events());
   for (int i = 0; i < batch->transactions_size(); i++) {
     auto txn = batch->mutable_transactions()->ReleaseLast();
     txn = GenerateLockOnlyTxn(txn, local_region, true /* in_place */);
@@ -125,7 +125,7 @@ void Sequencer::ProcessForwardBatchData(EnvelopePtr&& env) {
   delete batch;
 
   int l = 0, r = lo_batch->transactions_size() - 1;
-  for (;l < r; l++, r--) {
+  for (; l < r; l++, r--) {
     lo_batch->mutable_transactions(l)->Swap(lo_batch->mutable_transactions(r));
   }
 

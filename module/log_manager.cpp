@@ -66,7 +66,8 @@ void LocalLog::UpdateReadyBatches() {
 LogManager::LogManager(int id, const std::vector<RegionId>& regions, const shared_ptr<Broker>& broker,
                        const MetricsRepositoryManagerPtr& metrics_manager, std::chrono::milliseconds poll_timeout)
     : NetworkedModule(broker, Broker::ChannelOption(kLogManagerChannel + id, true, RegionsToTags(regions)),
-                      metrics_manager, poll_timeout, true /* is_long_sender */) {
+                      metrics_manager, poll_timeout, true /* is_long_sender */),
+      id_(id) {
   auto local_region = config()->local_region();
   auto local_replica = config()->local_replica();
   auto local_partition = config()->local_partition();
@@ -180,7 +181,7 @@ void LogManager::ProcessForwardBatchData(EnvelopePtr&& env) {
 
   VLOG(1) << "Received data for batch " << TXN_ID_STR(my_batch->id()) << " (home = " << (int)generator_home << ") from "
           << MACHINE_ID_STR(env->from()) << ". Number of txns: " << my_batch->transactions_size()
-          << ". First time region: " << first_time_region << ". First time replica: " << first_time_replica;
+          << ". Is 1st region: " << first_time_region << ". Is 1st replica: " << first_time_replica;
 
   if (generator_home == local_region) {
     VLOG(1) << "Added batch " << TXN_ID_STR(my_batch->id()) << " to local log at (" << generator << ", "
@@ -238,10 +239,9 @@ void LogManager::ProcessForwardBatchOrder(EnvelopePtr&& env) {
         Send(*env, other_partitions_, tag);
       }
 
-      VLOG(1) << "Received remote batch order " << TXN_ID_STR(batch_id) << " (home = " << home << ") from ["
-              << (int)from_region << ", " << (int)from_replica << ", " << from_partition
-              << "]. Slot: " << batch_order.slot() << ". First time region: " << first_time_region
-              << ". First time replica: " << first_time_replica;
+      VLOG(1) << "Received remote batch order " << TXN_ID_STR(batch_id) << " (home = " << home << ") from "
+              << MACHINE_ID_STR(env->from()) << ". Slot: " << batch_order.slot()
+              << ". Is 1st region: " << first_time_region << ". Is 1st replica: " << first_time_replica;
 
       single_home_logs_[home].AddSlot(batch_order.slot(), batch_id);
       break;

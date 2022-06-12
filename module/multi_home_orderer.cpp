@@ -109,8 +109,8 @@ void MultiHomeOrderer::ProcessForwardBatchData(EnvelopePtr&& env) {
 
   RECORD(my_batch.get(), TransactionEvent::ENTER_MULTI_HOME_ORDERER_IN_BATCH);
 
-  VLOG(1) << "Received data for MULTI-HOME batch " << TXN_ID_STR(my_batch->id()) << " from " << MACHINE_ID_STR(env->from())
-          << ". Number of txns: " << my_batch->transactions_size();
+  VLOG(1) << "Received data for MULTI-HOME batch " << TXN_ID_STR(my_batch->id()) << " from "
+          << MACHINE_ID_STR(env->from()) << ". Number of txns: " << my_batch->transactions_size();
 
   multi_home_batch_log_.AddBatch(std::move(my_batch));
 }
@@ -129,8 +129,8 @@ void MultiHomeOrderer::ProcessForwardBatchOrder(EnvelopePtr&& env) {
     Send(*env, other_partitions_, kMultiHomeOrdererChannel);
   }
 
-  VLOG(1) << "Received order for batch " << TXN_ID_STR(batch_id) << " from "
-          << MACHINE_ID_STR(env->from()) << ". Slot: " << batch_order.slot();
+  VLOG(1) << "Received order for batch " << TXN_ID_STR(batch_id) << " from " << MACHINE_ID_STR(env->from())
+          << ". Slot: " << batch_order.slot();
 
   multi_home_batch_log_.AddSlot(batch_order.slot(), batch_order.batch_id());
 }
@@ -158,7 +158,7 @@ void MultiHomeOrderer::AdvanceLog() {
     batch->set_id((1LL << (kMachineIdBits + kBatchIdCounterBits)) | (slot_id << kMachineIdBits) | generator);
 
     auto env = NewBatchForwardingMessage({batch.release()}, generator, slot_id);
-    
+
     Send(move(env), kSequencerChannel);
   }
 }
