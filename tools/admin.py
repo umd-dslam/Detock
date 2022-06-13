@@ -836,6 +836,7 @@ class BenchmarkCommand(AdminCommand):
         def clean_up(remote_proc):
             client, addr, *_ = remote_proc
             cleanup_container(client, BENCHMARK_CONTAINER_NAME, addr=addr)
+            cleanup_container(client, "benchmark_test", addr=addr)
             # Test for benchmark starting delay
             start_time = time.time()
             client.containers.run(

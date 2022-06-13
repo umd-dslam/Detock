@@ -21,8 +21,6 @@ from proto.configuration_pb2 import Configuration, Region
 
 LOG = logging.getLogger("experiment")
 
-GENERATORS = 2
-
 
 def generate_config(settings: dict, workload_settingss: dict, template_path: str):
     config = Configuration()
@@ -153,14 +151,6 @@ def combine_parameters(params, default_params, workload_settings):
         itertools.product(*ordered_value_lists)
     ]
 
-    # Apply combinations exclusion
-    if "exclude" in workload_settings:
-        patterns = workload_settings["exclude"]
-        combinations = [
-            c for c in combinations if
-            not any([c.items() >= p.items() for p in patterns])
-        ]
-
     # Apply combinations inclusion
     if "include" in workload_settings:
         patterns = workload_settings["include"]
@@ -183,6 +173,14 @@ def combine_parameters(params, default_params, workload_settings):
         for c, e in zip(combinations, extra):
             c.update(e)
         combinations += new
+
+    # Apply combinations exclusion
+    if "exclude" in workload_settings:
+        patterns = workload_settings["exclude"]
+        combinations = [
+            c for c in combinations if
+            not any([c.items() >= p.items() for p in patterns])
+        ]
 
     # Populate common values and check for missing/unknown params
     params_set = set(params)
@@ -248,8 +246,9 @@ class Experiment:
     # Parameters of the workload
     WORKLOAD_PARAMS = []
     # Parameters of the benchmark tool and the environment other than the 'params' argument of the workload
-    OTHER_PARAMS = ["clients", "txns", "duration", "rate_limit"]
+    OTHER_PARAMS = ["generators", "clients", "txns", "duration", "rate_limit"]
     DEFAULT_PARAMS = {
+        "generators": 2,
         "rate_limit": 0,
         "txns": 2000000,
     }
@@ -346,7 +345,7 @@ class Experiment:
                         "--workload", workload_settings["workload"],
                         "--clients", f"{val['clients']}",
                         "--rate", f"{val['rate_limit']}",
-                        "--generators", f"{GENERATORS}",
+                        "--generators", f"{val['generators']}",
                         "--txns", f"{val['txns']}",
                         "--duration", f"{val['duration']}",
                         "--sample", f"{sample}",
