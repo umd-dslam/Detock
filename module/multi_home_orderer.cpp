@@ -129,7 +129,7 @@ void MultiHomeOrderer::AddToBatch(Transaction* txn) {
 }
 
 void MultiHomeOrderer::SendBatch() {
-  VLOG(3) << "Finished multi-home batch " << TXN_ID_STR(batch_id()) << " of size " << batch_size_;
+  VLOG(1) << "Finished multi-home batch " << TXN_ID_STR(batch_id()) << " of size " << batch_size_;
 
   if (per_thread_metrics_repo != nullptr) {
     per_thread_metrics_repo->RecordMHOrdererBatch(batch_id(), batch_size_,

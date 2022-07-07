@@ -98,7 +98,7 @@ void Scheduler::OnInternalRequestReceived(EnvelopePtr&& env) {
         auto it = active_txns_.find(ready_txn);
         DCHECK(it != active_txns_.end());
 
-        VLOG(2) << "Txn " << TXN_ID_STR(ready_txn) << " became ready after resolving a deadlock";
+        VLOG(3) << "Txn " << TXN_ID_STR(ready_txn) << " became ready after resolving a deadlock";
 
         // The ready txns list contains txns that got into a resolved deadlock
         Dispatch(ready_txn, true /* deadlocked */, false /* is_fast */);
@@ -128,7 +128,7 @@ bool Scheduler::OnCustomSocket() {
         auto txn_id = *msg.data<TxnId>();
         // Release locks held by this txn then dispatch the txns that become ready thanks to this release.
         auto unblocked_txns = lock_manager_.ReleaseLocks(txn_id);
-        VLOG(2) << "Released locks of txn " << TXN_ID_STR(txn_id);
+        VLOG(3) << "Released locks of txn " << TXN_ID_STR(txn_id);
 
         for (auto unblocked_txn : unblocked_txns) {
 #ifdef LOCK_MANAGER_DDR
@@ -177,7 +177,7 @@ void Scheduler::ProcessTransaction(EnvelopePtr&& env) {
   if (ins.second) {
     RECORD(holder.txn().mutable_internal(), TransactionEvent::ENTER_SCHEDULER);
 
-    VLOG(2) << "Accepted " << ENUM_NAME(txn->internal().type(), TransactionType) << " transaction ("
+    VLOG(3) << "Accepted " << ENUM_NAME(txn->internal().type(), TransactionType) << " transaction ("
             << TXN_ID_STR(txn_id) << ", " << txn->internal().home() << ")";
   } else {
     if (!holder.AddLockOnlyTxn(txn)) {
@@ -194,7 +194,7 @@ void Scheduler::ProcessTransaction(EnvelopePtr&& env) {
 
     RECORD(holder.txn().mutable_internal(), TransactionEvent::ENTER_SCHEDULER_LO);
 
-    VLOG(2) << "Added " << ENUM_NAME(txn->internal().type(), TransactionType) << " transaction (" << TXN_ID_STR(txn_id)
+    VLOG(3) << "Added " << ENUM_NAME(txn->internal().type(), TransactionType) << " transaction (" << TXN_ID_STR(txn_id)
             << ", " << txn->internal().home() << ")";
   }
 
@@ -225,7 +225,7 @@ void Scheduler::SendToRemasterManager(Transaction& txn) {
       break;
     }
     case VerifyMasterResult::WAITING: {
-      VLOG(4) << "Txn waiting on remaster: " << TXN_ID_STR(txn.internal().id());
+      VLOG(3) << "Txn waiting on remaster: " << TXN_ID_STR(txn.internal().id());
       // Do nothing
       break;
     }
@@ -256,7 +256,7 @@ void Scheduler::ProcessRemasterResult(RemasterOccurredResult result) {
 void Scheduler::SendToLockManager(Transaction& txn) {
   auto txn_id = txn.internal().id();
 
-  VLOG(2) << "Trying to acquires locks of txn " << TXN_ID_STR(txn_id);
+  VLOG(3) << "Trying to acquires locks of txn " << TXN_ID_STR(txn_id);
 
   RECORD(txn.mutable_internal(), TransactionEvent::ENTER_LOCK_MANAGER);
 
@@ -268,7 +268,7 @@ void Scheduler::SendToLockManager(Transaction& txn) {
       TriggerPreDispatchAbort(txn_id);
       break;
     case AcquireLocksResult::WAITING:
-      VLOG(2) << "Txn " << TXN_ID_STR(txn_id) << " cannot be dispatched yet";
+      VLOG(3) << "Txn " << TXN_ID_STR(txn_id) << " cannot be dispatched yet";
       break;
     default:
       LOG(ERROR) << "Unknown lock result type";
@@ -313,7 +313,7 @@ void Scheduler::Dispatch(TxnId txn_id, bool deadlocked, bool is_fast) {
   txn_holder.SetWorker(worker);
   GetCustomSocket(worker).send(msg, zmq::send_flags::none);
 
-  VLOG(2) << "Dispatched txn " << TXN_ID_STR(txn_id) << " (deadlocked = " << deadlocked << ")";
+  VLOG(3) << "Dispatched txn " << TXN_ID_STR(txn_id) << " (deadlocked = " << deadlocked << ")";
 }
 
 // Disable pre-dispatch abort when DDR is used. Removing this method is sufficient to disable the
@@ -330,7 +330,7 @@ void Scheduler::TriggerPreDispatchAbort(TxnId txn_id, const std::string& abort_r
     return;
   }
 
-  VLOG(2) << "Triggering pre-dispatch abort of txn " << TXN_ID_STR(txn_id);
+  VLOG(3) << "Triggering pre-dispatch abort of txn " << TXN_ID_STR(txn_id);
 
   txn_holder.SetAborting();
 

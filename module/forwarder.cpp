@@ -129,14 +129,14 @@ void Forwarder::ProcessForwardTxn(EnvelopePtr&& env) {
   // forward the txn immediately
   if (!need_remote_lookup) {
     auto txn_type = SetTransactionType(*txn);
-    VLOG(3) << "Determine txn " << TXN_ID_STR(txn->internal().id()) << " to be " << ENUM_NAME(txn_type, TransactionType)
+    VLOG(2) << "Determine txn " << TXN_ID_STR(txn->internal().id()) << " to be " << ENUM_NAME(txn_type, TransactionType)
             << " without remote master lookup";
     DCHECK(txn_type != TransactionType::UNKNOWN);
     Forward(move(env));
     return;
   }
 
-  VLOG(3) << "Remote master lookup needed to determine type of txn " << TXN_ID_STR(txn->internal().id());
+  VLOG(2) << "Remote master lookup needed to determine type of txn " << TXN_ID_STR(txn->internal().id());
   for (auto p : txn->internal().involved_partitions()) {
     if (p != config()->local_partition()) {
       partitioned_lookup_request_[p].mutable_request()->mutable_lookup_master()->add_txn_ids(txn->internal().id());
@@ -242,7 +242,7 @@ void Forwarder::UpdateMasterInfo(EnvelopePtr&& env) {
 
     auto txn_type = SetTransactionType(*txn);
     if (txn_type != TransactionType::UNKNOWN) {
-      VLOG(3) << "Determine txn " << TXN_ID_STR(txn->internal().id()) << " to be "
+      VLOG(2) << "Determine txn " << TXN_ID_STR(txn->internal().id()) << " to be "
               << ENUM_NAME(txn_type, TransactionType);
       Forward(move(pending_env));
       pending_transactions_.erase(txn_id);
@@ -275,7 +275,7 @@ void Forwarder::Forward(EnvelopePtr&& env) {
     // Otherwise, forward to the sequencer of a random machine in its home region
     auto home_region = txn->keys().begin()->value_entry().metadata().master();
     if (home_region == config()->local_region()) {
-      VLOG(3) << "Current region is home of txn " << TXN_ID_STR(txn_id);
+      VLOG(2) << "Current region is home of txn " << TXN_ID_STR(txn_id);
 
       RECORD(txn_internal, TransactionEvent::EXIT_FORWARDER_TO_SEQUENCER);
 
@@ -284,7 +284,7 @@ void Forwarder::Forward(EnvelopePtr&& env) {
       auto partition = ChooseRandomPartition(*txn, rg_);
       auto random_machine_in_home_region = MakeMachineId(home_region, 0, partition);
 
-      VLOG(3) << "Forwarding txn " << TXN_ID_STR(txn_id) << " to its home region (reg: " << home_region
+      VLOG(2) << "Forwarding txn " << TXN_ID_STR(txn_id) << " to its home region (reg: " << home_region
               << ", part: " << partition << ")";
 
       RECORD(txn_internal, TransactionEvent::EXIT_FORWARDER_TO_SEQUENCER);
@@ -295,7 +295,7 @@ void Forwarder::Forward(EnvelopePtr&& env) {
     RECORD(txn_internal, TransactionEvent::EXIT_FORWARDER_TO_MULTI_HOME_ORDERER);
 
     if (config()->bypass_mh_orderer()) {
-      VLOG(3) << "Txn " << TXN_ID_STR(txn_id) << " is a multi-home txn. Sending to the sequencer.";
+      VLOG(2) << "Txn " << TXN_ID_STR(txn_id) << " is a multi-home txn. Sending to the sequencer.";
 
       // Send the txn directly to sequencers of involved regions to generate lock-only txns
       auto part = config()->leader_partition_for_multi_home_ordering();
@@ -327,7 +327,7 @@ void Forwarder::Forward(EnvelopePtr&& env) {
         Send(move(env), destinations, kSequencerChannel);
       }
     } else {
-      VLOG(3) << "Txn " << TXN_ID_STR(txn_id) << " is a multi-home txn. Sending to the orderer.";
+      VLOG(2) << "Txn " << TXN_ID_STR(txn_id) << " is a multi-home txn. Sending to the orderer.";
       auto local_region = config()->local_region();
       // Send the txn to the orderer to form a global order
       if (config()->shrink_mh_orderer()) {

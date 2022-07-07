@@ -145,7 +145,7 @@ void Batcher::BatchTxn(Transaction* txn) {
 }
 
 void Batcher::SendBatches() {
-  VLOG(3) << "Finished up to batch " << TXN_ID_STR(batch_id()) << " with " << total_batch_size_
+  VLOG(1) << "Finished up to batch " << TXN_ID_STR(batch_id()) << " with " << total_batch_size_
           << " txns to be replicated. "
           << "Sending out for ordering and replicating";
 
@@ -220,11 +220,11 @@ void Batcher::SendBatches() {
       if (is_delayed(rg_)) {
         auto delay_ms = config()->replication_delay_amount_ms();
 
-        VLOG(3) << "Delay batch " << TXN_ID_STR(batch_id) << " for " << delay_ms << " ms";
+        VLOG(1) << "Delay batch " << TXN_ID_STR(batch_id) << " for " << delay_ms << " ms";
 
         NewTimedCallback(milliseconds(delay_ms),
                          [this, destinations, local_region, batch_id, delayed_env = env.release()]() {
-                           VLOG(3) << "Sending delayed batch " << TXN_ID_STR(batch_id);
+                           VLOG(1) << "Sending delayed batch " << TXN_ID_STR(batch_id);
                            Send(*delayed_env, destinations, LogManager::MakeLogChannel(local_region));
                            delete delayed_env;
                          });

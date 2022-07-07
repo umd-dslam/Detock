@@ -63,7 +63,7 @@ void Worker::OnInternalRequestReceived(EnvelopePtr&& env) {
     return;
   }
 
-  VLOG(2) << "Got remote read result for txn " << run_id;
+  VLOG(3) << "Got remote read result for txn " << run_id;
 
   auto& state = state_it->second;
   auto& txn = state.txn_holder->txn();
