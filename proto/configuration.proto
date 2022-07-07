@@ -25,6 +25,8 @@ message Region {
     uint32 num_replicas = 5;
     // Use synchronous replication across all replicas
     bool sync_replication = 6;
+    // Reduce the resources of MH orderer to simulate resource constraint
+    bool shrink_mh_orderer = 7;
 }
 
 message ReplicationDelayExperiment {

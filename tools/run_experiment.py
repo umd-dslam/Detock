@@ -51,10 +51,13 @@ def generate_config(settings: dict, workload_settingss: dict, template_path: str
         else:
             region.num_replicas = 1
 
+        if "shrink_mh_orderer" in settings:
+            region.shrink_mh_orderer = settings["shrink_mh_orderer"].get(r, False)
+
         region.sync_replication = settings.get("local_sync_replication", False)
         
         if "num_log_managers" in workload_settingss:
-            config.num_log_managers = workload_settingss["num_log_managers"]
+            config.num_log_managers = workload_settingss["num_log_managers"]            
 
         config.regions.append(region)
 

@@ -61,13 +61,14 @@ class Configuration {
   std::chrono::milliseconds ddr_interval() const;
   std::vector<int> cpu_pinnings(ModuleId module) const;
   internal::ExecutionType execution_type() const;
-  const std::vector<uint32_t> replication_order() const;
+  const std::vector<uint32_t>& replication_order() const;
   bool synchronized_batching() const;
   const internal::MetricOptions& metric_options() const;
   std::chrono::milliseconds fs_latency_interval() const;
   std::chrono::milliseconds clock_sync_interval() const;
   int64_t timestamp_buffer_us() const;
   uint32_t avg_latency_window_size() const;
+  bool shrink_mh_orderer() const;
   std::vector<int> distance_ranking_from(RegionId region_id) const;
 
   int broker_rcvbuf() const;

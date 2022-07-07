@@ -223,7 +223,7 @@ vector<int> Configuration::cpu_pinnings(ModuleId module) const {
 
 internal::ExecutionType Configuration::execution_type() const { return config_.execution_type(); }
 
-const vector<uint32_t> Configuration::replication_order() const { return replication_order_; }
+const vector<uint32_t>& Configuration::replication_order() const { return replication_order_; }
 
 bool Configuration::synchronized_batching() const { return config_.synchronized_batching(); }
 
@@ -236,6 +236,8 @@ milliseconds Configuration::clock_sync_interval() const { return milliseconds(co
 int64_t Configuration::timestamp_buffer_us() const { return config_.timestamp_buffer_us(); }
 
 uint32_t Configuration::avg_latency_window_size() const { return std::max(config_.avg_latency_window_size(), 1U); }
+
+bool Configuration::shrink_mh_orderer() const { return config_.regions(local_region_).shrink_mh_orderer(); };
 
 std::vector<int> Configuration::distance_ranking_from(RegionId region_id) const {
   auto ranking_str = Split(config_.regions(region_id).distance_ranking(), ",");
