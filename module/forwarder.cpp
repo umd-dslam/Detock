@@ -329,9 +329,10 @@ void Forwarder::Forward(EnvelopePtr&& env) {
     } else {
       VLOG(2) << "Txn " << TXN_ID_STR(txn_id) << " is a multi-home txn. Sending to the orderer.";
       auto local_region = config()->local_region();
+      auto local_partition = config()->local_partition();
       // Send the txn to the orderer to form a global order
-      if (config()->shrink_mh_orderer()) {
-        auto dest = MakeMachineId(local_region, 0, config()->leader_partition_for_multi_home_ordering());
+      if (local_region != 0 || local_partition != 0) {
+        auto dest = MakeMachineId(0, 0, 0);
         Send(move(env), dest, kMultiHomeOrdererChannel);
       } else {
         Send(move(env), kMultiHomeOrdererChannel);
