@@ -69,6 +69,7 @@ def generate_config(settings: dict, workload_settingss: dict, template_path: str
 
 
 def cleanup(username: str, config_path: str, image: str):
+    LOG.info("STOP ANY RUNNING EXPERIMENT")
     # fmt: off
     admin.main(
         [
@@ -82,6 +83,26 @@ def cleanup(username: str, config_path: str, image: str):
         ]
     )
     # fmt: on
+
+
+def start_server(username: str, config_path: str, image: str):
+    LOG.info("START SERVERS")
+    admin.main([
+        "start",
+        config_path,
+        "--user", username,
+        "--image", image,
+    ])
+
+    LOG.info("WAIT FOR ALL SERVERS TO BE ONLINE")
+    admin.main([
+        "collect_server",
+        config_path,
+        "--user", username,
+        "--image", image,
+        "--flush-only",
+        "--no-pull",
+    ])
 
 
 def collect_client_data(username: str, config_path: str, out_dir: str, tag: str):
@@ -274,12 +295,7 @@ class Experiment:
         with open(args.settings, "r") as f:
             settings = json.load(f)
 
-        sample = settings.get("sample", 10)
-        trials = settings.get("trials", 1)
         workload_settings = settings[cls.NAME]
-        out_dir = os.path.join(
-            args.out_dir, cls.NAME if args.name is None else args.name
-        )
 
         cls.pre_run_hook(settings, args.dry_run)
 
@@ -288,92 +304,89 @@ class Experiment:
                 settings, workload_settings, os.path.join(settings_dir, server["config"])
             )
 
-            LOG.info('============ GENERATED CONFIG "%s" ============', config_path)
-
             cls.post_config_gen_hook(settings, config_path, args.dry_run)
 
-            config_name = os.path.splitext(os.path.basename(server["config"]))[0]
-            image = server["image"]
-            # fmt: off
-            common_args = [
-                config_path,
-                "--user", settings["username"],
-                "--image", image,
-            ]
-            # fmt: on
+            LOG.info('============ GENERATED CONFIG "%s" ============', config_path)
 
-            LOG.info("STOP ANY RUNNING EXPERIMENT")
-            cleanup(settings["username"], config_path, image)
+            cleanup(settings["username"], config_path, server["image"])
 
             if not args.skip_starting_server:
-                LOG.info("START SERVERS")
-                admin.main(["start", *common_args])
+                start_server(settings["username"], config_path, server["image"])
 
-                LOG.info("WAIT FOR ALL SERVERS TO BE ONLINE")
-                admin.main(
-                    ["collect_server", *common_args, "--flush-only", "--no-pull"]
+            cls._run_benchmark(args, config_path, settings, server)
+
+
+    @classmethod
+    def _run_benchmark(cls, args, config_path, settings, server):
+        config_name = os.path.splitext(os.path.basename(server["config"]))[0]
+        out_dir = os.path.join(
+            args.out_dir, cls.NAME if args.name is None else args.name
+        )
+        sample = settings.get("sample", 10)
+        trials = settings.get("trials", 1)
+        workload_settings = settings[cls.NAME]
+
+        params = cls.OTHER_PARAMS + cls.WORKLOAD_PARAMS
+
+        values = combine_parameters(params, cls.DEFAULT_PARAMS, workload_settings)
+
+        tag_keys = args.tag_keys
+        if tag_keys is None:
+            # Only use keys that have varying values
+            tag_keys = [
+                k for k in params if
+                any([v[k] != values[0][k] for v in values])
+            ]
+
+        for val in values:
+            cls.pre_run_per_val_hook(val, args.dry_run)
+
+            for t in range(trials):
+                tag = config_name
+                tag_suffix = "".join([f"{k}{val[k]}" for k in tag_keys])
+                if tag_suffix:
+                    tag += "-" + tag_suffix
+                if trials > 1:
+                    tag += f"-{t}"
+
+                params = ",".join(f"{k}={val[k]}" for k in cls.WORKLOAD_PARAMS)
+
+                LOG.info("RUN BENCHMARK")
+                # fmt: off
+                benchmark_args = [
+                    "benchmark",
+                    config_path,
+                    "--user", settings["username"],
+                    "--image", server["image"],
+                    "--workload", workload_settings["workload"],
+                    "--clients", f"{val['clients']}",
+                    "--rate", f"{val['rate_limit']}",
+                    "--generators", f"{val['generators']}",
+                    "--txns", f"{val['txns']}",
+                    "--duration", f"{val['duration']}",
+                    "--sample", f"{sample}",
+                    "--seed", f"{args.seed}",
+                    "--params", params,
+                    "--tag", tag,
+                    # The image has already been pulled in the cleanup step
+                    "--no-pull",
+                ]
+                # fmt: on
+                admin.main(benchmark_args)
+
+                LOG.info("COLLECT DATA")
+                collect_data(
+                    settings["username"],
+                    config_path,
+                    server["image"],
+                    out_dir,
+                    tag,
+                    args.no_client_data,
+                    args.no_server_data,
                 )
 
-            params = cls.OTHER_PARAMS + cls.WORKLOAD_PARAMS
-
-            values = combine_parameters(params, cls.DEFAULT_PARAMS, workload_settings)
-
-            if args.tag_keys:
-                tag_keys = args.tag_keys
-            else:
-                # Only use keys that have varying values
-                tag_keys = [
-                    k for k in params if
-                    any([v[k] != values[0][k] for v in values])
-                ]
-
-            for val in values:
-                cls.pre_run_per_val_hook(val, args.dry_run)
-
-                for t in range(trials):
-                    tag = config_name
-                    tag_suffix = "".join([f"{k}{val[k]}" for k in tag_keys])
-                    if tag_suffix:
-                        tag += "-" + tag_suffix
-                    if trials > 1:
-                        tag += f"-{t}"
-
-                    params = ",".join(f"{k}={val[k]}" for k in cls.WORKLOAD_PARAMS)
-
-                    LOG.info("RUN BENCHMARK")
-                    # fmt: off
-                    benchmark_args = [
-                        "benchmark",
-                        *common_args,
-                        "--workload", workload_settings["workload"],
-                        "--clients", f"{val['clients']}",
-                        "--rate", f"{val['rate_limit']}",
-                        "--generators", f"{val['generators']}",
-                        "--txns", f"{val['txns']}",
-                        "--duration", f"{val['duration']}",
-                        "--sample", f"{sample}",
-                        "--seed", f"{args.seed}",
-                        "--params", params,
-                        "--tag", tag,
-                        # The image has already been pulled in the cleanup step
-                        "--no-pull",
-                    ]
-                    # fmt: on
-                    admin.main(benchmark_args)
-
-                    LOG.info("COLLECT DATA")
-                    collect_data(
-                        settings["username"],
-                        config_path,
-                        image,
-                        out_dir,
-                        tag,
-                        args.no_client_data,
-                        args.no_server_data,
-                    )
-
-            if args.dry_run:
-                pprint([{ k:v for k, v in p.items() if k in tag_keys} for p in values])
+        if args.dry_run:
+            pprint([{ k:v for k, v in p.items() if k in tag_keys} for p in values])
 
 
 class YCSBExperiment(Experiment):
