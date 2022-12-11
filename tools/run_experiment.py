@@ -22,19 +22,45 @@ from proto.configuration_pb2 import Configuration, Region
 LOG = logging.getLogger("experiment")
 
 
-def generate_config(settings: dict, workload_settingss: dict, template_path: str):
+def generate_config(
+    settings: dict,
+    template_path: str,
+    orig_num_partitions: int,
+    num_log_mangers: int,
+):
     config = Configuration()
     with open(template_path, "r") as f:
         text_format.Parse(f.read(), config)
 
     regions_ids = {name: id for id, name in enumerate(settings["regions"])}
+    num_partitions = orig_num_partitions
     for r in settings["regions"]:
         region = Region()
 
-        servers_private = [addr.encode() for addr in settings["servers_private"][r]]
+        public_ips = settings["servers_public"][r]
+        private_ips = settings["servers_private"][r]
+
+        if num_partitions is None:
+            num_partitions = len(public_ips)
+
+        if len(public_ips) < num_partitions:
+            raise RuntimeError(
+                f"Not enough public ips for region '{r}' ({len(public_ips)} < {num_partitions})"
+            )
+
+        if len(private_ips) < num_partitions:
+            raise RuntimeError(
+                f"Not enough private ips for region '{r}' ({len(private_ips)} < {num_partitions})"
+            )
+
+        servers_private = [
+            addr.encode() for addr in private_ips[:num_partitions]
+        ]
         region.addresses.extend(servers_private)
 
-        servers_public = [addr.encode() for addr in settings["servers_public"][r]]
+        servers_public = [
+            addr.encode() for addr in public_ips[:num_partitions]
+        ]
         region.public_addresses.extend(servers_public)
 
         clients = [addr.encode() for addr in settings["clients"][r]]
@@ -54,14 +80,21 @@ def generate_config(settings: dict, workload_settingss: dict, template_path: str
         if "shrink_mh_orderer" in settings:
             region.shrink_mh_orderer = settings["shrink_mh_orderer"].get(r, False)
 
-        region.sync_replication = settings.get("local_sync_replication", False)
-        
-        if "num_log_managers" in workload_settingss:
-            config.num_log_managers = workload_settingss["num_log_managers"]            
+        region.sync_replication = settings.get("local_sync_replication", False)           
 
         config.regions.append(region)
 
-    config_path = os.path.join(gettempdir(), os.path.basename(template_path))
+    config.num_partitions = num_partitions 
+    config.num_log_managers = num_log_mangers
+    # Quick hack to change the number of keys based on number of partitions
+    # for the scalability experiment
+    if orig_num_partitions is not None:
+        config.simple_partitioning.num_records = orig_num_partitions * 1000000
+
+    config_filename, config_ext = os.path.splitext(os.path.basename(template_path))
+    if orig_num_partitions is not None:
+        config_filename += f"-{orig_num_partitions}"
+    config_path = os.path.join(gettempdir(), f"{config_filename}{config_ext}")
     with open(config_path, "w") as f:
         text_format.PrintMessage(config, f)
 
@@ -300,25 +333,38 @@ class Experiment:
         cls.pre_run_hook(settings, args.dry_run)
 
         for server in workload_settings["servers"]:
-            config_path = generate_config(
-                settings, workload_settings, os.path.join(settings_dir, server["config"])
-            )
+            for num_partitions in server.get("num_partitions", [None]):
+                config_path = generate_config(
+                    settings,
+                    os.path.join(settings_dir, server["config"]),
+                    num_partitions,
+                    workload_settings.get("num_log_managers", None)
+                )
 
-            cls.post_config_gen_hook(settings, config_path, args.dry_run)
+                cls.post_config_gen_hook(settings, config_path, args.dry_run)
 
-            LOG.info('============ GENERATED CONFIG "%s" ============', config_path)
+                LOG.info('============ GENERATED CONFIG "%s" ============', config_path)
 
-            cleanup(settings["username"], config_path, server["image"])
+                cleanup(settings["username"], config_path, server["image"])
 
-            if not args.skip_starting_server:
-                start_server(settings["username"], config_path, server["image"])
+                if not args.skip_starting_server:
+                    start_server(settings["username"], config_path, server["image"])
 
-            cls._run_benchmark(args, config_path, settings, server)
+                config_name = os.path.splitext(os.path.basename(server["config"]))[0]
+                if num_partitions is not None:
+                    config_name += f"-sz{num_partitions}"
+
+                cls._run_benchmark(
+                    args,
+                    server["image"],
+                    settings,
+                    config_path,
+                    config_name,
+                )
 
 
     @classmethod
-    def _run_benchmark(cls, args, config_path, settings, server):
-        config_name = os.path.splitext(os.path.basename(server["config"]))[0]
+    def _run_benchmark(cls, args, image, settings, config_path, config_name):
         out_dir = os.path.join(
             args.out_dir, cls.NAME if args.name is None else args.name
         )
@@ -345,7 +391,7 @@ class Experiment:
                 tag = config_name
                 tag_suffix = "".join([f"{k}{val[k]}" for k in tag_keys])
                 if tag_suffix:
-                    tag += "-" + tag_suffix
+                    tag += f"-{tag_suffix}"
                 if trials > 1:
                     tag += f"-{t}"
 
@@ -357,7 +403,7 @@ class Experiment:
                     "benchmark",
                     config_path,
                     "--user", settings["username"],
-                    "--image", server["image"],
+                    "--image", image,
                     "--workload", workload_settings["workload"],
                     "--clients", f"{val['clients']}",
                     "--rate", f"{val['rate_limit']}",
@@ -378,7 +424,7 @@ class Experiment:
                 collect_data(
                     settings["username"],
                     config_path,
-                    server["image"],
+                    image,
                     out_dir,
                     tag,
                     args.no_client_data,
