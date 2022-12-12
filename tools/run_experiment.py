@@ -8,6 +8,7 @@ import os
 import logging
 import shlex
 import random
+from collections import defaultdict
 from tempfile import gettempdir
 from time import sleep
 from multiprocessing import Process
@@ -84,8 +85,9 @@ def generate_config(
 
         config.regions.append(region)
 
-    config.num_partitions = num_partitions 
-    config.num_log_managers = num_log_mangers
+    config.num_partitions = num_partitions
+    if num_log_mangers is not None:
+        config.num_log_managers = num_log_mangers
     # Quick hack to change the number of keys based on number of partitions
     # for the scalability experiment
     if orig_num_partitions is not None:
@@ -302,12 +304,20 @@ class Experiment:
     NAME = ""
     # Parameters of the workload
     WORKLOAD_PARAMS = []
-    # Parameters of the benchmark tool and the environment other than the 'params' argument of the workload
-    OTHER_PARAMS = ["generators", "clients", "txns", "duration", "rate_limit"]
+    # Parameters of the benchmark tool and the environment other than the 'params' argument
+    OTHER_PARAMS = [
+        "generators",
+        "clients",
+        "txns",
+        "duration",
+        "rate_limit",
+        "num_partitions",
+    ]
     DEFAULT_PARAMS = {
         "generators": 2,
         "rate_limit": 0,
         "txns": 2000000,
+        "num_partitions": None,
     }
 
     @classmethod
@@ -328,24 +338,36 @@ class Experiment:
         with open(args.settings, "r") as f:
             settings = json.load(f)
 
-        workload_settings = settings[cls.NAME]
-
         cls.pre_run_hook(settings, args.dry_run)
 
+        workload_settings = settings[cls.NAME]
+        params = cls.OTHER_PARAMS + cls.WORKLOAD_PARAMS
+
+        all_values = combine_parameters(params, cls.DEFAULT_PARAMS, workload_settings)
+        num_parts_to_values = defaultdict(list)
+        for v in all_values:
+            num_parts_to_values[v["num_partitions"]].append(v)
+
+        num_log_managers = workload_settings.get("num_log_managers", None)
+
         for server in workload_settings["servers"]:
-            for num_partitions in server.get("num_partitions", [None]):
+            template_path = os.path.join(settings_dir, server["config"])
+            # Special config that contains all server ip addresses
+            cleanup_config_path = generate_config(settings, template_path, None, num_log_managers)
+
+            for num_partitions, values in num_parts_to_values.items():
                 config_path = generate_config(
                     settings,
-                    os.path.join(settings_dir, server["config"]),
+                    template_path,
                     num_partitions,
-                    workload_settings.get("num_log_managers", None)
+                    num_log_managers,
                 )
 
                 cls.post_config_gen_hook(settings, config_path, args.dry_run)
 
                 LOG.info('============ GENERATED CONFIG "%s" ============', config_path)
 
-                cleanup(settings["username"], config_path, server["image"])
+                cleanup(settings["username"], cleanup_config_path, server["image"])
 
                 if not args.skip_starting_server:
                     start_server(settings["username"], config_path, server["image"])
@@ -360,21 +382,19 @@ class Experiment:
                     settings,
                     config_path,
                     config_name,
+                    values,
                 )
 
 
     @classmethod
-    def _run_benchmark(cls, args, image, settings, config_path, config_name):
+    def _run_benchmark(cls, args, image, settings, config_path, config_name, values):
         out_dir = os.path.join(
             args.out_dir, cls.NAME if args.name is None else args.name
         )
         sample = settings.get("sample", 10)
         trials = settings.get("trials", 1)
         workload_settings = settings[cls.NAME]
-
         params = cls.OTHER_PARAMS + cls.WORKLOAD_PARAMS
-
-        values = combine_parameters(params, cls.DEFAULT_PARAMS, workload_settings)
 
         tag_keys = args.tag_keys
         if tag_keys is None:
