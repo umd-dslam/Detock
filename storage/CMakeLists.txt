@@ -1,5 +1,7 @@
 target_sources(slog-core
   PRIVATE
+    init.cpp
+    init.h
     lookup_master_index.h
     mem_only_storage.h
     metadata_initializer.h
