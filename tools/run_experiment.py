@@ -7,6 +7,7 @@ import json
 import os
 import logging
 import shlex
+import time
 import random
 from collections import defaultdict
 from tempfile import gettempdir
@@ -416,7 +417,7 @@ class Experiment:
                     tag += f"-{t}"
 
                 params = ",".join(f"{k}={val[k]}" for k in cls.WORKLOAD_PARAMS)
-
+                seed = args.seed if args.seed is not None else int(time.time())
                 LOG.info("RUN BENCHMARK")
                 # fmt: off
                 benchmark_args = [
@@ -431,7 +432,7 @@ class Experiment:
                     "--txns", f"{val['txns']}",
                     "--duration", f"{val['duration']}",
                     "--sample", f"{sample}",
-                    "--seed", f"{args.seed}",
+                    "--seed", f"{seed}",
                     "--params", params,
                     "--tag", tag,
                     # The image has already been pulled in the cleanup step
@@ -739,7 +740,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--no-server-data", action="store_true", help="Don't collect server data"
     )
-    parser.add_argument("--seed", default=0, help="Seed for the random engine")
+    parser.add_argument("--seed", default=None, help="Seed for the random engine")
     args = parser.parse_args()
 
     if args.dry_run:
