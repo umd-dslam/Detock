@@ -290,6 +290,9 @@ endif()
 add_executable(slog service/slog.cpp service/service_utils.h)
 target_link_libraries(slog PRIVATE slog-core gflags::gflags)
 
+add_executable(janus service/janus.cpp service/service_utils.h)
+target_link_libraries(janus PRIVATE slog-core gflags::gflags)
+
 if (BUILD_SLOG_CLIENT)
   add_executable(client service/client.cpp service/service_utils.h)
   target_link_libraries(client

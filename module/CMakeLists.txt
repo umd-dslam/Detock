@@ -10,6 +10,10 @@ target_sources(slog-core
     consensus.h
     forwarder.cpp
     forwarder.h
+    janus/acceptor.cpp
+    janus/acceptor.h
+    janus/coordinator.cpp
+    janus/coordinator.h
     log_manager.cpp
     log_manager.h
     multi_home_orderer.cpp
