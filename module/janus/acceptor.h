@@ -14,10 +14,12 @@
 namespace slog {
 
 struct AcceptorTxnInfo {
-  AcceptorTxnInfo(Transaction* txn) : txn(txn), phase(Phase::PRE_ACCEPT) {}
+  AcceptorTxnInfo(Transaction* txn) : 
+      txn(txn), phase(Phase::PRE_ACCEPT), highest_ballot(0) {}
 
   Transaction* txn;
   Phase phase;
+  int highest_ballot;
 };
 
 class JanusAcceptor : public NetworkedModule {

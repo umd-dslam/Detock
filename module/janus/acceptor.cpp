@@ -46,10 +46,25 @@ void JanusAcceptor::ProcessPreAccept(EnvelopePtr&& env) {
   auto local_partition = config()->local_partition();
   auto txn = env->mutable_request()->mutable_janus_pre_accept()->release_txn();
   auto txn_id = txn->internal().id();
+  auto ballot = env->request().janus_pre_accept().ballot();
 
-  // Remember the transaction
-  auto [_, inserted] = txns_.insert({txn_id, AcceptorTxnInfo(txn)});
-  CHECK(inserted);
+  auto txn_info_it = txns_.find(txn_id);
+  if (txn_info_it != txns_.end()) {
+    // If highest ballot is higher, return with not ok
+    if (txn_info_it->second.highest_ballot > ballot) {
+      auto pre_accept_env = NewEnvelope();
+      auto pre_accept = pre_accept_env->mutable_response()->mutable_janus_pre_accept();
+      pre_accept->set_txn_id(txn_id);
+      pre_accept->set_ok(false);
+      Send(*pre_accept_env, env->from(), kForwarderChannel);
+      return;
+    }
+  } else {
+    txn_info_it = txns_.insert({txn_id, AcceptorTxnInfo(txn)}).first;
+  }
+
+  // Update the ballot
+  txn_info_it->second.highest_ballot = ballot;
 
   // Determine dependency
   std::unordered_set<TxnId> dep;
@@ -69,6 +84,7 @@ void JanusAcceptor::ProcessPreAccept(EnvelopePtr&& env) {
   auto pre_accept_env = NewEnvelope();
   auto pre_accept = pre_accept_env->mutable_response()->mutable_janus_pre_accept();
   pre_accept->set_txn_id(txn_id);
+  pre_accept->set_ok(true);
   for (auto it = dep.begin(); it != dep.end(); it++) {
     pre_accept->add_dep(*it);
   }
@@ -78,25 +94,44 @@ void JanusAcceptor::ProcessPreAccept(EnvelopePtr&& env) {
 
 void JanusAcceptor::ProcessAccept(EnvelopePtr&& env) {
   auto txn_id = env->request().janus_accept().txn_id();
+  auto ballot = env->request().janus_accept().ballot();
+
+  auto txn_info_it = txns_.find(txn_id);
+  if (txn_info_it == txns_.end() || txn_info_it->second.highest_ballot > ballot) {
+    auto accept_env = NewEnvelope();
+    auto accept = accept_env->mutable_response()->mutable_janus_accept();
+    accept->set_txn_id(txn_id);
+    accept->set_ok(false);
+    Send(*accept_env, env->from(), kForwarderChannel);
+    return;
+  }
 
   auto accept_env = NewEnvelope();
   auto accept = accept_env->mutable_response()->mutable_janus_accept();
   accept->set_txn_id(txn_id);
+  accept->set_ok(true);
 
-  auto txn_info_it = txns_.find(txn_id);
-  if (txn_info_it == txns_.end()) {
-    accept->set_ok(false);
-  } else {
-    CHECK(txn_info_it->second.phase == Phase::PRE_ACCEPT);
-    txn_info_it->second.phase = Phase::ACCEPT;
-    accept->set_ok(true);
-  }
+  txn_info_it->second.phase = Phase::ACCEPT;
 
   Send(*accept_env, env->from(), kForwarderChannel);
 }
 
 void JanusAcceptor::ProcessCommit(EnvelopePtr&& env) {
+  auto txn_id = env->request().janus_commit().txn_id();
 
+  auto txn_info_it = txns_.find(txn_id);
+  if (txn_info_it == txns_.end()) {
+    LOG(ERROR) << "Cannot find transaction " << txn_id << " to commit";
+    return;
+  }
+
+  env->mutable_request()
+      ->mutable_janus_commit()
+      ->set_allocated_txn(txn_info_it->second.txn);
+  
+  Send(move(env), kSchedulerChannel);
+
+  txns_.erase(txn_id);
 }
 
 }  // namespace slog

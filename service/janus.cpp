@@ -23,6 +23,9 @@ using slog::ConfigurationPtr;
 using slog::MakeRunnerFor;
 
 using std::make_shared;
+using std::pair;
+using std::unique_ptr;
+using std::vector;
 
 int main(int argc, char* argv[]) {
   slog::InitializeService(&argc, &argv);

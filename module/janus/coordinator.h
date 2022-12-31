@@ -17,30 +17,42 @@ namespace slog {
 
 using Dependency = std::unordered_set<TxnId>;
 
-class QuorumDeps;
-
-struct CoordinatorTxnInfo {
-  CoordinatorTxnInfo(int num_partitions) : phase(Phase::PRE_ACCEPT), sharded_deps(num_partitions) {}
-
-  Phase phase;
-  std::vector<std::optional<QuorumDeps>> sharded_deps;
-  std::vector<int> participants;
-  std::vector<MachineId> destinations;
+class Quorum {
+ public:
+  Quorum(int num_replicas);
+  void Inc();
+  bool is_done();
+ private:
+  const int num_replicas_;
+  int count_;
 };
 
 class QuorumDeps {
  public:
-  QuorumDeps(const Dependency& deps, int num_replicas);
-  void Add(const Dependency& deps);
+  QuorumDeps(int num_replicas);
+  void Add(const Dependency& dep);
   bool is_done();
   bool is_fast_quorum();
 
-  Dependency deps;
+  Dependency dep;
 
  private:
+  const int num_replicas_;
   bool is_fast_quorum_;
   int count_;
-  int num_replicas_;
+};
+
+struct CoordinatorTxnInfo {
+  CoordinatorTxnInfo(TxnId txn_id, int num_partitions) :
+      txn_id(txn_id), phase(Phase::PRE_ACCEPT), sharded_deps(num_partitions) {}
+
+  TxnId txn_id;
+  Phase phase;
+  std::vector<std::optional<QuorumDeps>> sharded_deps;
+  Dependency merged_dep;
+  std::vector<std::optional<Quorum>> quorums;
+  std::vector<int> participants;
+  std::vector<MachineId> destinations;
 };
 
 class JanusCoordinator : public NetworkedModule {
@@ -59,6 +71,7 @@ class JanusCoordinator : public NetworkedModule {
   void StartNewTxn(EnvelopePtr&& env);
   void PreAcceptTxn(EnvelopePtr&& env);
   void AcceptTxn(EnvelopePtr&& env);
+  void CommitTxn(CoordinatorTxnInfo& txn_info);
 
   const SharderPtr sharder_;
   std::unordered_map<TxnId, CoordinatorTxnInfo> txns_;
