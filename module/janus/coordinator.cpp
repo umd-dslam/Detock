@@ -12,37 +12,56 @@ using internal::Envelope;
 using internal::Request;
 using internal::Response;
 
-Quorum::Quorum(int num_replicas) : num_replicas_(num_replicas), count_(0) {}
-void Quorum::Inc() { count_++; }
-bool Quorum::is_done() { return count_ >= (num_replicas_ + 1) / 2; }
+class Quorum {
+ public:
+  Quorum(int num_replicas) : num_replicas_(num_replicas), count_(0) {}
 
-QuorumDeps::QuorumDeps(int num_replicas)
+  void Inc() { count_++; }
+
+  bool is_done() {  return count_ >= (num_replicas_ + 1) / 2; }
+
+ private:
+  const int num_replicas_;
+  int count_;
+};
+
+class QuorumDeps {
+ public:
+  QuorumDeps(int num_replicas)
     : num_replicas_(num_replicas), is_fast_quorum_(true), count_(0) {
-}
-
-void QuorumDeps::Add(const Dependency& dep) {
-  if (is_done()) {
-    return;
   }
-
-  if (!is_fast_quorum_ || (count_ > 0 && dep != this->dep)) {
-    is_fast_quorum_ = false;
-    this->dep.insert(dep.begin(), dep.end());
-  }
-
-  count_++;
-}
-
-bool QuorumDeps::is_done() {
-  if (is_fast_quorum_)
-    return count_ == num_replicas_;
   
-  return count_ >= (num_replicas_ + 1) / 2;
-}
+  void Add(const Dependency& dep) {
+    if (is_done()) {
+      return;
+    }
 
-bool QuorumDeps::is_fast_quorum() {
-  return is_fast_quorum_;
-}
+    if (!is_fast_quorum_ || (count_ > 0 && dep != this->dep)) {
+      is_fast_quorum_ = false;
+      this->dep.insert(dep.begin(), dep.end());
+    }
+
+    count_++;
+  }
+
+  bool is_done() {
+    if (is_fast_quorum_)
+      return count_ == num_replicas_;
+  
+    return count_ >= (num_replicas_ + 1) / 2;
+  }
+
+  bool is_fast_quorum() {
+    return is_fast_quorum_;
+  }
+
+  Dependency dep;
+
+ private:
+  const int num_replicas_;
+  bool is_fast_quorum_;
+  int count_;
+};
 
 /*
  * This module does not have anything to do with Forwarder. It just uses the Forwarder's stuff for convenience.

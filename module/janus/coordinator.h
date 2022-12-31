@@ -17,30 +17,8 @@ namespace slog {
 
 using Dependency = std::unordered_set<TxnId>;
 
-class Quorum {
- public:
-  Quorum(int num_replicas);
-  void Inc();
-  bool is_done();
- private:
-  const int num_replicas_;
-  int count_;
-};
-
-class QuorumDeps {
- public:
-  QuorumDeps(int num_replicas);
-  void Add(const Dependency& dep);
-  bool is_done();
-  bool is_fast_quorum();
-
-  Dependency dep;
-
- private:
-  const int num_replicas_;
-  bool is_fast_quorum_;
-  int count_;
-};
+class Quorum;
+class QuorumDeps;
 
 struct CoordinatorTxnInfo {
   CoordinatorTxnInfo(TxnId txn_id, int num_partitions) :
