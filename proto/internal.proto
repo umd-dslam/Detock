@@ -68,9 +68,9 @@ message Request {
         StatsRequest stats = 14;
         GraphLog graph_log = 15;
         /* Janus */
-        PreAcceptRequest janus_pre_accept = 16;
-        AcceptRequest janus_accept = 17;
-        CommitRequest janus_commit = 18;
+        JanusPreAcceptRequest janus_pre_accept = 16;
+        JanusAcceptRequest janus_accept = 17;
+        JanusCommitRequest janus_commit = 18;
     }
 }
 
@@ -168,16 +168,16 @@ message GraphLog {
     repeated GraphLogEntry entries = 1;
 }
 
-message PreAcceptRequest {
+message JanusPreAcceptRequest {
     Transaction txn = 1;
 }
 
-message AcceptRequest {
+message JanusAcceptRequest {
     uint64 txn_id = 1;
     repeated uint64 dep = 2;
 }
 
-message CommitRequest {
+message JanusCommitRequest {
     uint64 txn_id = 1;
     repeated uint64 dep = 2;
 }
@@ -197,9 +197,9 @@ message Response {
         PaxosCommitResponse paxos_commit = 4;
         StatsResponse stats = 6;
         /* Janus */
-        PreAcceptResponse janus_pre_accept = 7;
-        AcceptResponse janus_accept = 8;
-        CommitResponse janus_commit = 9;
+        JanusPreAcceptResponse janus_pre_accept = 7;
+        JanusAcceptResponse janus_accept = 8;
+        JanusCommitResponse janus_commit = 9;
     }
 }
 
@@ -236,16 +236,16 @@ message StatsResponse {
     bytes stats_json = 2;
 }
 
-message PreAcceptResponse {
+message JanusPreAcceptResponse {
     uint64 txn_id = 1;
     repeated uint64 dep = 2;
 }
 
-message AcceptResponse {
+message JanusAcceptResponse {
     uint64 txn_id = 1;
-    repeated uint64 dep = 2;
+    bool ok = 2;
 }
 
-message CommitResponse {
+message JanusCommitResponse {
     uint64 txn_id = 1;
 }

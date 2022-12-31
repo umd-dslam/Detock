@@ -10,35 +10,34 @@
 #include "common/types.h"
 #include "connection/broker.h"
 #include "module/base/networked_module.h"
+#include "module/janus/phase.h"
 #include "proto/transaction.pb.h"
 
 namespace slog {
-
-enum class Phase {
-  PRE_ACCEPT,
-  ACCEPT,
-  COMMIT
-};
 
 using Dependency = std::unordered_set<TxnId>;
 
 class QuorumDeps;
 
-struct TransactionState {
-  TransactionState() : phase(Phase::PRE_ACCEPT) {}
+struct CoordinatorTxnInfo {
+  CoordinatorTxnInfo(int num_partitions) : phase(Phase::PRE_ACCEPT), sharded_deps(num_partitions) {}
 
   Phase phase;
   std::vector<std::optional<QuorumDeps>> sharded_deps;
+  std::vector<int> participants;
+  std::vector<MachineId> destinations;
 };
 
 class QuorumDeps {
+ public:
   QuorumDeps(const Dependency& deps, int num_replicas);
   void Add(const Dependency& deps);
   bool is_done();
   bool is_fast_quorum();
 
+  Dependency deps;
+
  private:
-  Dependency deps_;
   bool is_fast_quorum_;
   int count_;
   int num_replicas_;
@@ -58,9 +57,11 @@ class JanusCoordinator : public NetworkedModule {
 
  private:
   void StartNewTxn(EnvelopePtr&& env);
+  void PreAcceptTxn(EnvelopePtr&& env);
+  void AcceptTxn(EnvelopePtr&& env);
 
   const SharderPtr sharder_;
-  std::unordered_map<TxnId, TransactionState> txns_;
+  std::unordered_map<TxnId, CoordinatorTxnInfo> txns_;
 };
 
 }  // namespace slog

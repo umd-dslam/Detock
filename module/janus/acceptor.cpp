@@ -31,6 +31,12 @@ void JanusAcceptor::OnInternalRequestReceived(EnvelopePtr&& env) {
     case Request::kJanusPreAccept:
       ProcessPreAccept(move(env));
       break;
+    case Request::kJanusAccept:
+      ProcessAccept(move(env));
+      break;
+    case Request::kJanusCommit:
+      ProcessCommit(move(env));
+      break;
     default:
       LOG(ERROR) << "Unexpected request type received: \"" << CASE_NAME(env->request().type_case(), Request) << "\"";
   }
@@ -41,10 +47,11 @@ void JanusAcceptor::ProcessPreAccept(EnvelopePtr&& env) {
   auto txn = env->mutable_request()->mutable_janus_pre_accept()->release_txn();
   auto txn_id = txn->internal().id();
 
-  auto resp_env = NewEnvelope();
-  auto pre_accept = resp_env->mutable_response()->mutable_janus_pre_accept();
-  pre_accept->set_txn_id(txn_id);
+  // Remember the transaction
+  auto [_, inserted] = txns_.insert({txn_id, AcceptorTxnInfo(txn)});
+  CHECK(inserted);
 
+  // Determine dependency
   std::unordered_set<TxnId> dep;
   for (auto it = txn->mutable_keys()->begin(); it != txn->mutable_keys()->end(); it++) {
     if (sharder_->compute_partition(it->key()) == local_partition) {
@@ -58,12 +65,38 @@ void JanusAcceptor::ProcessPreAccept(EnvelopePtr&& env) {
     }
   }
 
+  // Construct pre-accept response
+  auto pre_accept_env = NewEnvelope();
+  auto pre_accept = pre_accept_env->mutable_response()->mutable_janus_pre_accept();
+  pre_accept->set_txn_id(txn_id);
   for (auto it = dep.begin(); it != dep.end(); it++) {
     pre_accept->add_dep(*it);
   }
 
-  Send(*resp_env, env->from(), kForwarderChannel);
+  Send(*pre_accept_env, env->from(), kForwarderChannel);
 }
 
+void JanusAcceptor::ProcessAccept(EnvelopePtr&& env) {
+  auto txn_id = env->request().janus_accept().txn_id();
+
+  auto accept_env = NewEnvelope();
+  auto accept = accept_env->mutable_response()->mutable_janus_accept();
+  accept->set_txn_id(txn_id);
+
+  auto txn_info_it = txns_.find(txn_id);
+  if (txn_info_it == txns_.end()) {
+    accept->set_ok(false);
+  } else {
+    CHECK(txn_info_it->second.phase == Phase::PRE_ACCEPT);
+    txn_info_it->second.phase = Phase::ACCEPT;
+    accept->set_ok(true);
+  }
+
+  Send(*accept_env, env->from(), kForwarderChannel);
+}
+
+void JanusAcceptor::ProcessCommit(EnvelopePtr&& env) {
+
+}
 
 }  // namespace slog

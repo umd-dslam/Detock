@@ -8,9 +8,17 @@
 #include "common/types.h"
 #include "connection/broker.h"
 #include "module/base/networked_module.h"
+#include "module/janus/phase.h"
 #include "proto/transaction.pb.h"
 
 namespace slog {
+
+struct AcceptorTxnInfo {
+  AcceptorTxnInfo(Transaction* txn) : txn(txn), phase(Phase::PRE_ACCEPT) {}
+
+  Transaction* txn;
+  Phase phase;
+};
 
 class JanusAcceptor : public NetworkedModule {
  public:
@@ -25,8 +33,11 @@ class JanusAcceptor : public NetworkedModule {
 
  private:
   void ProcessPreAccept(EnvelopePtr&& env);
+  void ProcessAccept(EnvelopePtr&& env);
+  void ProcessCommit(EnvelopePtr&& env);
 
   const SharderPtr sharder_;
+  std::unordered_map<TxnId, AcceptorTxnInfo> txns_;
   std::unordered_map<Key, TxnId> latest_writing_txns_;
 };
 
