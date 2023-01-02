@@ -25,6 +25,12 @@ class JanusAcceptor : public NetworkedModule {
   void OnInternalRequestReceived(EnvelopePtr&& env) final;
 
  private:
+  void ProcessPreAccept(EnvelopePtr&& env);
+  void ProcessAccept(EnvelopePtr&& env);
+  void ProcessCommit(EnvelopePtr&& env);
+
+  const SharderPtr sharder_;
+  
   struct AcceptorTxnInfo {
     AcceptorTxnInfo(Transaction* txn) : 
         txn(txn), phase(Phase::PRE_ACCEPT), highest_ballot(0) {}
@@ -33,14 +39,10 @@ class JanusAcceptor : public NetworkedModule {
     Phase phase;
     int highest_ballot;
   };
-
-  void ProcessPreAccept(EnvelopePtr&& env);
-  void ProcessAccept(EnvelopePtr&& env);
-  void ProcessCommit(EnvelopePtr&& env);
-
-  const SharderPtr sharder_;
   std::unordered_map<TxnId, AcceptorTxnInfo> txns_;
-  std::unordered_map<Key, TxnId> latest_writing_txns_;
+
+  using TxnIdAndPartitionsBitmap = std::pair<TxnId, uint64_t>;
+  std::unordered_map<Key, TxnIdAndPartitionsBitmap> latest_writing_txns_;
 };
 
 }  // namespace slog

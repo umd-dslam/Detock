@@ -169,6 +169,12 @@ message GraphLog {
     repeated GraphLogEntry entries = 1;
 }
 
+message JanusDependency {
+    uint64 txn_id = 1;
+    uint32 target_partition = 2;
+    uint64 participants_bitmap = 3;
+}
+
 message JanusPreAcceptRequest {
     Transaction txn = 1;
     int32 ballot = 2;
@@ -176,13 +182,13 @@ message JanusPreAcceptRequest {
 
 message JanusAcceptRequest {
     uint64 txn_id = 1;
-    repeated uint64 dep = 2;
+    repeated JanusDependency deps = 2;
     int32 ballot = 3;
 }
 
 message JanusCommit {
     uint64 txn_id = 1;
-    repeated uint64 dep = 2;
+    repeated JanusDependency deps = 2;
     Transaction txn = 3;
 }
 
@@ -246,7 +252,7 @@ message StatsResponse {
 message JanusPreAcceptResponse {
     uint64 txn_id = 1;
     bool ok = 2;
-    repeated uint64 dep = 3;
+    repeated JanusDependency deps = 3;
 }
 
 message JanusAcceptResponse {
@@ -257,5 +263,5 @@ message JanusAcceptResponse {
 message JanusInquireResponse {
     uint64 txn_id = 1;
     bool executed = 2;
-    repeated uint64 dep = 3;
+    repeated JanusDependency deps = 3;
 }

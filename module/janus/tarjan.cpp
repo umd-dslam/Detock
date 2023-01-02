@@ -6,7 +6,7 @@ using std::vector;
 using std::unordered_set;
 
 namespace slog {
-
+// TODO reset this 
 TarjanSCCsFinder::TarjanSCCsFinder() : id_counter_(0) {}
 
 TarjanResult TarjanSCCsFinder::FindSCCs(Graph& graph, Vertex& v, TxnHorizon& execution_horizon) {
@@ -16,12 +16,12 @@ TarjanResult TarjanSCCsFinder::FindSCCs(Graph& graph, Vertex& v, TxnHorizon& exe
   v.on_stack = true;
   stack_.push_back(v.txn_id);
 
-  for (auto next : v.dep) {
-    if (next == v.txn_id) {
+  for (auto next : v.deps) {
+    if (next.txn_id() == v.txn_id) {
       continue;
     }
-    if (auto next_v_it = graph.find(next); next_v_it == graph.end()) {
-      missing_vertices_.insert(next);
+    if (auto next_v_it = graph.find(next.txn_id()); next_v_it == graph.end()) {
+      missing_vertices_.insert(next.txn_id());
     } else {
       auto& next_v = next_v_it->second;
       if (next_v.txn_id == 0) {

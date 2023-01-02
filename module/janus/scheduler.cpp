@@ -104,8 +104,8 @@ void JanusScheduler::ProcessTransaction(EnvelopePtr&& env) {
   auto [vertex_it, inserted] = graph_.emplace(txn_id, txn_id);
   CHECK(inserted);
 
-  std::copy(commit->dep().begin(), commit->dep().end(),
-      std::back_inserter(vertex_it->second.dep));
+  std::copy(commit->deps().begin(), commit->deps().end(),
+      std::back_inserter(vertex_it->second.deps));
   
   auto result = sccs_finder_.FindSCCs(graph_, vertex_it->second, execution_horizon_);
   switch (result) {

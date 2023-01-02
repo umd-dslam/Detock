@@ -31,14 +31,14 @@ class QuorumDeps {
     : num_replicas_(num_replicas), is_fast_quorum_(true), count_(0) {
   }
   
-  void Add(const Dependency& dep) {
+  void Add(const Dependencies& deps) {
     if (is_done()) {
       return;
     }
 
-    if (!is_fast_quorum_ || (count_ > 0 && dep != this->dep)) {
+    if (!is_fast_quorum_ || (count_ > 0 && deps != this->deps)) {
       is_fast_quorum_ = false;
-      this->dep.insert(dep.begin(), dep.end());
+      this->deps.insert(deps.begin(), deps.end());
     }
 
     count_++;
@@ -55,7 +55,7 @@ class QuorumDeps {
     return is_fast_quorum_;
   }
 
-  Dependency dep;
+  Dependencies deps;
 
  private:
   const int num_replicas_;
@@ -158,8 +158,11 @@ void JanusCoordinator::PreAcceptTxn(EnvelopePtr&& env) {
   }
 
   // Add the dependency to the quorum
-  Dependency dep(pre_accept.dep().begin(), pre_accept.dep().end());
-  quorum_deps.value().Add(dep);
+  Dependencies deps;
+  for (auto& dep : pre_accept.deps()) {
+    deps.emplace(dep.txn_id(), dep.participants_bitmap());
+  }
+  quorum_deps.value().Add(deps);
 
   // See if we get enough responses for each participant
   bool done = true;
@@ -176,15 +179,6 @@ void JanusCoordinator::PreAcceptTxn(EnvelopePtr&& env) {
     return;
   }
 
-  info_it->second.merged_dep.clear();
-  // Union the dependencies of all participants
-  for (int p : info_it->second.participants) {
-    auto& quorum_deps = info_it->second.sharded_deps[p];
-    CHECK(quorum_deps.has_value());
-    info_it->second.merged_dep.insert(
-        quorum_deps.value().dep.begin(), quorum_deps.value().dep.end());
-  }
-
   // Fast path
   if (quorum_deps.value().is_fast_quorum()) {
     CommitTxn(info_it->second);
@@ -196,8 +190,15 @@ void JanusCoordinator::PreAcceptTxn(EnvelopePtr&& env) {
     auto accept = accept_env->mutable_request()->mutable_janus_accept();
     accept->set_txn_id(txn_id);
     accept->set_ballot(0);
-    for (auto it = dep.begin(); it != dep.end(); it++) {
-      accept->add_dep(*it);
+    for (auto p = 0U; p < sharded_deps.size(); p++) {
+      if (!sharded_deps[p].has_value()) 
+        continue;
+      for (auto& dep : sharded_deps[p].value().deps) {
+        auto janus_dep = accept->add_deps();
+        janus_dep->set_txn_id(dep.first);
+        janus_dep->set_participants_bitmap(dep.second);
+        janus_dep->set_target_partition(p);
+      }
     }
     Send(*accept_env, info_it->second.destinations, kSequencerChannel);
 
@@ -247,11 +248,19 @@ void JanusCoordinator::AcceptTxn(EnvelopePtr&& env) {
 }
 
 void JanusCoordinator::CommitTxn(CoordinatorTxnInfo& txn_info) {
+  auto& sharded_deps = txn_info.sharded_deps;
   auto commit_env = NewEnvelope();
   auto commit = commit_env->mutable_request()->mutable_janus_commit();
   commit->set_txn_id(txn_info.txn_id);
-  for (auto it = txn_info.merged_dep.begin(); it != txn_info.merged_dep.end(); it++) {
-    commit->add_dep(*it);
+  for (auto p = 0U; p < sharded_deps.size(); p++) {
+    if (!sharded_deps[p].has_value()) 
+      continue;
+    for (auto& dep : sharded_deps[p].value().deps) {
+      auto janus_dep = commit->add_deps();
+      janus_dep->set_txn_id(dep.first);
+      janus_dep->set_participants_bitmap(dep.second);
+      janus_dep->set_target_partition(p);
+    }
   }
   Send(*commit_env, txn_info.destinations, kSequencerChannel);
 

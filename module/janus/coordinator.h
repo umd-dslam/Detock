@@ -1,7 +1,7 @@
 #pragma once
 
+#include <set>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include "common/configuration.h"
@@ -11,14 +11,15 @@
 #include "connection/broker.h"
 #include "module/base/networked_module.h"
 #include "module/janus/phase.h"
+#include "proto/internal.pb.h"
 #include "proto/transaction.pb.h"
 
 namespace slog {
 
-using Dependency = std::unordered_set<TxnId>;
-
 class Quorum;
 class QuorumDeps;
+
+using Dependencies = std::set<std::pair<TxnId, uint64_t>>;
 
 class JanusCoordinator : public NetworkedModule {
  public:
@@ -40,7 +41,6 @@ class JanusCoordinator : public NetworkedModule {
     TxnId txn_id;
     Phase phase;
     std::vector<std::optional<QuorumDeps>> sharded_deps;
-    Dependency merged_dep;
     std::vector<std::optional<Quorum>> quorums;
     std::vector<int> participants;
     std::vector<MachineId> destinations;

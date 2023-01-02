@@ -5,13 +5,14 @@
 
 #include "common/types.h"
 #include "module/janus/horizon.h"
+#include "proto/internal.pb.h"
 
 namespace slog {
 
 struct Vertex {
   explicit Vertex(TxnId txn_id) : txn_id(txn_id), disc(0), low(0), on_stack(false) {}
   const TxnId txn_id;
-  std::vector<TxnId> dep;
+  std::vector<internal::JanusDependency> deps;
   int disc;
   int low;
   bool on_stack;
