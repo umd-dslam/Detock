@@ -71,6 +71,7 @@ message Request {
         JanusPreAcceptRequest janus_pre_accept = 16;
         JanusAcceptRequest janus_accept = 17;
         JanusCommit janus_commit = 18;
+        JanusInquireRequest janus_inquire = 19;
     }
 }
 
@@ -185,6 +186,10 @@ message JanusCommit {
     Transaction txn = 3;
 }
 
+message JanusInquireRequest {
+    uint64 txn_id = 1;
+}
+
 /***********************************************
                     RESPONSES
 ***********************************************/
@@ -201,6 +206,7 @@ message Response {
         /* Janus */
         JanusPreAcceptResponse janus_pre_accept = 7;
         JanusAcceptResponse janus_accept = 8;
+        JanusInquireResponse janus_inquire = 9;
     }
 }
 
@@ -246,4 +252,10 @@ message JanusPreAcceptResponse {
 message JanusAcceptResponse {
     uint64 txn_id = 1;
     bool ok = 2;
+}
+
+message JanusInquireResponse {
+    uint64 txn_id = 1;
+    bool executed = 2;
+    repeated uint64 dep = 3;
 }
