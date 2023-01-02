@@ -13,15 +13,6 @@
 
 namespace slog {
 
-struct AcceptorTxnInfo {
-  AcceptorTxnInfo(Transaction* txn) : 
-      txn(txn), phase(Phase::PRE_ACCEPT), highest_ballot(0) {}
-
-  Transaction* txn;
-  Phase phase;
-  int highest_ballot;
-};
-
 class JanusAcceptor : public NetworkedModule {
  public:
   JanusAcceptor(const std::shared_ptr<zmq::context_t>& context, const ConfigurationPtr& config,
@@ -34,6 +25,15 @@ class JanusAcceptor : public NetworkedModule {
   void OnInternalRequestReceived(EnvelopePtr&& env) final;
 
  private:
+  struct AcceptorTxnInfo {
+    AcceptorTxnInfo(Transaction* txn) : 
+        txn(txn), phase(Phase::PRE_ACCEPT), highest_ballot(0) {}
+
+    Transaction* txn;
+    Phase phase;
+    int highest_ballot;
+  };
+
   void ProcessPreAccept(EnvelopePtr&& env);
   void ProcessAccept(EnvelopePtr&& env);
   void ProcessCommit(EnvelopePtr&& env);

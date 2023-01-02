@@ -20,19 +20,6 @@ using Dependency = std::unordered_set<TxnId>;
 class Quorum;
 class QuorumDeps;
 
-struct CoordinatorTxnInfo {
-  CoordinatorTxnInfo(TxnId txn_id, int num_partitions) :
-      txn_id(txn_id), phase(Phase::PRE_ACCEPT), sharded_deps(num_partitions) {}
-
-  TxnId txn_id;
-  Phase phase;
-  std::vector<std::optional<QuorumDeps>> sharded_deps;
-  Dependency merged_dep;
-  std::vector<std::optional<Quorum>> quorums;
-  std::vector<int> participants;
-  std::vector<MachineId> destinations;
-};
-
 class JanusCoordinator : public NetworkedModule {
  public:
   JanusCoordinator(const std::shared_ptr<zmq::context_t>& context, const ConfigurationPtr& config,
@@ -46,6 +33,19 @@ class JanusCoordinator : public NetworkedModule {
   void OnInternalResponseReceived(EnvelopePtr&& env) final;
 
  private:
+  struct CoordinatorTxnInfo {
+    CoordinatorTxnInfo(TxnId txn_id, int num_partitions) :
+        txn_id(txn_id), phase(Phase::PRE_ACCEPT), sharded_deps(num_partitions) {}
+
+    TxnId txn_id;
+    Phase phase;
+    std::vector<std::optional<QuorumDeps>> sharded_deps;
+    Dependency merged_dep;
+    std::vector<std::optional<Quorum>> quorums;
+    std::vector<int> participants;
+    std::vector<MachineId> destinations;
+  };
+
   void StartNewTxn(EnvelopePtr&& env);
   void PreAcceptTxn(EnvelopePtr&& env);
   void AcceptTxn(EnvelopePtr&& env);
