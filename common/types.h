@@ -32,6 +32,10 @@ inline MachineId MakeMachineId(RegionId region, ReplicaId replica, PartitionId p
 #define GET_REPLICA_ID(id) (((id) >> kPartitionIdBits) & ((1 << kReplicaIdBits) - 1))
 #define GET_PARTITION_ID(id) ((id) & ((1 << kPartitionIdBits) - 1))
 
+#define TXN_ID(machine_id, counter) ((counter << kMachineIdBits) | machine_id)
+#define TXN_ID_GET_MACHINE_ID(txn_id) (txn_id & ((1LL << kMachineIdBits) - 1))
+#define TXN_ID_GET_COUNTER(txn_id) (txn_id >> kMachineIdBits)
+
 #define MACHINE_ID_STR(id)                                                                    \
   ("[" + std::to_string(GET_REGION_ID(id)) + "," + std::to_string(GET_REPLICA_ID(id)) + "," + \
    std::to_string(GET_PARTITION_ID(id)) + "]")

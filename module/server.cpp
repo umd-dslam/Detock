@@ -320,7 +320,7 @@ void Server::SendResponseToClient(TxnId txn_id, api::Response&& res) {
 
 TxnId Server::NextTxnId() {
   txn_id_counter_++;
-  return (txn_id_counter_ << kMachineIdBits) | config()->local_machine_id();
+  return TXN_ID(config()->local_machine_id(), txn_id_counter_);
 }
 
 }  // namespace slog
