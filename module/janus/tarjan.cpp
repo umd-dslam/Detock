@@ -2,9 +2,9 @@
 
 #include <glog/logging.h>
 
-using std::vector;
 using std::unordered_map;
 using std::unordered_set;
+using std::vector;
 
 namespace janus {
 
@@ -28,7 +28,7 @@ void TarjanSCCsFinder::FindSCCs(Vertex& v, TxnHorizon& execution_horizon) {
       auto& next_v = next_v_it->second;
       if (next_v.txn_id == 0) {
         FindSCCs(next_v, execution_horizon);
-        
+
         if (!missing_deps_.empty()) {
           return;
         }
@@ -72,7 +72,7 @@ TarjanResult TarjanSCCsFinder::Finalize() {
 
   while (!stack_.empty()) {
     auto top = stack_.back();
-    
+
     auto it = graph_.find(top);
     CHECK(it != graph_.end());
 

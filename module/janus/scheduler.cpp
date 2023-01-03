@@ -14,20 +14,20 @@ namespace janus {
 using std::make_shared;
 using std::move;
 using std::shared_ptr;
-using std::chrono::milliseconds;
 using std::vector;
+using std::chrono::milliseconds;
 
-using slog::internal::Request;
-using slog::internal::Response;
-using slog::MakeMachineId;
-using slog::MakeRunnerFor;
 using slog::kMachineIdBits;
 using slog::kPartitionIdBits;
 using slog::kRegionIdBits;
 using slog::kReplicaIdBits;
 using slog::kSchedulerChannel;
 using slog::kSchedWorkerAddress;
+using slog::MakeMachineId;
+using slog::MakeRunnerFor;
 using slog::Worker;
+using slog::internal::Request;
+using slog::internal::Response;
 
 PendingIndex::PendingIndex(int local_partition) : local_partition_(local_partition) {}
 
@@ -55,8 +55,8 @@ std::optional<std::unordered_set<TxnId>> PendingIndex::Remove(TxnId ancestor) {
   return descendants;
 }
 
-JanusScheduler::JanusScheduler(const shared_ptr<Broker>& broker, const shared_ptr<Storage>& storage,
-                               const MetricsRepositoryManagerPtr& metrics_manager, std::chrono::milliseconds poll_timeout)
+Scheduler::Scheduler(const shared_ptr<Broker>& broker, const shared_ptr<Storage>& storage,
+                     const MetricsRepositoryManagerPtr& metrics_manager, std::chrono::milliseconds poll_timeout)
     : NetworkedModule(broker, {kSchedulerChannel, false /* is_raw */}, metrics_manager, poll_timeout),
       sccs_finder_(graph_),
       pending_txns_(config()->local_partition()),
@@ -66,7 +66,7 @@ JanusScheduler::JanusScheduler(const shared_ptr<Broker>& broker, const shared_pt
   }
 }
 
-void JanusScheduler::Initialize() {
+void Scheduler::Initialize() {
   auto cpus = config()->cpu_pinnings(slog::ModuleId::WORKER);
   size_t i = 0;
   for (auto& worker : workers_) {
@@ -87,7 +87,7 @@ void JanusScheduler::Initialize() {
   }
 }
 
-void JanusScheduler::OnInternalRequestReceived(EnvelopePtr&& env) {
+void Scheduler::OnInternalRequestReceived(EnvelopePtr&& env) {
   switch (env->request().type_case()) {
     case Request::kJanusCommit:
       ProcessTransaction(move(env));
@@ -101,7 +101,7 @@ void JanusScheduler::OnInternalRequestReceived(EnvelopePtr&& env) {
   }
 }
 
-void JanusScheduler::OnInternalResponseReceived(EnvelopePtr&& env) {
+void Scheduler::OnInternalResponseReceived(EnvelopePtr&& env) {
   if (env->response().type_case() != Response::kJanusInquire) {
     LOG(ERROR) << "Unexpected response type received: \"" << CASE_NAME(env->response().type_case(), Response) << "\"";
   }
@@ -117,7 +117,7 @@ void JanusScheduler::OnInternalResponseReceived(EnvelopePtr&& env) {
 }
 
 // Handle responses from the workers
-bool JanusScheduler::OnCustomSocket() {
+bool Scheduler::OnCustomSocket() {
   bool has_msg = false;
   bool stop = false;
   while (!stop) {
@@ -136,11 +136,11 @@ bool JanusScheduler::OnCustomSocket() {
   return has_msg;
 }
 
-void JanusScheduler::ProcessTransaction(EnvelopePtr&& env) {
+void Scheduler::ProcessTransaction(EnvelopePtr&& env) {
   auto commit = env->mutable_request()->mutable_janus_commit();
   auto txn = commit->release_txn();
   auto txn_id = txn->internal().id();
-  
+
   txns_.emplace(txn_id, txn);
 
   vector<JanusDependency> deps(commit->deps().begin(), commit->deps().end());
@@ -148,7 +148,7 @@ void JanusScheduler::ProcessTransaction(EnvelopePtr&& env) {
   CHECK(inserted);
 
   CheckPendingInquiry(txn_id);
-  
+
   sccs_finder_.FindSCCs(vertex_it->second, execution_horizon_);
   auto result = sccs_finder_.Finalize();
 
@@ -157,7 +157,7 @@ void JanusScheduler::ProcessTransaction(EnvelopePtr&& env) {
   CheckPendingTxns(txn_id);
 }
 
-void JanusScheduler::InquireMissingDependencies(TxnId txn_id, const vector<JanusDependency>& missing_deps) {
+void Scheduler::InquireMissingDependencies(TxnId txn_id, const vector<JanusDependency>& missing_deps) {
   auto local_region = config()->local_region();
   auto local_replica = config()->local_replica();
   auto env = NewEnvelope();
@@ -170,7 +170,7 @@ void JanusScheduler::InquireMissingDependencies(TxnId txn_id, const vector<Janus
   }
 }
 
-bool JanusScheduler::ProcessInquiry(EnvelopePtr&& env) {
+bool Scheduler::ProcessInquiry(EnvelopePtr&& env) {
   auto txn_id = env->request().janus_inquire().txn_id();
   auto resp_env = NewEnvelope();
   auto resp_inquiry = resp_env->mutable_response()->mutable_janus_inquire();
@@ -194,7 +194,7 @@ bool JanusScheduler::ProcessInquiry(EnvelopePtr&& env) {
   return true;
 }
 
-void JanusScheduler::DispatchSCCs(const std::vector<SCC>& sccs) {
+void Scheduler::DispatchSCCs(const std::vector<SCC>& sccs) {
   for (const SCC& scc : sccs) {
     for (auto txn_id : scc) {
       auto txn_it = txns_.find(txn_id);
@@ -213,14 +213,14 @@ void JanusScheduler::DispatchSCCs(const std::vector<SCC>& sccs) {
   }
 }
 
-void JanusScheduler::CheckPendingInquiry(TxnId txn_id) {
+void Scheduler::CheckPendingInquiry(TxnId txn_id) {
   if (auto it = pending_inquiries_.find(txn_id); it != pending_inquiries_.end()) {
     CHECK(ProcessInquiry(move(it->second)));
     pending_inquiries_.erase(it);
   }
 }
 
-void JanusScheduler::CheckPendingTxns(TxnId txn_id) {
+void Scheduler::CheckPendingTxns(TxnId txn_id) {
   std::unordered_set<TxnId> visited;
 
   auto pending = pending_txns_.Remove(txn_id);

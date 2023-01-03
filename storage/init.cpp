@@ -1,47 +1,44 @@
+#include "storage/init.h"
+
 #include <fcntl.h>
+#include <glog/logging.h>
+
 #include <thread>
 #include <vector>
-
-#include <glog/logging.h>
 
 #include "common/offline_data_reader.h"
 #include "common/sharder.h"
 #include "execution/tpcc/load_tables.h"
 #include "proto/offline_data.pb.h"
-#include "storage/init.h"
 
 namespace slog {
 
 using std::make_shared;
-using std::string;
 using std::shared_ptr;
+using std::string;
 
 const int kDataGenThreads = 3;
 
-static void GenerateSimpleData(shared_ptr<Storage> storage,
-                               const shared_ptr<MetadataInitializer>& metadata_initializer,
+static void GenerateSimpleData(shared_ptr<Storage> storage, const shared_ptr<MetadataInitializer>& metadata_initializer,
                                const ConfigurationPtr& config);
 static void GenerateSimpleData2(shared_ptr<Storage> storage,
                                 const shared_ptr<MetadataInitializer>& metadata_initializer,
                                 const ConfigurationPtr& config);
-static void GenerateTPCCData(shared_ptr<Storage> storage,
-                             const shared_ptr<MetadataInitializer>& metadata_initializer,
+static void GenerateTPCCData(shared_ptr<Storage> storage, const shared_ptr<MetadataInitializer>& metadata_initializer,
                              const ConfigurationPtr& config);
 static void LoadData(Storage& storage, const ConfigurationPtr& config, const string& data_dir);
 
-std::pair<shared_ptr<MemOnlyStorage>, shared_ptr<MetadataInitializer>>
-MakeStorage(const ConfigurationPtr& config, const string& data_dir) {
+std::pair<shared_ptr<MemOnlyStorage>, shared_ptr<MetadataInitializer>> MakeStorage(const ConfigurationPtr& config,
+                                                                                   const string& data_dir) {
   auto storage = std::make_shared<MemOnlyStorage>();
   shared_ptr<MetadataInitializer> metadata_initializer;
   switch (config->proto_config().partitioning_case()) {
     case internal::Configuration::kSimplePartitioning:
-      metadata_initializer =
-          make_shared<SimpleMetadataInitializer>(config->num_regions(), config->num_partitions());
+      metadata_initializer = make_shared<SimpleMetadataInitializer>(config->num_regions(), config->num_partitions());
       GenerateSimpleData(storage, metadata_initializer, config);
       break;
     case internal::Configuration::kSimplePartitioning2:
-      metadata_initializer =
-          make_shared<SimpleMetadataInitializer2>(config->num_regions(), config->num_partitions());
+      metadata_initializer = make_shared<SimpleMetadataInitializer2>(config->num_regions(), config->num_partitions());
       GenerateSimpleData2(storage, metadata_initializer, config);
       break;
     case internal::Configuration::kTpccPartitioning:
@@ -98,8 +95,7 @@ void LoadData(Storage& storage, const ConfigurationPtr& config, const string& da
   close(fd);
 }
 
-void GenerateSimpleData(shared_ptr<Storage> storage,
-                        const shared_ptr<MetadataInitializer>& metadata_initializer,
+void GenerateSimpleData(shared_ptr<Storage> storage, const shared_ptr<MetadataInitializer>& metadata_initializer,
                         const ConfigurationPtr& config) {
   auto simple_partitioning = config->proto_config().simple_partitioning();
   auto num_records = simple_partitioning.num_records();
@@ -143,8 +139,7 @@ void GenerateSimpleData(shared_ptr<Storage> storage,
   }
 }
 
-void GenerateSimpleData2(shared_ptr<Storage> storage,
-                         const shared_ptr<MetadataInitializer>& metadata_initializer,
+void GenerateSimpleData2(shared_ptr<Storage> storage, const shared_ptr<MetadataInitializer>& metadata_initializer,
                          const ConfigurationPtr& config) {
   auto simple_partitioning = config->proto_config().simple_partitioning2();
   auto num_records = simple_partitioning.num_records();
@@ -187,13 +182,12 @@ void GenerateSimpleData2(shared_ptr<Storage> storage,
   }
 }
 
-void GenerateTPCCData(shared_ptr<Storage> storage,
-                      const shared_ptr<MetadataInitializer>& metadata_initializer,
+void GenerateTPCCData(shared_ptr<Storage> storage, const shared_ptr<MetadataInitializer>& metadata_initializer,
                       const ConfigurationPtr& config) {
   auto tpcc_partitioning = config->proto_config().tpcc_partitioning();
   auto storage_adapter = std::make_shared<tpcc::KVStorageAdapter>(storage, metadata_initializer);
-  tpcc::LoadTables(storage_adapter, tpcc_partitioning.warehouses(), config->num_regions(),
-                   config->num_partitions(), config->local_partition(), kDataGenThreads);
+  tpcc::LoadTables(storage_adapter, tpcc_partitioning.warehouses(), config->num_regions(), config->num_partitions(),
+                   config->local_partition(), kDataGenThreads);
 }
 
 }  // namespace slog

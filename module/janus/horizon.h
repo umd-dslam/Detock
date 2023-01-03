@@ -4,8 +4,8 @@
 
 namespace janus {
 
-using slog::TxnId;
 using slog::kMachineIdBits;
+using slog::TxnId;
 
 class TxnHorizon {
  public:
@@ -26,6 +26,7 @@ class TxnHorizon {
     // All transactions <= this are executed
     TxnId horizon = 0;
     std::unordered_set<TxnId> buffered;
+
    public:
     void Add(TxnId counter) {
       if (counter <= horizon) {
@@ -36,7 +37,7 @@ class TxnHorizon {
           auto it = buffered.find(horizon + 1);
           if (it == buffered.end()) {
             break;
-          } 
+          }
           buffered.erase(it);
           horizon++;
         }

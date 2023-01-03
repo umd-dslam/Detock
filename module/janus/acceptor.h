@@ -19,13 +19,13 @@ using slog::MetricsRepositoryManagerPtr;
 using slog::Transaction;
 using slog::TxnId;
 
-class JanusAcceptor : public slog::NetworkedModule {
+class Acceptor : public slog::NetworkedModule {
  public:
-  JanusAcceptor(const std::shared_ptr<zmq::context_t>& context, const ConfigurationPtr& config,
-                const MetricsRepositoryManagerPtr& metrics_manager,
-                std::chrono::milliseconds poll_timeout_ms = slog::kModuleTimeout);
+  Acceptor(const std::shared_ptr<zmq::context_t>& context, const ConfigurationPtr& config,
+           const MetricsRepositoryManagerPtr& metrics_manager,
+           std::chrono::milliseconds poll_timeout_ms = slog::kModuleTimeout);
 
-  std::string name() const override { return "JanusAcceptor"; }
+  std::string name() const override { return "Acceptor"; }
 
  protected:
   void OnInternalRequestReceived(EnvelopePtr&& env) final;
@@ -36,10 +36,9 @@ class JanusAcceptor : public slog::NetworkedModule {
   void ProcessCommit(EnvelopePtr&& env);
 
   const slog::SharderPtr sharder_;
-  
+
   struct AcceptorTxnInfo {
-    AcceptorTxnInfo(Transaction* txn) : 
-        txn(txn), phase(Phase::PRE_ACCEPT), highest_ballot(0) {}
+    AcceptorTxnInfo(Transaction* txn) : txn(txn), phase(Phase::PRE_ACCEPT), highest_ballot(0) {}
 
     Transaction* txn;
     Phase phase;

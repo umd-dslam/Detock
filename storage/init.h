@@ -6,7 +6,7 @@
 
 namespace slog {
 
-std::pair<std::shared_ptr<MemOnlyStorage>, std::shared_ptr<MetadataInitializer>>
-MakeStorage(const ConfigurationPtr& config, const std::string& data_dir);
+std::pair<std::shared_ptr<MemOnlyStorage>, std::shared_ptr<MetadataInitializer>> MakeStorage(
+    const ConfigurationPtr& config, const std::string& data_dir);
 
 }  // namespace slog

@@ -1,6 +1,7 @@
 #include "module/janus/acceptor.h"
 
 #include <glog/logging.h>
+
 #include <unordered_map>
 
 #include "common/clock.h"
@@ -10,25 +11,22 @@
 
 namespace janus {
 
+using slog::kForwarderChannel;
+using slog::kSchedulerChannel;
 using slog::internal::Envelope;
 using slog::internal::Request;
 using slog::internal::Response;
-using slog::kForwarderChannel;
-using slog::kSchedulerChannel;
 
 /*
  * This module does not have anything to do with Sequencer. It just uses the Sequencer's stuff for convenience.
  */
-JanusAcceptor::JanusAcceptor(const std::shared_ptr<zmq::context_t>& context,
-                             const ConfigurationPtr& config,
-                             const MetricsRepositoryManagerPtr& metrics_manager,
-                             std::chrono::milliseconds poll_timeout)
-    : NetworkedModule(context, config, config->sequencer_port(), slog::kSequencerChannel, metrics_manager,
-                      poll_timeout, true /* is_long_sender */),
-      sharder_(slog::Sharder::MakeSharder(config)) {
-}
+Acceptor::Acceptor(const std::shared_ptr<zmq::context_t>& context, const ConfigurationPtr& config,
+                   const MetricsRepositoryManagerPtr& metrics_manager, std::chrono::milliseconds poll_timeout)
+    : NetworkedModule(context, config, config->sequencer_port(), slog::kSequencerChannel, metrics_manager, poll_timeout,
+                      true /* is_long_sender */),
+      sharder_(slog::Sharder::MakeSharder(config)) {}
 
-void JanusAcceptor::OnInternalRequestReceived(EnvelopePtr&& env) {
+void Acceptor::OnInternalRequestReceived(EnvelopePtr&& env) {
   switch (env->request().type_case()) {
     case Request::kJanusPreAccept:
       ProcessPreAccept(move(env));
@@ -44,7 +42,7 @@ void JanusAcceptor::OnInternalRequestReceived(EnvelopePtr&& env) {
   }
 }
 
-void JanusAcceptor::ProcessPreAccept(EnvelopePtr&& env) {
+void Acceptor::ProcessPreAccept(EnvelopePtr&& env) {
   auto local_partition = config()->local_partition();
   auto num_partitions = config()->num_partitions();
   auto txn = env->mutable_request()->mutable_janus_pre_accept()->release_txn();
@@ -105,7 +103,7 @@ void JanusAcceptor::ProcessPreAccept(EnvelopePtr&& env) {
   Send(*pre_accept_env, env->from(), kForwarderChannel);
 }
 
-void JanusAcceptor::ProcessAccept(EnvelopePtr&& env) {
+void Acceptor::ProcessAccept(EnvelopePtr&& env) {
   auto txn_id = env->request().janus_accept().txn_id();
   auto ballot = env->request().janus_accept().ballot();
 
@@ -129,7 +127,7 @@ void JanusAcceptor::ProcessAccept(EnvelopePtr&& env) {
   Send(*accept_env, env->from(), kForwarderChannel);
 }
 
-void JanusAcceptor::ProcessCommit(EnvelopePtr&& env) {
+void Acceptor::ProcessCommit(EnvelopePtr&& env) {
   auto txn_id = env->request().janus_commit().txn_id();
 
   auto txn_info_it = txns_.find(txn_id);
@@ -138,10 +136,8 @@ void JanusAcceptor::ProcessCommit(EnvelopePtr&& env) {
     return;
   }
 
-  env->mutable_request()
-      ->mutable_janus_commit()
-      ->set_allocated_txn(txn_info_it->second.txn);
-  
+  env->mutable_request()->mutable_janus_commit()->set_allocated_txn(txn_info_it->second.txn);
+
   Send(move(env), kSchedulerChannel);
 
   txns_.erase(txn_id);

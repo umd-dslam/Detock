@@ -15,14 +15,14 @@ using slog::internal::JanusDependency;
 
 struct Vertex {
   explicit Vertex(TxnId txn_id, const std::vector<JanusDependency>& deps)
-    : txn_id(txn_id), deps(deps), disc(0), low(0), on_stack(false) {}
+      : txn_id(txn_id), deps(deps), disc(0), low(0), on_stack(false) {}
 
   const TxnId txn_id;
   const std::vector<JanusDependency> deps;
 
   int disc;
   int low;
-  bool on_stack;  
+  bool on_stack;
 };
 
 using Graph = std::unordered_map<TxnId, Vertex>;

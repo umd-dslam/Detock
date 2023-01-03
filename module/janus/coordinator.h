@@ -27,13 +27,13 @@ using slog::TxnId;
 
 using Dependencies = std::set<TxnIdAndPartitionsBitmap>;
 
-class JanusCoordinator : public slog::NetworkedModule {
+class Coordinator : public slog::NetworkedModule {
  public:
-  JanusCoordinator(const std::shared_ptr<zmq::context_t>& context, const ConfigurationPtr& config,
-                   const MetricsRepositoryManagerPtr& metrics_manager,
-                   std::chrono::milliseconds poll_timeout_ms = slog::kModuleTimeout);
+  Coordinator(const std::shared_ptr<zmq::context_t>& context, const ConfigurationPtr& config,
+              const MetricsRepositoryManagerPtr& metrics_manager,
+              std::chrono::milliseconds poll_timeout_ms = slog::kModuleTimeout);
 
-  std::string name() const override { return "JanusCoordinator"; }
+  std::string name() const override { return "Coordinator"; }
 
  protected:
   void OnInternalRequestReceived(EnvelopePtr&& env) final;
@@ -41,8 +41,8 @@ class JanusCoordinator : public slog::NetworkedModule {
 
  private:
   struct CoordinatorTxnInfo {
-    CoordinatorTxnInfo(TxnId txn_id, int num_partitions) :
-        txn_id(txn_id), phase(Phase::PRE_ACCEPT), sharded_deps(num_partitions) {}
+    CoordinatorTxnInfo(TxnId txn_id, int num_partitions)
+        : txn_id(txn_id), phase(Phase::PRE_ACCEPT), sharded_deps(num_partitions) {}
 
     TxnId txn_id;
     Phase phase;

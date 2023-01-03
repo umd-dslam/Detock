@@ -21,10 +21,10 @@ namespace janus {
 
 using slog::Broker;
 using slog::EnvelopePtr;
-using slog::internal::JanusDependency;
 using slog::MetricsRepositoryManagerPtr;
 using slog::Storage;
 using slog::Transaction;
+using slog::internal::JanusDependency;
 
 class PendingIndex {
  public:
@@ -37,11 +37,11 @@ class PendingIndex {
   std::unordered_map<TxnId, std::unordered_set<TxnId>> index_;
 };
 
-class JanusScheduler : public slog::NetworkedModule {
+class Scheduler : public slog::NetworkedModule {
  public:
-  JanusScheduler(const std::shared_ptr<Broker>& broker, const std::shared_ptr<Storage>& storage,
-                 const MetricsRepositoryManagerPtr& metrics_manager,
-                 std::chrono::milliseconds poll_timeout = slog::kModuleTimeout);
+  Scheduler(const std::shared_ptr<Broker>& broker, const std::shared_ptr<Storage>& storage,
+            const MetricsRepositoryManagerPtr& metrics_manager,
+            std::chrono::milliseconds poll_timeout = slog::kModuleTimeout);
 
   std::string name() const override { return "Scheduler"; }
 

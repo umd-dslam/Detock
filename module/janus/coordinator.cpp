@@ -1,6 +1,7 @@
 #include "module/janus/coordinator.h"
 
 #include <glog/logging.h>
+
 #include "common/clock.h"
 #include "common/constants.h"
 #include "common/json_utils.h"
@@ -8,13 +9,13 @@
 
 namespace janus {
 
-using slog::internal::Envelope;
-using slog::internal::Request;
-using slog::internal::Response;
 using slog::kForwarderChannel;
 using slog::kSequencerChannel;
 using slog::MakeMachineId;
 using slog::UnpackMachineId;
+using slog::internal::Envelope;
+using slog::internal::Request;
+using slog::internal::Response;
 
 class Quorum {
  public:
@@ -22,7 +23,7 @@ class Quorum {
 
   void Inc() { count_++; }
 
-  bool is_done() {  return count_ >= (num_replicas_ + 1) / 2; }
+  bool is_done() { return count_ >= (num_replicas_ + 1) / 2; }
 
  private:
   const int num_replicas_;
@@ -31,10 +32,8 @@ class Quorum {
 
 class QuorumDeps {
  public:
-  QuorumDeps(int num_replicas)
-    : num_replicas_(num_replicas), is_fast_quorum_(true), count_(0) {
-  }
-  
+  QuorumDeps(int num_replicas) : num_replicas_(num_replicas), is_fast_quorum_(true), count_(0) {}
+
   void Add(const Dependencies& deps) {
     if (is_done()) {
       return;
@@ -49,15 +48,12 @@ class QuorumDeps {
   }
 
   bool is_done() {
-    if (is_fast_quorum_)
-      return count_ == num_replicas_;
-  
+    if (is_fast_quorum_) return count_ == num_replicas_;
+
     return count_ >= (num_replicas_ + 1) / 2;
   }
 
-  bool is_fast_quorum() {
-    return is_fast_quorum_;
-  }
+  bool is_fast_quorum() { return is_fast_quorum_; }
 
   Dependencies deps;
 
@@ -70,16 +66,13 @@ class QuorumDeps {
 /*
  * This module does not have anything to do with Forwarder. It just uses the Forwarder's stuff for convenience.
  */
-JanusCoordinator::JanusCoordinator(const std::shared_ptr<zmq::context_t>& context,
-                                   const ConfigurationPtr& config,
-                                   const MetricsRepositoryManagerPtr& metrics_manager,
-                                   std::chrono::milliseconds poll_timeout)
+Coordinator::Coordinator(const std::shared_ptr<zmq::context_t>& context, const ConfigurationPtr& config,
+                         const MetricsRepositoryManagerPtr& metrics_manager, std::chrono::milliseconds poll_timeout)
     : NetworkedModule(context, config, config->forwarder_port(), kForwarderChannel, metrics_manager, poll_timeout,
                       true /* is_long_sender */),
-      sharder_(slog::Sharder::MakeSharder(config)) {
-}
+      sharder_(slog::Sharder::MakeSharder(config)) {}
 
-void JanusCoordinator::OnInternalRequestReceived(EnvelopePtr&& env) {
+void Coordinator::OnInternalRequestReceived(EnvelopePtr&& env) {
   switch (env->request().type_case()) {
     case Request::kForwardTxn:
       StartNewTxn(move(env));
@@ -89,7 +82,7 @@ void JanusCoordinator::OnInternalRequestReceived(EnvelopePtr&& env) {
   }
 }
 
-void JanusCoordinator::OnInternalResponseReceived(EnvelopePtr&& env) {
+void Coordinator::OnInternalResponseReceived(EnvelopePtr&& env) {
   switch (env->response().type_case()) {
     case Response::kJanusPreAccept:
       PreAcceptTxn(move(env));
@@ -102,7 +95,7 @@ void JanusCoordinator::OnInternalResponseReceived(EnvelopePtr&& env) {
   }
 }
 
-void JanusCoordinator::StartNewTxn(EnvelopePtr&& env) {
+void Coordinator::StartNewTxn(EnvelopePtr&& env) {
   auto txn = env->mutable_request()->mutable_forward_txn()->release_txn();
   auto txn_id = txn->internal().id();
 
@@ -115,9 +108,8 @@ void JanusCoordinator::StartNewTxn(EnvelopePtr&& env) {
   }
 
   // Remember the txn state
-  auto [info_it, inserted] = txns_.insert(
-    {txn_id, CoordinatorTxnInfo(txn_id, config()->num_partitions())});
-  
+  auto [info_it, inserted] = txns_.insert({txn_id, CoordinatorTxnInfo(txn_id, config()->num_partitions())});
+
   CHECK(inserted);
 
   auto pre_accept_env = NewEnvelope();
@@ -139,7 +131,7 @@ void JanusCoordinator::StartNewTxn(EnvelopePtr&& env) {
   Send(*pre_accept_env, info_it->second.destinations, kSequencerChannel);
 }
 
-void JanusCoordinator::PreAcceptTxn(EnvelopePtr&& env) {
+void Coordinator::PreAcceptTxn(EnvelopePtr&& env) {
   auto& pre_accept = env->response().janus_pre_accept();
   auto txn_id = pre_accept.txn_id();
 
@@ -185,7 +177,7 @@ void JanusCoordinator::PreAcceptTxn(EnvelopePtr&& env) {
   if (quorum_deps.value().is_fast_quorum()) {
     CommitTxn(info_it->second);
   }
-  // Slow path 
+  // Slow path
   else {
     // Go to accept phase
     auto accept_env = NewEnvelope();
@@ -193,8 +185,7 @@ void JanusCoordinator::PreAcceptTxn(EnvelopePtr&& env) {
     accept->set_txn_id(txn_id);
     accept->set_ballot(0);
     for (auto p = 0U; p < sharded_deps.size(); p++) {
-      if (!sharded_deps[p].has_value()) 
-        continue;
+      if (!sharded_deps[p].has_value()) continue;
       for (auto& dep : sharded_deps[p].value().deps) {
         auto janus_dep = accept->add_deps();
         janus_dep->set_txn_id(dep.first);
@@ -208,7 +199,7 @@ void JanusCoordinator::PreAcceptTxn(EnvelopePtr&& env) {
   }
 }
 
-void JanusCoordinator::AcceptTxn(EnvelopePtr&& env) {
+void Coordinator::AcceptTxn(EnvelopePtr&& env) {
   auto& accept = env->response().janus_accept();
   auto txn_id = accept.txn_id();
 
@@ -249,14 +240,13 @@ void JanusCoordinator::AcceptTxn(EnvelopePtr&& env) {
   CommitTxn(info_it->second);
 }
 
-void JanusCoordinator::CommitTxn(CoordinatorTxnInfo& txn_info) {
+void Coordinator::CommitTxn(CoordinatorTxnInfo& txn_info) {
   auto& sharded_deps = txn_info.sharded_deps;
   auto commit_env = NewEnvelope();
   auto commit = commit_env->mutable_request()->mutable_janus_commit();
   commit->set_txn_id(txn_info.txn_id);
   for (auto p = 0U; p < sharded_deps.size(); p++) {
-    if (!sharded_deps[p].has_value()) 
-      continue;
+    if (!sharded_deps[p].has_value()) continue;
     for (auto& dep : sharded_deps[p].value().deps) {
       auto janus_dep = commit->add_deps();
       janus_dep->set_txn_id(dep.first);
