@@ -17,52 +17,6 @@ using slog::internal::Envelope;
 using slog::internal::Request;
 using slog::internal::Response;
 
-class Quorum {
- public:
-  Quorum(int num_replicas) : num_replicas_(num_replicas), count_(0) {}
-
-  void Inc() { count_++; }
-
-  bool is_done() { return count_ >= (num_replicas_ + 1) / 2; }
-
- private:
-  const int num_replicas_;
-  int count_;
-};
-
-class QuorumDeps {
- public:
-  QuorumDeps(int num_replicas) : num_replicas_(num_replicas), is_fast_quorum_(true), count_(0) {}
-
-  void Add(const Dependencies& deps) {
-    if (is_done()) {
-      return;
-    }
-
-    if (!is_fast_quorum_ || (count_ > 0 && deps != this->deps)) {
-      is_fast_quorum_ = false;
-      this->deps.insert(deps.begin(), deps.end());
-    }
-
-    count_++;
-  }
-
-  bool is_done() {
-    if (is_fast_quorum_) return count_ == num_replicas_;
-
-    return count_ >= (num_replicas_ + 1) / 2;
-  }
-
-  bool is_fast_quorum() { return is_fast_quorum_; }
-
-  Dependencies deps;
-
- private:
-  const int num_replicas_;
-  bool is_fast_quorum_;
-  int count_;
-};
-
 /*
  * This module does not have anything to do with Forwarder. It just uses the Forwarder's stuff for convenience.
  */

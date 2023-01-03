@@ -16,9 +16,6 @@
 
 namespace janus {
 
-class Quorum;
-class QuorumDeps;
-
 using slog::ConfigurationPtr;
 using slog::EnvelopePtr;
 using slog::MachineId;
@@ -26,6 +23,52 @@ using slog::MetricsRepositoryManagerPtr;
 using slog::TxnId;
 
 using Dependencies = std::set<TxnIdAndPartitionsBitmap>;
+
+class Quorum {
+ public:
+  Quorum(int num_replicas) : num_replicas_(num_replicas), count_(0) {}
+
+  void Inc() { count_++; }
+
+  bool is_done() { return count_ >= (num_replicas_ + 1) / 2; }
+
+ private:
+  const int num_replicas_;
+  int count_;
+};
+
+class QuorumDeps {
+ public:
+  QuorumDeps(int num_replicas) : num_replicas_(num_replicas), is_fast_quorum_(true), count_(0) {}
+
+  void Add(const Dependencies& deps) {
+    if (is_done()) {
+      return;
+    }
+
+    if (!is_fast_quorum_ || (count_ > 0 && deps != this->deps)) {
+      is_fast_quorum_ = false;
+      this->deps.insert(deps.begin(), deps.end());
+    }
+
+    count_++;
+  }
+
+  bool is_done() {
+    if (is_fast_quorum_) return count_ == num_replicas_;
+
+    return count_ >= (num_replicas_ + 1) / 2;
+  }
+
+  bool is_fast_quorum() { return is_fast_quorum_; }
+
+  Dependencies deps;
+
+ private:
+  const int num_replicas_;
+  bool is_fast_quorum_;
+  int count_;
+};
 
 class Coordinator : public slog::NetworkedModule {
  public:
@@ -42,7 +85,7 @@ class Coordinator : public slog::NetworkedModule {
  private:
   struct CoordinatorTxnInfo {
     CoordinatorTxnInfo(TxnId txn_id, int num_partitions)
-        : txn_id(txn_id), phase(Phase::PRE_ACCEPT), sharded_deps(num_partitions) {}
+        : txn_id(txn_id), phase(Phase::PRE_ACCEPT), sharded_deps(num_partitions, std::nullopt) {}
 
     TxnId txn_id;
     Phase phase;

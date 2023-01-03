@@ -6,8 +6,9 @@
 #include "common/metrics.h"
 #include "common/types.h"
 #include "connection/broker.h"
-#include "module/scheduler.h"
-#include "module/sequencer.h"
+#include "module/janus/acceptor.h"
+#include "module/janus/coordinator.h"
+#include "module/janus/scheduler.h"
 #include "module/server.h"
 #include "proto/internal.pb.h"
 #include "service/service_utils.h"
@@ -59,8 +60,11 @@ int main(int argc, char* argv[]) {
   // clang-format off
   modules.emplace_back(MakeRunnerFor<slog::Server>(broker, metrics_manager),
                        slog::ModuleId::SERVER);
-  
-  modules.emplace_back(MakeRunnerFor<slog::Scheduler>(broker, storage, metrics_manager),
+  modules.emplace_back(MakeRunnerFor<janus::Coordinator>(broker->context(), broker->config(), metrics_manager),
+                       slog::ModuleId::FORWARDER);
+  modules.emplace_back(MakeRunnerFor<janus::Acceptor>(broker->context(), broker->config(), metrics_manager),
+                       slog::ModuleId::SEQUENCER);
+  modules.emplace_back(MakeRunnerFor<janus::Scheduler>(broker, storage, metrics_manager),
                        slog::ModuleId::SCHEDULER);
   // clang-format on
 
