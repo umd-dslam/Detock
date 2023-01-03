@@ -118,4 +118,7 @@ inline KeyRegion MakeKeyRegion(const Key& key, uint32_t master) {
   return new_key;
 }
 
+// Janus
+using TxnIdAndPartitionsBitmap = std::pair<TxnId, uint64_t>;
+
 }  // namespace slog

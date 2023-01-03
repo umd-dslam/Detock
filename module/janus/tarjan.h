@@ -1,5 +1,6 @@
 #pragma once
 
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -10,34 +11,37 @@
 namespace slog {
 
 struct Vertex {
-  explicit Vertex(TxnId txn_id) : txn_id(txn_id), disc(0), low(0), on_stack(false) {}
+  explicit Vertex(TxnId txn_id, const std::vector<internal::JanusDependency>& deps)
+    : txn_id(txn_id), deps(deps), disc(0), low(0), on_stack(false) {}
+
   const TxnId txn_id;
-  std::vector<internal::JanusDependency> deps;
+  const std::vector<internal::JanusDependency> deps;
+
   int disc;
   int low;
-  bool on_stack;
+  bool on_stack;  
 };
 
 using Graph = std::unordered_map<TxnId, Vertex>;
 using SCC = std::vector<TxnId>;
 
-enum class TarjanResult {
-  MISSING_DEPENDENCIES_AND_MAYBE_FOUND,
-  FOUND,
-  NOT_FOUND,
+struct TarjanResult {
+  std::vector<SCC> sccs;
+  std::vector<internal::JanusDependency> missing_deps;
+  std::unordered_set<TxnId> visited;
 };
 
 class TarjanSCCsFinder {
  public:
-  TarjanSCCsFinder();
-  TarjanResult FindSCCs(Graph& graph, Vertex& v, TxnHorizon& execution_horizon);
-  std::vector<SCC> TakeSCCs();
-  std::unordered_set<TxnId> TakeMissingVertices();
+  TarjanSCCsFinder(Graph& graph);
+  void FindSCCs(Vertex& v, TxnHorizon& execution_horizon);
+  TarjanResult Finalize();
 
  private:
+  Graph& graph_;
   std::vector<TxnId> stack_;
   std::vector<SCC> sccs_;
-  std::unordered_set<TxnId> missing_vertices_;
+  std::unordered_map<TxnId, internal::JanusDependency> missing_deps_;
   int id_counter_;
 };
 

@@ -19,7 +19,7 @@ namespace slog {
 class Quorum;
 class QuorumDeps;
 
-using Dependencies = std::set<std::pair<TxnId, uint64_t>>;
+using Dependencies = std::set<TxnIdAndPartitionsBitmap>;
 
 class JanusCoordinator : public NetworkedModule {
  public:

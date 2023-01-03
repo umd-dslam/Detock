@@ -3,13 +3,14 @@
 #include <glog/logging.h>
 
 using std::vector;
+using std::unordered_map;
 using std::unordered_set;
 
 namespace slog {
-// TODO reset this 
-TarjanSCCsFinder::TarjanSCCsFinder() : id_counter_(0) {}
 
-TarjanResult TarjanSCCsFinder::FindSCCs(Graph& graph, Vertex& v, TxnHorizon& execution_horizon) {
+TarjanSCCsFinder::TarjanSCCsFinder(Graph& graph) : graph_(graph), id_counter_(0) {}
+
+void TarjanSCCsFinder::FindSCCs(Vertex& v, TxnHorizon& execution_horizon) {
   id_counter_++;
   v.disc = id_counter_;
   v.low = id_counter_;
@@ -17,18 +18,19 @@ TarjanResult TarjanSCCsFinder::FindSCCs(Graph& graph, Vertex& v, TxnHorizon& exe
   stack_.push_back(v.txn_id);
 
   for (auto next : v.deps) {
-    if (next.txn_id() == v.txn_id) {
+    auto next_id = next.txn_id();
+    if (next_id == v.txn_id || execution_horizon.contains(next_id)) {
       continue;
     }
-    if (auto next_v_it = graph.find(next.txn_id()); next_v_it == graph.end()) {
-      missing_vertices_.insert(next.txn_id());
+    if (auto next_v_it = graph_.find(next_id); next_v_it == graph_.end()) {
+      missing_deps_.insert({next_id, next});
     } else {
       auto& next_v = next_v_it->second;
       if (next_v.txn_id == 0) {
-        auto result = FindSCCs(graph, next_v, execution_horizon);
+        FindSCCs(next_v, execution_horizon);
         
-        if (result == TarjanResult::MISSING_DEPENDENCIES_AND_MAYBE_FOUND) {
-          return result;
+        if (!missing_deps_.empty()) {
+          return;
         }
 
         v.low = std::min(v.low, next_v.low);
@@ -40,11 +42,15 @@ TarjanResult TarjanSCCsFinder::FindSCCs(Graph& graph, Vertex& v, TxnHorizon& exe
     }
   }
 
-  if (missing_vertices_.empty() && v.disc == v.low) {
+  if (!missing_deps_.empty()) {
+    return;
+  }
+
+  if (v.disc == v.low) {
     auto& scc = sccs_.emplace_back();
     while (stack_.back() != v.txn_id) {
-      auto member_it = graph.find(stack_.back());
-      CHECK(member_it != graph.end());
+      auto member_it = graph_.find(stack_.back());
+      CHECK(member_it != graph_.end());
 
       member_it->second.on_stack = false;
       scc.push_back(member_it->second.txn_id);
@@ -52,22 +58,36 @@ TarjanResult TarjanSCCsFinder::FindSCCs(Graph& graph, Vertex& v, TxnHorizon& exe
     }
     scc.push_back(v.txn_id);
     std::sort(scc.begin(), scc.end());
-    return TarjanResult::FOUND;
+  }
+}
+
+TarjanResult TarjanSCCsFinder::Finalize() {
+  TarjanResult result;
+  sccs_.swap(result.sccs);
+
+  for (auto& [_, dep] : missing_deps_) {
+    result.missing_deps.emplace_back(std::move(dep));
+  }
+  missing_deps_.clear();
+
+  while (!stack_.empty()) {
+    auto top = stack_.back();
+    
+    auto it = graph_.find(top);
+    CHECK(it != graph_.end());
+
+    // Reset disc of vertices that are visited but not in any scc yet
+    it->second.disc = 0;
+
+    result.visited.insert(top);
+
+    stack_.pop_back();
   }
 
-  return TarjanResult::NOT_FOUND;
-}
+  // Reset id counter
+  id_counter_ = 0;
 
-vector<SCC> TarjanSCCsFinder::TakeSCCs() {
-  vector<SCC> sccs;
-  sccs_.swap(sccs);
-  return sccs;
-}
-
-unordered_set<TxnId> TarjanSCCsFinder::TakeMissingVertices() {
-  unordered_set<TxnId> vertices;
-  missing_vertices_.swap(vertices);
-  return vertices;
+  return result;
 }
 
 }  // namespace slog

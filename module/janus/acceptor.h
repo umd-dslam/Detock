@@ -41,7 +41,6 @@ class JanusAcceptor : public NetworkedModule {
   };
   std::unordered_map<TxnId, AcceptorTxnInfo> txns_;
 
-  using TxnIdAndPartitionsBitmap = std::pair<TxnId, uint64_t>;
   std::unordered_map<Key, TxnIdAndPartitionsBitmap> latest_writing_txns_;
 };
 

@@ -19,6 +19,17 @@
 
 namespace slog {
 
+class PendingIndex {
+ public:
+  PendingIndex(int local_partition);
+  bool Add(const internal::JanusDependency& ancestor, TxnId descendant);
+  std::optional<std::unordered_set<TxnId>> Remove(TxnId ancestor);
+
+ private:
+  int local_partition_;
+  std::unordered_map<TxnId, std::unordered_set<TxnId>> index_;
+};
+
 class JanusScheduler : public NetworkedModule {
  public:
   JanusScheduler(const std::shared_ptr<Broker>& broker, const std::shared_ptr<Storage>& storage,
@@ -38,15 +49,19 @@ class JanusScheduler : public NetworkedModule {
 
  private:
   void ProcessTransaction(EnvelopePtr&& env);
-  void ProcessInquiry(EnvelopePtr&& env);
-  void DispatchSCCs();
-  void InquireMissingDependencies();
+  bool ProcessInquiry(EnvelopePtr&& env);
+  void DispatchSCCs(const std::vector<SCC>& sccs);
+  void InquireMissingDependencies(TxnId txn_id, const std::vector<internal::JanusDependency>& deps);
+  void CheckPendingInquiry(TxnId txn_id);
+  void CheckPendingTxns(TxnId txn_id);
 
   std::unordered_map<TxnId, Transaction*> txns_;
 
   Graph graph_;
   TarjanSCCsFinder sccs_finder_;
   TxnHorizon execution_horizon_;
+  PendingIndex pending_txns_;
+  std::unordered_map<TxnId, EnvelopePtr> pending_inquiries_;
 
   // This must be defined at the end so that the workers exit before any resources
   // in the scheduler is destroyed
