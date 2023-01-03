@@ -6,7 +6,7 @@ using std::vector;
 using std::unordered_map;
 using std::unordered_set;
 
-namespace slog {
+namespace janus {
 
 TarjanSCCsFinder::TarjanSCCsFinder(Graph& graph) : graph_(graph), id_counter_(0) {}
 
@@ -90,4 +90,4 @@ TarjanResult TarjanSCCsFinder::Finalize() {
   return result;
 }
 
-}  // namespace slog
+}  // namespace janus

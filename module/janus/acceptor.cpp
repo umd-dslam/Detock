@@ -8,11 +8,13 @@
 #include "common/json_utils.h"
 #include "common/proto_utils.h"
 
-namespace slog {
+namespace janus {
 
-using internal::Envelope;
-using internal::Request;
-using internal::Response;
+using slog::internal::Envelope;
+using slog::internal::Request;
+using slog::internal::Response;
+using slog::kForwarderChannel;
+using slog::kSchedulerChannel;
 
 /*
  * This module does not have anything to do with Sequencer. It just uses the Sequencer's stuff for convenience.
@@ -21,9 +23,9 @@ JanusAcceptor::JanusAcceptor(const std::shared_ptr<zmq::context_t>& context,
                              const ConfigurationPtr& config,
                              const MetricsRepositoryManagerPtr& metrics_manager,
                              std::chrono::milliseconds poll_timeout)
-    : NetworkedModule(context, config, config->sequencer_port(), kSequencerChannel, metrics_manager, poll_timeout,
-                      true /* is_long_sender */),
-      sharder_(Sharder::MakeSharder(config)) {
+    : NetworkedModule(context, config, config->sequencer_port(), slog::kSequencerChannel, metrics_manager,
+                      poll_timeout, true /* is_long_sender */),
+      sharder_(slog::Sharder::MakeSharder(config)) {
 }
 
 void JanusAcceptor::OnInternalRequestReceived(EnvelopePtr&& env) {
@@ -82,7 +84,7 @@ void JanusAcceptor::ProcessPreAccept(EnvelopePtr&& env) {
       if (key_it != latest_writing_txns_.end()) {
         deps.insert(key_it->second);
       }
-      if (it->value_entry().type() == KeyType::WRITE) {
+      if (it->value_entry().type() == slog::KeyType::WRITE) {
         latest_writing_txns_[it->key()] = {txn_id, participants_bitmap};
       }
     }
@@ -145,4 +147,4 @@ void JanusAcceptor::ProcessCommit(EnvelopePtr&& env) {
   txns_.erase(txn_id);
 }
 
-}  // namespace slog
+}  // namespace janus

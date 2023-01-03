@@ -17,12 +17,19 @@
 #include "module/scheduler_components/worker.h"
 #include "storage/storage.h"
 
-namespace slog {
+namespace janus {
+
+using slog::Broker;
+using slog::EnvelopePtr;
+using slog::internal::JanusDependency;
+using slog::MetricsRepositoryManagerPtr;
+using slog::Storage;
+using slog::Transaction;
 
 class PendingIndex {
  public:
   PendingIndex(int local_partition);
-  bool Add(const internal::JanusDependency& ancestor, TxnId descendant);
+  bool Add(const JanusDependency& ancestor, TxnId descendant);
   std::optional<std::unordered_set<TxnId>> Remove(TxnId ancestor);
 
  private:
@@ -30,11 +37,11 @@ class PendingIndex {
   std::unordered_map<TxnId, std::unordered_set<TxnId>> index_;
 };
 
-class JanusScheduler : public NetworkedModule {
+class JanusScheduler : public slog::NetworkedModule {
  public:
   JanusScheduler(const std::shared_ptr<Broker>& broker, const std::shared_ptr<Storage>& storage,
                  const MetricsRepositoryManagerPtr& metrics_manager,
-                 std::chrono::milliseconds poll_timeout = kModuleTimeout);
+                 std::chrono::milliseconds poll_timeout = slog::kModuleTimeout);
 
   std::string name() const override { return "Scheduler"; }
 
@@ -51,7 +58,7 @@ class JanusScheduler : public NetworkedModule {
   void ProcessTransaction(EnvelopePtr&& env);
   bool ProcessInquiry(EnvelopePtr&& env);
   void DispatchSCCs(const std::vector<SCC>& sccs);
-  void InquireMissingDependencies(TxnId txn_id, const std::vector<internal::JanusDependency>& deps);
+  void InquireMissingDependencies(TxnId txn_id, const std::vector<JanusDependency>& deps);
   void CheckPendingInquiry(TxnId txn_id);
   void CheckPendingTxns(TxnId txn_id);
 
@@ -65,8 +72,8 @@ class JanusScheduler : public NetworkedModule {
 
   // This must be defined at the end so that the workers exit before any resources
   // in the scheduler is destroyed
-  std::vector<std::unique_ptr<ModuleRunner>> workers_;
+  std::vector<std::unique_ptr<slog::ModuleRunner>> workers_;
   int current_worker_;
 };
 
-}  // namespace slog
+}  // namespace janus

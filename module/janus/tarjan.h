@@ -8,14 +8,17 @@
 #include "module/janus/horizon.h"
 #include "proto/internal.pb.h"
 
-namespace slog {
+namespace janus {
+
+using slog::TxnId;
+using slog::internal::JanusDependency;
 
 struct Vertex {
-  explicit Vertex(TxnId txn_id, const std::vector<internal::JanusDependency>& deps)
+  explicit Vertex(TxnId txn_id, const std::vector<JanusDependency>& deps)
     : txn_id(txn_id), deps(deps), disc(0), low(0), on_stack(false) {}
 
   const TxnId txn_id;
-  const std::vector<internal::JanusDependency> deps;
+  const std::vector<JanusDependency> deps;
 
   int disc;
   int low;
@@ -27,7 +30,7 @@ using SCC = std::vector<TxnId>;
 
 struct TarjanResult {
   std::vector<SCC> sccs;
-  std::vector<internal::JanusDependency> missing_deps;
+  std::vector<JanusDependency> missing_deps;
   std::unordered_set<TxnId> visited;
 };
 
@@ -41,8 +44,8 @@ class TarjanSCCsFinder {
   Graph& graph_;
   std::vector<TxnId> stack_;
   std::vector<SCC> sccs_;
-  std::unordered_map<TxnId, internal::JanusDependency> missing_deps_;
+  std::unordered_map<TxnId, JanusDependency> missing_deps_;
   int id_counter_;
 };
 
-}  // namespace slog
+}  // namespace janus

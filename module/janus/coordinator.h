@@ -14,18 +14,24 @@
 #include "proto/internal.pb.h"
 #include "proto/transaction.pb.h"
 
-namespace slog {
+namespace janus {
 
 class Quorum;
 class QuorumDeps;
 
+using slog::ConfigurationPtr;
+using slog::EnvelopePtr;
+using slog::MachineId;
+using slog::MetricsRepositoryManagerPtr;
+using slog::TxnId;
+
 using Dependencies = std::set<TxnIdAndPartitionsBitmap>;
 
-class JanusCoordinator : public NetworkedModule {
+class JanusCoordinator : public slog::NetworkedModule {
  public:
   JanusCoordinator(const std::shared_ptr<zmq::context_t>& context, const ConfigurationPtr& config,
                    const MetricsRepositoryManagerPtr& metrics_manager,
-                   std::chrono::milliseconds poll_timeout_ms = kModuleTimeout);
+                   std::chrono::milliseconds poll_timeout_ms = slog::kModuleTimeout);
 
   std::string name() const override { return "JanusCoordinator"; }
 
@@ -51,8 +57,8 @@ class JanusCoordinator : public NetworkedModule {
   void AcceptTxn(EnvelopePtr&& env);
   void CommitTxn(CoordinatorTxnInfo& txn_info);
 
-  const SharderPtr sharder_;
+  const slog::SharderPtr sharder_;
   std::unordered_map<TxnId, CoordinatorTxnInfo> txns_;
 };
 
-}  // namespace slog
+}  // namespace janus

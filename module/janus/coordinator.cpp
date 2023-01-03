@@ -6,11 +6,15 @@
 #include "common/json_utils.h"
 #include "common/proto_utils.h"
 
-namespace slog {
+namespace janus {
 
-using internal::Envelope;
-using internal::Request;
-using internal::Response;
+using slog::internal::Envelope;
+using slog::internal::Request;
+using slog::internal::Response;
+using slog::kForwarderChannel;
+using slog::kSequencerChannel;
+using slog::MakeMachineId;
+using slog::UnpackMachineId;
 
 class Quorum {
  public:
@@ -72,7 +76,7 @@ JanusCoordinator::JanusCoordinator(const std::shared_ptr<zmq::context_t>& contex
                                    std::chrono::milliseconds poll_timeout)
     : NetworkedModule(context, config, config->forwarder_port(), kForwarderChannel, metrics_manager, poll_timeout,
                       true /* is_long_sender */),
-      sharder_(Sharder::MakeSharder(config)) {
+      sharder_(slog::Sharder::MakeSharder(config)) {
 }
 
 void JanusCoordinator::OnInternalRequestReceived(EnvelopePtr&& env) {
@@ -101,8 +105,6 @@ void JanusCoordinator::OnInternalResponseReceived(EnvelopePtr&& env) {
 void JanusCoordinator::StartNewTxn(EnvelopePtr&& env) {
   auto txn = env->mutable_request()->mutable_forward_txn()->release_txn();
   auto txn_id = txn->internal().id();
-
-  RECORD(txn->mutable_internal(), TransactionEvent::ENTER_FORWARDER);
 
   // Figure out participating partitions
   try {
@@ -268,4 +270,4 @@ void JanusCoordinator::CommitTxn(CoordinatorTxnInfo& txn_info) {
   txns_.erase(txn_info.txn_id);
 }
 
-}  // namespace slog
+}  // namespace janus

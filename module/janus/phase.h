@@ -1,10 +1,10 @@
 #pragma once
 
-namespace slog {
+namespace janus {
 
 enum class Phase {
   PRE_ACCEPT,
   ACCEPT,
 };
 
-}  // namespace slog
+}  // namespace janus

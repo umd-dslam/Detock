@@ -11,13 +11,19 @@
 #include "module/janus/phase.h"
 #include "proto/transaction.pb.h"
 
-namespace slog {
+namespace janus {
 
-class JanusAcceptor : public NetworkedModule {
+using slog::ConfigurationPtr;
+using slog::EnvelopePtr;
+using slog::MetricsRepositoryManagerPtr;
+using slog::Transaction;
+using slog::TxnId;
+
+class JanusAcceptor : public slog::NetworkedModule {
  public:
   JanusAcceptor(const std::shared_ptr<zmq::context_t>& context, const ConfigurationPtr& config,
                 const MetricsRepositoryManagerPtr& metrics_manager,
-                std::chrono::milliseconds poll_timeout_ms = kModuleTimeout);
+                std::chrono::milliseconds poll_timeout_ms = slog::kModuleTimeout);
 
   std::string name() const override { return "JanusAcceptor"; }
 
@@ -29,7 +35,7 @@ class JanusAcceptor : public NetworkedModule {
   void ProcessAccept(EnvelopePtr&& env);
   void ProcessCommit(EnvelopePtr&& env);
 
-  const SharderPtr sharder_;
+  const slog::SharderPtr sharder_;
   
   struct AcceptorTxnInfo {
     AcceptorTxnInfo(Transaction* txn) : 
@@ -41,7 +47,7 @@ class JanusAcceptor : public NetworkedModule {
   };
   std::unordered_map<TxnId, AcceptorTxnInfo> txns_;
 
-  std::unordered_map<Key, TxnIdAndPartitionsBitmap> latest_writing_txns_;
+  std::unordered_map<slog::Key, TxnIdAndPartitionsBitmap> latest_writing_txns_;
 };
 
-}  // namespace slog
+}  // namespace janus

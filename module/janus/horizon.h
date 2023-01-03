@@ -2,7 +2,10 @@
 
 #include "common/types.h"
 
-namespace slog {
+namespace janus {
+
+using slog::TxnId;
+using slog::kMachineIdBits;
 
 class TxnHorizon {
  public:
@@ -51,7 +54,7 @@ class TxnHorizon {
     }
   };
 
-  std::unordered_map<MachineId, Horizon> horizons_;
+  std::unordered_map<slog::MachineId, Horizon> horizons_;
 };
 
-}  // namespace slog
+}  // namespace janus

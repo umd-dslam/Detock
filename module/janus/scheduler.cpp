@@ -9,20 +9,29 @@
 #include "common/types.h"
 #include "proto/internal.pb.h"
 
+namespace janus {
+
 using std::make_shared;
 using std::move;
 using std::shared_ptr;
 using std::chrono::milliseconds;
 using std::vector;
 
-namespace slog {
-
-using internal::Request;
-using internal::Response;
+using slog::internal::Request;
+using slog::internal::Response;
+using slog::MakeMachineId;
+using slog::MakeRunnerFor;
+using slog::kMachineIdBits;
+using slog::kPartitionIdBits;
+using slog::kRegionIdBits;
+using slog::kReplicaIdBits;
+using slog::kSchedulerChannel;
+using slog::kSchedWorkerAddress;
+using slog::Worker;
 
 PendingIndex::PendingIndex(int local_partition) : local_partition_(local_partition) {}
 
-bool PendingIndex::Add(const internal::JanusDependency& ancestor, TxnId descendant) {
+bool PendingIndex::Add(const JanusDependency& ancestor, TxnId descendant) {
   auto it = index_.find(ancestor.txn_id());
   if (it != index_.end()) {
     it->second.insert(descendant);
@@ -58,7 +67,7 @@ JanusScheduler::JanusScheduler(const shared_ptr<Broker>& broker, const shared_pt
 }
 
 void JanusScheduler::Initialize() {
-  auto cpus = config()->cpu_pinnings(ModuleId::WORKER);
+  auto cpus = config()->cpu_pinnings(slog::ModuleId::WORKER);
   size_t i = 0;
   for (auto& worker : workers_) {
     std::optional<uint32_t> cpu = {};
@@ -101,7 +110,7 @@ void JanusScheduler::OnInternalResponseReceived(EnvelopePtr&& env) {
   if (inquiry_result.executed()) {
     execution_horizon_.Add(txn_id);
   } else {
-    vector<internal::JanusDependency> deps(inquiry_result.deps().begin(), inquiry_result.deps().end());
+    vector<JanusDependency> deps(inquiry_result.deps().begin(), inquiry_result.deps().end());
     graph_.insert({txn_id, Vertex{txn_id, std::move(deps)}});
   }
   CheckPendingTxns(txn_id);
@@ -134,7 +143,7 @@ void JanusScheduler::ProcessTransaction(EnvelopePtr&& env) {
   
   txns_.emplace(txn_id, txn);
 
-  vector<internal::JanusDependency> deps(commit->deps().begin(), commit->deps().end());
+  vector<JanusDependency> deps(commit->deps().begin(), commit->deps().end());
   auto [vertex_it, inserted] = graph_.insert({txn_id, Vertex{txn_id, std::move(deps)}});
   CHECK(inserted);
 
@@ -148,7 +157,7 @@ void JanusScheduler::ProcessTransaction(EnvelopePtr&& env) {
   CheckPendingTxns(txn_id);
 }
 
-void JanusScheduler::InquireMissingDependencies(TxnId txn_id, const vector<internal::JanusDependency>& missing_deps) {
+void JanusScheduler::InquireMissingDependencies(TxnId txn_id, const vector<JanusDependency>& missing_deps) {
   auto local_region = config()->local_region();
   auto local_replica = config()->local_replica();
   auto env = NewEnvelope();
@@ -231,4 +240,4 @@ void JanusScheduler::CheckPendingTxns(TxnId txn_id) {
   }
 }
 
-}  // namespace slog
+}  // namespace janus
