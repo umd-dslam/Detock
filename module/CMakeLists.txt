@@ -19,6 +19,8 @@ target_sources(slog-core
     janus/scheduler.h
     janus/tarjan.cpp
     janus/tarjan.h
+    janus/worker.cpp
+    janus/worker.h
     log_manager.cpp
     log_manager.h
     multi_home_orderer.cpp

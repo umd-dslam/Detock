@@ -77,7 +77,7 @@ void Acceptor::ProcessPreAccept(EnvelopePtr&& env) {
   // Determine dependencies
   std::unordered_map<TxnId, uint64_t> deps;
   for (auto it = txn->mutable_keys()->begin(); it != txn->mutable_keys()->end(); it++) {
-    if (sharder_->compute_partition(it->key()) == local_partition) {
+    if (sharder_->is_local_key(it->key())) {
       auto key_it = latest_writing_txns_.find(it->key());
       if (key_it != latest_writing_txns_.end()) {
         deps.insert(key_it->second);

@@ -22,10 +22,8 @@ using slog::kPartitionIdBits;
 using slog::kRegionIdBits;
 using slog::kReplicaIdBits;
 using slog::kSchedulerChannel;
-using slog::kSchedWorkerAddress;
 using slog::MakeMachineId;
 using slog::MakeRunnerFor;
-using slog::Worker;
 using slog::internal::Request;
 using slog::internal::Response;
 

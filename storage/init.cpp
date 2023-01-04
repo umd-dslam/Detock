@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <glog/logging.h>
 
+#include <condition_variable>
 #include <thread>
 #include <vector>
 
@@ -131,8 +132,13 @@ void GenerateSimpleData(shared_ptr<Storage> storage, const shared_ptr<MetadataIn
     threads.emplace_back(GenerateFn, from_key, to_key);
   }
   while (num_done < kDataGenThreads) {
-    std::this_thread::sleep_for(std::chrono::seconds(5));
-    LOG(INFO) << "Generated " << counter.load() << " records";
+    int attempts = 10;
+    while (num_done < kDataGenThreads && attempts > 0) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(200));
+      attempts--;
+    }
+    int pct = 100.0 * counter.load() / num_records;
+    LOG(INFO) << "Generated " << counter.load() << " records (" << pct << "%)";
   }
   for (auto& t : threads) {
     t.join();

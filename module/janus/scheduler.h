@@ -14,7 +14,7 @@
 #include "connection/sender.h"
 #include "module/janus/horizon.h"
 #include "module/janus/tarjan.h"
-#include "module/scheduler_components/worker.h"
+#include "module/janus/worker.h"
 #include "storage/storage.h"
 
 namespace janus {
