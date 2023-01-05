@@ -24,6 +24,7 @@ FROM ubuntu:focal AS runner
     ARG INCLUDE_TOOLS
 
     WORKDIR /opt/slog
+    COPY --from=builder /src/build/janus .
     COPY --from=builder /src/build/slog .
     COPY --from=builder /src/build/client .
     COPY --from=builder /src/build/benchmark .
