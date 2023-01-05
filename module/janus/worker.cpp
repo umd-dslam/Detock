@@ -10,25 +10,27 @@ using std::make_pair;
 
 namespace janus {
 
-using slog::internal::Envelope;
-using slog::internal::Request;
-using slog::internal::Response;
 using slog::kServerChannel;
 using slog::kWorkerChannel;
 using slog::MachineId;
 using slog::MakeMachineId;
 using slog::Metadata;
-using slog::Sharder;
 using slog::Record;
+using slog::Sharder;
 using slog::TransactionEvent;
 using slog::TransactionStatus;
 using slog::UnpackMachineId;
+using slog::internal::Envelope;
+using slog::internal::Request;
+using slog::internal::Response;
 using std::make_unique;
 
 Worker::Worker(int id, const std::shared_ptr<Broker>& broker, const std::shared_ptr<Storage>& storage,
                const MetricsRepositoryManagerPtr& metrics_manager, std::chrono::milliseconds poll_timeout)
     : NetworkedModule(broker, kWorkerChannel + id, metrics_manager, poll_timeout),
-      id_(id), storage_(storage), sharder_(slog::Sharder::MakeSharder(config())) {
+      id_(id),
+      storage_(storage),
+      sharder_(slog::Sharder::MakeSharder(config())) {
   switch (config()->execution_type()) {
     case slog::internal::ExecutionType::KEY_VALUE:
       execution_ = make_unique<slog::KeyValueExecution>(sharder_, storage);
@@ -116,7 +118,7 @@ bool Worker::OnCustomSocket() {
 
   auto txn = *msg.data<Transaction*>();
   auto txn_id = txn->internal().id();
- 
+
   RECORD(txn->mutable_internal(), TransactionEvent::ENTER_WORKER);
 
   // Create a state for the new transaction

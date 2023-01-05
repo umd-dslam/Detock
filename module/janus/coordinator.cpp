@@ -82,6 +82,7 @@ void Coordinator::StartNewTxn(EnvelopePtr&& env) {
     info_it->second.participants.push_back(p);
   }
 
+  // Send pre-accept messages
   Send(*pre_accept_env, info_it->second.destinations, kSequencerChannel);
 }
 
@@ -93,8 +94,9 @@ void Coordinator::PreAcceptTxn(EnvelopePtr&& env) {
   CHECK(pre_accept.ok());
 
   auto info_it = txns_.find(txn_id);
-  CHECK(info_it != txns_.end());
-  CHECK(info_it->second.phase == Phase::PRE_ACCEPT);
+  if (info_it == txns_.end() || info_it->second.phase != Phase::PRE_ACCEPT) {
+    return;
+  }
 
   // Get the quorum deps object of the partition in the response
   auto& sharded_deps = info_it->second.sharded_deps;
@@ -147,6 +149,8 @@ void Coordinator::PreAcceptTxn(EnvelopePtr&& env) {
         janus_dep->set_target_partition(p);
       }
     }
+    VLOG(2) << "Taking slow path: " << accept->DebugString();
+
     Send(*accept_env, info_it->second.destinations, kSequencerChannel);
 
     info_it->second.phase = Phase::ACCEPT;
@@ -161,8 +165,9 @@ void Coordinator::AcceptTxn(EnvelopePtr&& env) {
   CHECK(accept.ok());
 
   auto info_it = txns_.find(txn_id);
-  CHECK(info_it != txns_.end());
-  CHECK(info_it->second.phase == Phase::ACCEPT);
+  if (info_it == txns_.end()) {
+    return;
+  } 
 
   // Get the quorum deps object of the partition in the response
   auto& quorums = info_it->second.quorums;
@@ -208,6 +213,9 @@ void Coordinator::CommitTxn(CoordinatorTxnInfo& txn_info) {
       janus_dep->set_target_partition(p);
     }
   }
+
+  VLOG(2) << "Commit:\n" << commit->DebugString();
+
   Send(*commit_env, txn_info.destinations, kSequencerChannel);
 
   // No need to keep this around anymore

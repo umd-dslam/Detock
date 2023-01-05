@@ -1,6 +1,7 @@
 #include "module/janus/scheduler.h"
 
 #include <algorithm>
+#include <sstream>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -163,6 +164,9 @@ void Scheduler::InquireMissingDependencies(TxnId txn_id, const vector<JanusDepen
     if (pending_txns_.Add(dep, txn_id)) {
       auto inquiry = env->mutable_request()->mutable_janus_inquire();
       inquiry->set_txn_id(dep.txn_id());
+
+      VLOG(1) << "Inquire: " << inquiry->DebugString();
+
       Send(*env, MakeMachineId(local_region, local_replica, dep.target_partition()), kSchedulerChannel);
     }
   }
@@ -194,6 +198,8 @@ bool Scheduler::ProcessInquiry(EnvelopePtr&& env) {
 
 void Scheduler::DispatchSCCs(const std::vector<SCC>& sccs) {
   for (const SCC& scc : sccs) {
+    std::ostringstream oss;
+    bool first = true;
     for (auto txn_id : scc) {
       auto txn_it = txns_.find(txn_id);
       CHECK(txn_it != txns_.end());
@@ -206,8 +212,11 @@ void Scheduler::DispatchSCCs(const std::vector<SCC>& sccs) {
       current_worker_ = (current_worker_ + 1) % workers_.size();
       GetCustomSocket(worker).send(msg, zmq::send_flags::none);
 
-      VLOG(3) << "Dispatched txn " << TXN_ID_STR(txn_id);
+      if (!first) oss << ", ";
+      oss << txn_id;
+      first = false;
     }
+    VLOG(1) << "Dispatched SCC: " << oss.str();
   }
 }
 

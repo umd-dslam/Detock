@@ -100,6 +100,8 @@ void Acceptor::ProcessPreAccept(EnvelopePtr&& env) {
     janus_dep->set_target_partition(local_partition);
   }
 
+  VLOG(2) << "PreAccept:\n" << pre_accept->DebugString();
+
   Send(*pre_accept_env, env->from(), kForwarderChannel);
 }
 
@@ -123,6 +125,8 @@ void Acceptor::ProcessAccept(EnvelopePtr&& env) {
   accept->set_ok(true);
 
   txn_info_it->second.phase = Phase::ACCEPT;
+
+  VLOG(2) << "Accept:\n" << accept->DebugString();
 
   Send(*accept_env, env->from(), kForwarderChannel);
 }

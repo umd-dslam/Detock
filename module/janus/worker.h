@@ -22,17 +22,16 @@ using slog::Broker;
 using slog::EnvelopePtr;
 using slog::Execution;
 using slog::MetricsRepositoryManagerPtr;
+using slog::Storage;
 using slog::Transaction;
 using slog::TxnId;
-using slog::Storage;
 
 const std::string kSchedWorkerAddress = "inproc://sched_worker";
 
 struct TransactionState {
   enum class Phase { READ_LOCAL_STORAGE, WAIT_REMOTE_READ, EXECUTE, FINISH };
 
-  TransactionState(Transaction* txn)
-      : txn(txn), remote_reads_waiting_on(0), phase(Phase::READ_LOCAL_STORAGE) {}
+  TransactionState(Transaction* txn) : txn(txn), remote_reads_waiting_on(0), phase(Phase::READ_LOCAL_STORAGE) {}
   Transaction* txn;
   uint32_t remote_reads_waiting_on;
   Phase phase;

@@ -85,7 +85,10 @@ class Coordinator : public slog::NetworkedModule {
  private:
   struct CoordinatorTxnInfo {
     CoordinatorTxnInfo(TxnId txn_id, int num_partitions)
-        : txn_id(txn_id), phase(Phase::PRE_ACCEPT), sharded_deps(num_partitions, std::nullopt) {}
+        : txn_id(txn_id),
+          phase(Phase::PRE_ACCEPT),
+          sharded_deps(num_partitions, std::nullopt),
+          quorums(num_partitions, std::nullopt) {}
 
     TxnId txn_id;
     Phase phase;
