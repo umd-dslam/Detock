@@ -1,5 +1,6 @@
 #include "module/janus/coordinator.h"
 
+#include <sstream>
 #include <glog/logging.h>
 
 #include "common/clock.h"
@@ -30,6 +31,9 @@ void Coordinator::OnInternalRequestReceived(EnvelopePtr&& env) {
   switch (env->request().type_case()) {
     case Request::kForwardTxn:
       StartNewTxn(move(env));
+      break;
+    case Request::kStats:
+      PrintStats();
       break;
     default:
       LOG(ERROR) << "Unexpected request type received: \"" << CASE_NAME(env->request().type_case(), Request) << "\"";
@@ -116,12 +120,14 @@ void Coordinator::PreAcceptTxn(EnvelopePtr&& env) {
 
   // See if we get enough responses for each participant
   bool done = true;
+  bool is_fast = true;
   for (int p : info_it->second.participants) {
     CHECK_LT(p, sharded_deps.size());
     if (!sharded_deps[p].has_value() || !sharded_deps[p].value().is_done()) {
       done = false;
       break;
     }
+    is_fast &= sharded_deps[p].value().is_fast_quorum();
   }
 
   // Nothing else to do if we're not done
@@ -130,7 +136,7 @@ void Coordinator::PreAcceptTxn(EnvelopePtr&& env) {
   }
 
   // Fast path
-  if (quorum_deps.value().is_fast_quorum()) {
+  if (is_fast) {
     CommitTxn(info_it->second);
   }
   // Slow path
@@ -149,7 +155,7 @@ void Coordinator::PreAcceptTxn(EnvelopePtr&& env) {
         janus_dep->set_target_partition(p);
       }
     }
-    VLOG(2) << "Taking slow path: " << accept->DebugString();
+    VLOG(2) << "Taking slow path:\n" << accept->DebugString();
 
     Send(*accept_env, info_it->second.destinations, kSequencerChannel);
 
@@ -220,6 +226,32 @@ void Coordinator::CommitTxn(CoordinatorTxnInfo& txn_info) {
 
   // No need to keep this around anymore
   txns_.erase(txn_info.txn_id);
+}
+
+void Coordinator::PrintStats() {
+  std::ostringstream oss;
+  for (auto& [txn_id, info] : txns_) {
+    auto phase = info.phase == Phase::ACCEPT ? "ACCEPT" : "PRE-ACCEPT";
+    oss << txn_id << ": " << phase << "\n";
+    for (auto& deps : info.sharded_deps) {
+      if (deps.has_value()) {
+        oss << "\t" << deps.value().to_string();
+      } else {
+        oss << "\t(None)";
+      }
+      oss << "\n";
+    }
+    oss << "\t";
+    for (auto& quorum : info.quorums) {
+      if (quorum.has_value()) {
+        oss << quorum.value().to_string() << " ";
+      } else {
+        oss << "(None) ";
+      }
+    }
+    oss << "\n";
+  }
+  LOG(INFO) << "Coordinator state:\n" << oss.str();
 }
 
 }  // namespace janus

@@ -34,6 +34,7 @@ class Acceptor : public slog::NetworkedModule {
   void ProcessPreAccept(EnvelopePtr&& env);
   void ProcessAccept(EnvelopePtr&& env);
   void ProcessCommit(EnvelopePtr&& env);
+  void PrintStats();
 
   const slog::SharderPtr sharder_;
 

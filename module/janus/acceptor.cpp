@@ -37,6 +37,9 @@ void Acceptor::OnInternalRequestReceived(EnvelopePtr&& env) {
     case Request::kJanusCommit:
       ProcessCommit(move(env));
       break;
+    case Request::kStats:
+      PrintStats();
+      break;
     default:
       LOG(ERROR) << "Unexpected request type received: \"" << CASE_NAME(env->request().type_case(), Request) << "\"";
   }
@@ -145,6 +148,15 @@ void Acceptor::ProcessCommit(EnvelopePtr&& env) {
   Send(move(env), kSchedulerChannel);
 
   txns_.erase(txn_id);
+}
+
+void Acceptor::PrintStats() {
+  std::ostringstream oss;
+  for (auto& [txn_id, info] : txns_) {
+    auto phase = info.phase == Phase::ACCEPT ? "ACCEPT" : "PRE-ACCEPT";
+    oss << txn_id << ": " << phase << "\n";
+  }
+  LOG(INFO) << "Acceptor state:\n" << oss.str();
 }
 
 }  // namespace janus

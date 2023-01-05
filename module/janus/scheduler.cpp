@@ -54,6 +54,21 @@ std::optional<std::unordered_set<TxnId>> PendingIndex::Remove(TxnId ancestor) {
   return descendants;
 }
 
+std::string PendingIndex::to_string() const {
+  std::ostringstream oss;
+  for (auto& [txn_id, desc] : index_) {
+    oss << txn_id << ": ";
+    bool first = true;
+    for (auto d : desc) {
+      if (!first) oss << ", ";
+      oss << d;
+      first = false;
+    }
+    oss << "\n";
+  }
+  return oss.str();
+}
+
 Scheduler::Scheduler(const shared_ptr<Broker>& broker, const shared_ptr<Storage>& storage,
                      const MetricsRepositoryManagerPtr& metrics_manager, std::chrono::milliseconds poll_timeout)
     : NetworkedModule(broker, {kSchedulerChannel, false /* is_raw */}, metrics_manager, poll_timeout),
@@ -93,6 +108,9 @@ void Scheduler::OnInternalRequestReceived(EnvelopePtr&& env) {
       break;
     case Request::kJanusInquire:
       ProcessInquiry(move(env));
+      break;
+    case Request::kStats:
+      PrintStats();
       break;
     default:
       LOG(ERROR) << "Unexpected request type received: \"" << CASE_NAME(env->request().type_case(), Request) << "\"";
@@ -246,5 +264,22 @@ void Scheduler::CheckPendingTxns(TxnId txn_id) {
     }
   }
 }
+
+void Scheduler::PrintStats() {
+  std::ostringstream oss;
+  oss << "graph:\n";
+  for (auto& [txn_id, vertex] : graph_) {
+    oss << txn_id << ": ";
+    bool first = true;
+    for (auto& dep : vertex.deps) {
+      if (!first) oss << ", ";
+      oss << dep.txn_id();
+      first = false;
+    }
+    oss << "\n";
+  }
+  oss << "pending txns:\n" << pending_txns_.to_string();
+  LOG(INFO) << "Scheduler state:\n" << oss.str();
+} 
 
 }  // namespace janus

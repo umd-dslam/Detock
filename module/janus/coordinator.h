@@ -2,6 +2,7 @@
 
 #include <set>
 #include <unordered_map>
+#include <sstream>
 #include <vector>
 
 #include "common/configuration.h"
@@ -24,6 +25,18 @@ using slog::TxnId;
 
 using Dependencies = std::set<TxnIdAndPartitionsBitmap>;
 
+inline std::ostream& operator<<(std::ostream& os, const Dependencies& deps) {
+  bool first = true;
+  os << "[";
+  for (const auto& d : deps) {
+    if (!first) os << ", ";
+    os << "(" << d.first << ", " << d.second << ")";
+    first = false;
+  }
+  os << "]";
+  return os;
+}
+
 class Quorum {
  public:
   Quorum(int num_replicas) : num_replicas_(num_replicas), count_(0) {}
@@ -31,6 +44,12 @@ class Quorum {
   void Inc() { count_++; }
 
   bool is_done() { return count_ >= (num_replicas_ + 1) / 2; }
+
+  std::string to_string() const {
+    std::ostringstream oss;
+    oss << "(" << count_ << "/" << num_replicas_ << ")";
+    return oss.str();
+  }
 
  private:
   const int num_replicas_;
@@ -46,7 +65,9 @@ class QuorumDeps {
       return;
     }
 
-    if (!is_fast_quorum_ || (count_ > 0 && deps != this->deps)) {
+    if (count_ == 0) {
+      this->deps = deps;
+    } else if (!is_fast_quorum_ || deps != this->deps) {
       is_fast_quorum_ = false;
       this->deps.insert(deps.begin(), deps.end());
     }
@@ -61,6 +82,19 @@ class QuorumDeps {
   }
 
   bool is_fast_quorum() { return is_fast_quorum_; }
+
+  std::string to_string() const {
+    std::ostringstream oss;
+    oss << "(dep=[";
+    bool first = true;
+    for (auto& dep : deps) {
+      if (!first) oss << ", ";
+      oss << dep.first;
+      first = false;
+    }
+    oss << "], fast=" << is_fast_quorum_ << ", " << count_ << "/" << num_replicas_ << ")";
+    return oss.str();
+  }
 
   Dependencies deps;
 
@@ -102,6 +136,7 @@ class Coordinator : public slog::NetworkedModule {
   void PreAcceptTxn(EnvelopePtr&& env);
   void AcceptTxn(EnvelopePtr&& env);
   void CommitTxn(CoordinatorTxnInfo& txn_info);
+  void PrintStats();
 
   const slog::SharderPtr sharder_;
   std::unordered_map<TxnId, CoordinatorTxnInfo> txns_;

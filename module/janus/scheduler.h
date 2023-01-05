@@ -31,6 +31,7 @@ class PendingIndex {
   PendingIndex(int local_partition);
   bool Add(const JanusDependency& ancestor, TxnId descendant);
   std::optional<std::unordered_set<TxnId>> Remove(TxnId ancestor);
+  std::string to_string() const;
 
  private:
   int local_partition_;
@@ -61,6 +62,7 @@ class Scheduler : public slog::NetworkedModule {
   void InquireMissingDependencies(TxnId txn_id, const std::vector<JanusDependency>& deps);
   void CheckPendingInquiry(TxnId txn_id);
   void CheckPendingTxns(TxnId txn_id);
+  void PrintStats();
 
   std::unordered_map<TxnId, Transaction*> txns_;
 
