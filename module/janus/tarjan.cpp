@@ -11,6 +11,11 @@ namespace janus {
 TarjanSCCsFinder::TarjanSCCsFinder(Graph& graph) : graph_(graph), id_counter_(0) {}
 
 void TarjanSCCsFinder::FindSCCs(Vertex& v, TxnHorizon& execution_horizon) {
+  // Make sure that the starting vertex is not already known to be in an SCC or executed
+  if (v.disc != 0 || execution_horizon.contains(v.txn_id)) {
+    return;
+  }
+
   id_counter_++;
   v.disc = id_counter_;
   v.low = id_counter_;
@@ -51,10 +56,10 @@ void TarjanSCCsFinder::FindSCCs(Vertex& v, TxnHorizon& execution_horizon) {
       CHECK(member_it != graph_.end());
 
       member_it->second.on_stack = false;
-      scc.push_back(member_it->second.txn_id);
+      scc.emplace_back(member_it->second.txn_id, member_it->second.is_local);
       stack_.pop_back();
     }
-    scc.push_back(v.txn_id);
+    scc.emplace_back(v.txn_id, v.is_local);
     stack_.pop_back();
     std::sort(scc.begin(), scc.end());
   }

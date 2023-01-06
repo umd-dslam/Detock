@@ -28,22 +28,6 @@ using slog::MakeRunnerFor;
 using slog::internal::Request;
 using slog::internal::Response;
 
-#define OSTREAM_IMPL(Container)                                                 \
-  inline std::ostream& operator<<(std::ostream& os, const Container& elems) {   \
-    bool first = true;                                                          \
-    os << "[";                                                                  \
-    for (const auto& elem : elems) {                                            \
-      if (!first) os << ", ";                                                   \
-      os << elem;                                                               \
-      first = false;                                                            \
-    }                                                                           \
-    os << "]";                                                                  \
-    return os;                                                                  \
-  }
-
-OSTREAM_IMPL(std::unordered_set<TxnId>);
-OSTREAM_IMPL(std::vector<TxnId>);
-
 void PendingIndex::Add(const JanusDependency& ancestor, TxnId descendant) {
   index_[ancestor.txn_id()].insert(descendant);
 }
@@ -121,41 +105,6 @@ void Scheduler::OnInternalRequestReceived(EnvelopePtr&& env) {
   }
 }
 
-void Scheduler::OnInternalResponseReceived(EnvelopePtr&& env) {
-  if (env->response().type_case() != Response::kJanusInquire) {
-    LOG(ERROR) << "Unexpected response type received: \"" << CASE_NAME(env->response().type_case(), Response) << "\"";
-  }
-  auto& inquiry_result = env->response().janus_inquire();
-  auto txn_id = inquiry_result.txn_id();
-  if (inquiry_result.executed()) {
-    execution_horizon_.Add(txn_id);
-  } else {
-    vector<JanusDependency> deps(inquiry_result.deps().begin(), inquiry_result.deps().end());
-    graph_.insert({txn_id, Vertex{txn_id, std::move(deps)}});
-  }
-  CheckPendingTxns(txn_id);
-}
-
-// Handle responses from the workers
-bool Scheduler::OnCustomSocket() {
-  bool has_msg = false;
-  bool stop = false;
-  while (!stop) {
-    stop = true;
-    for (size_t i = 0; i < workers_.size(); i++) {
-      if (zmq::message_t msg; GetCustomSocket(i).recv(msg, zmq::recv_flags::dontwait)) {
-        stop = false;
-        has_msg = true;
-        auto txn_id = *msg.data<TxnId>();
-        execution_horizon_.Add(txn_id);
-        graph_.erase(txn_id);
-      }
-    }
-  };
-
-  return has_msg;
-}
-
 void Scheduler::ProcessTransaction(EnvelopePtr&& env) {
   auto commit = env->mutable_request()->mutable_janus_commit();
   auto txn = commit->release_txn();
@@ -164,7 +113,7 @@ void Scheduler::ProcessTransaction(EnvelopePtr&& env) {
   txns_.emplace(txn_id, txn);
 
   vector<JanusDependency> deps(commit->deps().begin(), commit->deps().end());
-  auto [vertex_it, inserted] = graph_.insert({txn_id, Vertex{txn_id, std::move(deps)}});
+  auto [vertex_it, inserted] = graph_.insert({txn_id, Vertex{txn_id, true, std::move(deps)}});
   CHECK(inserted);
 
   VLOG(2) << "New transaction: " << txn_id;
@@ -224,10 +173,27 @@ bool Scheduler::ProcessInquiry(EnvelopePtr&& env) {
   return true;
 }
 
+void Scheduler::OnInternalResponseReceived(EnvelopePtr&& env) {
+  if (env->response().type_case() != Response::kJanusInquire) {
+    LOG(ERROR) << "Unexpected response type received: \"" << CASE_NAME(env->response().type_case(), Response) << "\"";
+  }
+  auto& inquiry_result = env->response().janus_inquire();
+  auto txn_id = inquiry_result.txn_id();
+  if (inquiry_result.executed()) {
+    execution_horizon_.Add(txn_id);
+  } else {
+    vector<JanusDependency> deps(inquiry_result.deps().begin(), inquiry_result.deps().end());
+    graph_.insert({txn_id, Vertex{txn_id, false, std::move(deps)}});
+  }
+  CheckPendingTxns(txn_id);
+}
+
 void Scheduler::DispatchSCCs(const std::vector<SCC>& sccs) {
   for (const SCC& scc : sccs) {
     VLOG(2) << "Dispatched SCC: " << scc;
-    for (auto txn_id : scc) {
+    for (auto [txn_id, is_local] : scc) {
+      if (!is_local)
+        continue;
       auto txn_it = txns_.find(txn_id);
       CHECK(txn_it != txns_.end()) << "Could not find transaction " << txn_id;
 
@@ -242,6 +208,26 @@ void Scheduler::DispatchSCCs(const std::vector<SCC>& sccs) {
   }
 }
 
+// Handle responses from the workers
+bool Scheduler::OnCustomSocket() {
+  bool has_msg = false;
+  bool stop = false;
+  while (!stop) {
+    stop = true;
+    for (size_t i = 0; i < workers_.size(); i++) {
+      if (zmq::message_t msg; GetCustomSocket(i).recv(msg, zmq::recv_flags::dontwait)) {
+        stop = false;
+        has_msg = true;
+        auto txn_id = *msg.data<TxnId>();
+        execution_horizon_.Add(txn_id);
+        graph_.erase(txn_id);
+      }
+    }
+  };
+
+  return has_msg;
+}
+
 void Scheduler::CheckPendingInquiry(TxnId txn_id) {
   if (auto it = pending_inquiries_.find(txn_id); it != pending_inquiries_.end()) {
     CHECK(ProcessInquiry(move(it->second)));
@@ -254,16 +240,16 @@ void Scheduler::CheckPendingTxns(TxnId txn_id) {
 
   auto pending = pending_txns_.Remove(txn_id);
   if (pending.has_value()) {
+    VLOG(2) << "Checking pending txns for " << txn_id << ": " << pending.value();
     for (auto pending_txn_id : pending.value()) {
-      VLOG(2) << "Checking pending txns for " << txn_id << ": " << pending.value();
       if (visited.find(pending_txn_id) == visited.end()) {
         auto pending_txn_it = graph_.find(pending_txn_id);
-        CHECK(pending_txn_it != graph_.end());
+        CHECK(pending_txn_it != graph_.end()) << "Could not find pending txn " << pending_txn_id;
 
         sccs_finder_.FindSCCs(pending_txn_it->second, execution_horizon_);
         auto result = sccs_finder_.Finalize();
         DispatchSCCs(result.sccs);
-        ResolveMissingDependencies(txn_id, result.missing_deps);
+        ResolveMissingDependencies(pending_txn_id, result.missing_deps);
         visited.insert(result.visited.begin(), result.visited.end());
       }
     }
