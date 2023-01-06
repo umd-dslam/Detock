@@ -26,7 +26,7 @@ void TarjanSCCsFinder::FindSCCs(Vertex& v, TxnHorizon& execution_horizon) {
       missing_deps_.insert({next_id, next});
     } else {
       auto& next_v = next_v_it->second;
-      if (next_v.txn_id == 0) {
+      if (next_v.disc == 0) {
         FindSCCs(next_v, execution_horizon);
 
         if (!missing_deps_.empty()) {
@@ -34,10 +34,8 @@ void TarjanSCCsFinder::FindSCCs(Vertex& v, TxnHorizon& execution_horizon) {
         }
 
         v.low = std::min(v.low, next_v.low);
-      } else {
-        if (next_v.on_stack) {
-          v.low = std::min(v.low, next_v.disc);
-        }
+      } else if (next_v.on_stack) {
+        v.low = std::min(v.low, next_v.disc);
       }
     }
   }
@@ -57,6 +55,7 @@ void TarjanSCCsFinder::FindSCCs(Vertex& v, TxnHorizon& execution_horizon) {
       stack_.pop_back();
     }
     scc.push_back(v.txn_id);
+    stack_.pop_back();
     std::sort(scc.begin(), scc.end());
   }
 }

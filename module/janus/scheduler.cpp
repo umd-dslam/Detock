@@ -28,20 +28,24 @@ using slog::MakeRunnerFor;
 using slog::internal::Request;
 using slog::internal::Response;
 
-PendingIndex::PendingIndex(int local_partition) : local_partition_(local_partition) {}
+#define OSTREAM_IMPL(Container)                                                 \
+  inline std::ostream& operator<<(std::ostream& os, const Container& elems) {   \
+    bool first = true;                                                          \
+    os << "[";                                                                  \
+    for (const auto& elem : elems) {                                            \
+      if (!first) os << ", ";                                                   \
+      os << elem;                                                               \
+      first = false;                                                            \
+    }                                                                           \
+    os << "]";                                                                  \
+    return os;                                                                  \
+  }
 
-bool PendingIndex::Add(const JanusDependency& ancestor, TxnId descendant) {
-  auto it = index_.find(ancestor.txn_id());
-  if (it != index_.end()) {
-    it->second.insert(descendant);
-    return true;
-  }
-  // If current partition is not a participant of ancestor
-  if ((ancestor.participants_bitmap() & (1 << local_partition_)) == 0) {
-    index_[ancestor.txn_id()].insert(descendant);
-    return true;
-  }
-  return false;
+OSTREAM_IMPL(std::unordered_set<TxnId>);
+OSTREAM_IMPL(std::vector<TxnId>);
+
+void PendingIndex::Add(const JanusDependency& ancestor, TxnId descendant) {
+  index_[ancestor.txn_id()].insert(descendant);
 }
 
 std::optional<std::unordered_set<TxnId>> PendingIndex::Remove(TxnId ancestor) {
@@ -73,7 +77,6 @@ Scheduler::Scheduler(const shared_ptr<Broker>& broker, const shared_ptr<Storage>
                      const MetricsRepositoryManagerPtr& metrics_manager, std::chrono::milliseconds poll_timeout)
     : NetworkedModule(broker, {kSchedulerChannel, false /* is_raw */}, metrics_manager, poll_timeout),
       sccs_finder_(graph_),
-      pending_txns_(config()->local_partition()),
       current_worker_(0) {
   for (int i = 0; i < config()->num_workers(); i++) {
     workers_.push_back(MakeRunnerFor<Worker>(i, broker, storage, metrics_manager, poll_timeout));
@@ -164,26 +167,33 @@ void Scheduler::ProcessTransaction(EnvelopePtr&& env) {
   auto [vertex_it, inserted] = graph_.insert({txn_id, Vertex{txn_id, std::move(deps)}});
   CHECK(inserted);
 
+  VLOG(2) << "New transaction: " << txn_id;
+
   CheckPendingInquiry(txn_id);
 
   sccs_finder_.FindSCCs(vertex_it->second, execution_horizon_);
   auto result = sccs_finder_.Finalize();
 
   DispatchSCCs(result.sccs);
-  InquireMissingDependencies(txn_id, result.missing_deps);
+  ResolveMissingDependencies(txn_id, result.missing_deps);
   CheckPendingTxns(txn_id);
 }
 
-void Scheduler::InquireMissingDependencies(TxnId txn_id, const vector<JanusDependency>& missing_deps) {
+void Scheduler::ResolveMissingDependencies(TxnId txn_id, const vector<JanusDependency>& missing_deps) {
   auto local_region = config()->local_region();
   auto local_replica = config()->local_replica();
+  auto local_partition = config()->local_partition();
   auto env = NewEnvelope();
   for (const auto& dep : missing_deps) {
-    if (pending_txns_.Add(dep, txn_id)) {
+    pending_txns_.Add(dep, txn_id);
+    VLOG(3) << "Pending: " << dep.txn_id() << " => " << txn_id;
+
+    // Send an inquiry if current partition is not a participant of ancestor
+    if ((dep.participants_bitmap() & (1 << local_partition)) == 0) {
       auto inquiry = env->mutable_request()->mutable_janus_inquire();
       inquiry->set_txn_id(dep.txn_id());
 
-      VLOG(1) << "Inquire: " << inquiry->DebugString();
+      VLOG(2) << "Inquire: " << inquiry->DebugString();
 
       Send(*env, MakeMachineId(local_region, local_replica, dep.target_partition()), kSchedulerChannel);
     }
@@ -216,11 +226,10 @@ bool Scheduler::ProcessInquiry(EnvelopePtr&& env) {
 
 void Scheduler::DispatchSCCs(const std::vector<SCC>& sccs) {
   for (const SCC& scc : sccs) {
-    std::ostringstream oss;
-    bool first = true;
+    VLOG(2) << "Dispatched SCC: " << scc;
     for (auto txn_id : scc) {
       auto txn_it = txns_.find(txn_id);
-      CHECK(txn_it != txns_.end());
+      CHECK(txn_it != txns_.end()) << "Could not find transaction " << txn_id;
 
       zmq::message_t msg(sizeof(Transaction*));
       *msg.data<Transaction*>() = txn_it->second;
@@ -229,12 +238,7 @@ void Scheduler::DispatchSCCs(const std::vector<SCC>& sccs) {
       int worker = current_worker_;
       current_worker_ = (current_worker_ + 1) % workers_.size();
       GetCustomSocket(worker).send(msg, zmq::send_flags::none);
-
-      if (!first) oss << ", ";
-      oss << txn_id;
-      first = false;
     }
-    VLOG(1) << "Dispatched SCC: " << oss.str();
   }
 }
 
@@ -251,6 +255,7 @@ void Scheduler::CheckPendingTxns(TxnId txn_id) {
   auto pending = pending_txns_.Remove(txn_id);
   if (pending.has_value()) {
     for (auto pending_txn_id : pending.value()) {
+      VLOG(2) << "Checking pending txns for " << txn_id << ": " << pending.value();
       if (visited.find(pending_txn_id) == visited.end()) {
         auto pending_txn_it = graph_.find(pending_txn_id);
         CHECK(pending_txn_it != graph_.end());
@@ -258,7 +263,7 @@ void Scheduler::CheckPendingTxns(TxnId txn_id) {
         sccs_finder_.FindSCCs(pending_txn_it->second, execution_horizon_);
         auto result = sccs_finder_.Finalize();
         DispatchSCCs(result.sccs);
-        InquireMissingDependencies(txn_id, result.missing_deps);
+        ResolveMissingDependencies(txn_id, result.missing_deps);
         visited.insert(result.visited.begin(), result.visited.end());
       }
     }

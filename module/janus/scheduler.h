@@ -28,13 +28,11 @@ using slog::internal::JanusDependency;
 
 class PendingIndex {
  public:
-  PendingIndex(int local_partition);
-  bool Add(const JanusDependency& ancestor, TxnId descendant);
+  void Add(const JanusDependency& ancestor, TxnId descendant);
   std::optional<std::unordered_set<TxnId>> Remove(TxnId ancestor);
   std::string to_string() const;
 
  private:
-  int local_partition_;
   std::unordered_map<TxnId, std::unordered_set<TxnId>> index_;
 };
 
@@ -59,7 +57,7 @@ class Scheduler : public slog::NetworkedModule {
   void ProcessTransaction(EnvelopePtr&& env);
   bool ProcessInquiry(EnvelopePtr&& env);
   void DispatchSCCs(const std::vector<SCC>& sccs);
-  void InquireMissingDependencies(TxnId txn_id, const std::vector<JanusDependency>& deps);
+  void ResolveMissingDependencies(TxnId txn_id, const std::vector<JanusDependency>& deps);
   void CheckPendingInquiry(TxnId txn_id);
   void CheckPendingTxns(TxnId txn_id);
   void PrintStats();
