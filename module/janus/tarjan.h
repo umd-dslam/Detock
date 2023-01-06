@@ -59,12 +59,13 @@ struct TarjanResult {
 
 class TarjanSCCsFinder {
  public:
-  TarjanSCCsFinder(Graph& graph);
-  void FindSCCs(Vertex& v, TxnHorizon& execution_horizon);
+  TarjanSCCsFinder(Graph& graph, TxnHorizon& execution_horizon);
+  void FindSCCs(Vertex& v);
   TarjanResult Finalize();
 
  private:
   Graph& graph_;
+  TxnHorizon& execution_horizon_;
   std::vector<TxnId> stack_;
   std::vector<SCC> sccs_;
   std::unordered_map<TxnId, JanusDependency> missing_deps_;

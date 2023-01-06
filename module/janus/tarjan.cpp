@@ -8,11 +8,11 @@ using std::vector;
 
 namespace janus {
 
-TarjanSCCsFinder::TarjanSCCsFinder(Graph& graph) : graph_(graph), id_counter_(0) {}
+TarjanSCCsFinder::TarjanSCCsFinder(Graph& graph, TxnHorizon& execution_horizon) : graph_(graph), execution_horizon_(execution_horizon), id_counter_(0) {}
 
-void TarjanSCCsFinder::FindSCCs(Vertex& v, TxnHorizon& execution_horizon) {
+void TarjanSCCsFinder::FindSCCs(Vertex& v) {
   // Make sure that the starting vertex is not already known to be in an SCC or executed
-  if (v.disc != 0 || execution_horizon.contains(v.txn_id)) {
+  if (v.disc != 0 || execution_horizon_.contains(v.txn_id)) {
     return;
   }
 
@@ -24,7 +24,7 @@ void TarjanSCCsFinder::FindSCCs(Vertex& v, TxnHorizon& execution_horizon) {
 
   for (auto next : v.deps) {
     auto next_id = next.txn_id();
-    if (next_id == v.txn_id || execution_horizon.contains(next_id)) {
+    if (next_id == v.txn_id || execution_horizon_.contains(next_id)) {
       continue;
     }
     if (auto next_v_it = graph_.find(next_id); next_v_it == graph_.end()) {
@@ -32,7 +32,7 @@ void TarjanSCCsFinder::FindSCCs(Vertex& v, TxnHorizon& execution_horizon) {
     } else {
       auto& next_v = next_v_it->second;
       if (next_v.disc == 0) {
-        FindSCCs(next_v, execution_horizon);
+        FindSCCs(next_v);
 
         if (!missing_deps_.empty()) {
           return;

@@ -28,7 +28,7 @@ using slog::internal::JanusDependency;
 
 class PendingIndex {
  public:
-  void Add(const JanusDependency& ancestor, TxnId descendant);
+  bool Add(const JanusDependency& ancestor, TxnId descendant);
   std::optional<std::unordered_set<TxnId>> Remove(TxnId ancestor);
   std::string to_string() const;
 

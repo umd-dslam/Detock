@@ -28,8 +28,9 @@ using slog::MakeRunnerFor;
 using slog::internal::Request;
 using slog::internal::Response;
 
-void PendingIndex::Add(const JanusDependency& ancestor, TxnId descendant) {
-  index_[ancestor.txn_id()].insert(descendant);
+bool PendingIndex::Add(const JanusDependency& ancestor, TxnId descendant) {
+  auto res = index_[ancestor.txn_id()].insert(descendant);
+  return res.second;
 }
 
 std::optional<std::unordered_set<TxnId>> PendingIndex::Remove(TxnId ancestor) {
@@ -60,7 +61,7 @@ std::string PendingIndex::to_string() const {
 Scheduler::Scheduler(const shared_ptr<Broker>& broker, const shared_ptr<Storage>& storage,
                      const MetricsRepositoryManagerPtr& metrics_manager, std::chrono::milliseconds poll_timeout)
     : NetworkedModule(broker, {kSchedulerChannel, false /* is_raw */}, metrics_manager, poll_timeout),
-      sccs_finder_(graph_),
+      sccs_finder_(graph_, execution_horizon_),
       current_worker_(0) {
   for (int i = 0; i < config()->num_workers(); i++) {
     workers_.push_back(MakeRunnerFor<Worker>(i, broker, storage, metrics_manager, poll_timeout));
@@ -120,9 +121,10 @@ void Scheduler::ProcessTransaction(EnvelopePtr&& env) {
 
   CheckPendingInquiry(txn_id);
 
-  sccs_finder_.FindSCCs(vertex_it->second, execution_horizon_);
+  sccs_finder_.FindSCCs(vertex_it->second);
   auto result = sccs_finder_.Finalize();
-
+  VLOG(3) << "FindSCCs for " << txn_id << " - visited vertices: " << result.visited;
+  
   DispatchSCCs(result.sccs);
   ResolveMissingDependencies(txn_id, result.missing_deps);
   CheckPendingTxns(txn_id);
@@ -134,17 +136,17 @@ void Scheduler::ResolveMissingDependencies(TxnId txn_id, const vector<JanusDepen
   auto local_partition = config()->local_partition();
   auto env = NewEnvelope();
   for (const auto& dep : missing_deps) {
-    pending_txns_.Add(dep, txn_id);
-    VLOG(3) << "Pending: " << dep.txn_id() << " => " << txn_id;
+    VLOG(3) << "Pending: " << dep.txn_id() << " <- " << txn_id;
+    if (pending_txns_.Add(dep, txn_id)) {
+      // Send an inquiry if current partition is not a participant of ancestor
+      if ((dep.participants_bitmap() & (1 << local_partition)) == 0) {
+        auto inquiry = env->mutable_request()->mutable_janus_inquire();
+        inquiry->set_txn_id(dep.txn_id());
 
-    // Send an inquiry if current partition is not a participant of ancestor
-    if ((dep.participants_bitmap() & (1 << local_partition)) == 0) {
-      auto inquiry = env->mutable_request()->mutable_janus_inquire();
-      inquiry->set_txn_id(dep.txn_id());
+        VLOG(2) << "Inquire: " << inquiry->DebugString();
 
-      VLOG(2) << "Inquire: " << inquiry->DebugString();
-
-      Send(*env, MakeMachineId(local_region, local_replica, dep.target_partition()), kSchedulerChannel);
+        Send(*env, MakeMachineId(local_region, local_replica, dep.target_partition()), kSchedulerChannel);
+      }
     }
   }
 }
@@ -178,6 +180,9 @@ void Scheduler::OnInternalResponseReceived(EnvelopePtr&& env) {
     LOG(ERROR) << "Unexpected response type received: \"" << CASE_NAME(env->response().type_case(), Response) << "\"";
   }
   auto& inquiry_result = env->response().janus_inquire();
+
+  VLOG(2) << "Inquiry result: " << inquiry_result.DebugString();
+
   auto txn_id = inquiry_result.txn_id();
   if (inquiry_result.executed()) {
     execution_horizon_.Add(txn_id);
@@ -240,18 +245,24 @@ void Scheduler::CheckPendingTxns(TxnId txn_id) {
 
   auto pending = pending_txns_.Remove(txn_id);
   if (pending.has_value()) {
-    VLOG(2) << "Checking pending txns for " << txn_id << ": " << pending.value();
+    VLOG(2) << "Checking pending txns: " << txn_id << " <- " << pending.value();
     for (auto pending_txn_id : pending.value()) {
-      if (visited.find(pending_txn_id) == visited.end()) {
-        auto pending_txn_it = graph_.find(pending_txn_id);
-        CHECK(pending_txn_it != graph_.end()) << "Could not find pending txn " << pending_txn_id;
-
-        sccs_finder_.FindSCCs(pending_txn_it->second, execution_horizon_);
-        auto result = sccs_finder_.Finalize();
-        DispatchSCCs(result.sccs);
-        ResolveMissingDependencies(pending_txn_id, result.missing_deps);
-        visited.insert(result.visited.begin(), result.visited.end());
+      if (visited.find(pending_txn_id) != visited.end()) {
+        continue;
       }
+
+      auto pending_txn_it = graph_.find(pending_txn_id);
+      if (pending_txn_it == graph_.end()) {
+        continue;
+      }
+
+      sccs_finder_.FindSCCs(pending_txn_it->second);
+      auto result = sccs_finder_.Finalize();
+      VLOG(3) << "FindSCCs for " << pending_txn_id << " - visited vertices: " << result.visited;
+
+      DispatchSCCs(result.sccs);
+      ResolveMissingDependencies(pending_txn_id, result.missing_deps);
+      visited.insert(result.visited.begin(), result.visited.end());
     }
   }
 }

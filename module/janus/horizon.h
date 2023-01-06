@@ -29,9 +29,7 @@ class TxnHorizon {
 
    public:
     void Add(TxnId counter) {
-      if (counter <= horizon) {
-        return;
-      } else if (counter == horizon + 1) {
+      if (counter == horizon + 1) {
         horizon++;
         for (;;) {
           auto it = buffered.find(horizon + 1);
@@ -41,7 +39,6 @@ class TxnHorizon {
           buffered.erase(it);
           horizon++;
         }
-        return;
       } else {
         buffered.insert(counter);
       }
