@@ -143,9 +143,23 @@ void Acceptor::ProcessCommit(EnvelopePtr&& env) {
     return;
   }
 
-  env->mutable_request()->mutable_janus_commit()->set_allocated_txn(txn_info_it->second.txn);
-
-  Send(move(env), kSchedulerChannel);
+  auto txn = txn_info_it->second.txn;
+  if (config()->execution_type() != slog::internal::ExecutionType::NOOP) {
+    env->mutable_request()->mutable_janus_commit()->set_allocated_txn(txn);
+    Send(move(env), kSchedulerChannel);
+  } else {  
+    auto coordinator = txn->internal().coordinating_server();
+    auto [coord_reg, coord_rep, _] = slog::UnpackMachineId(coordinator);
+    if (coord_reg == config()->local_region() && coord_rep == config()->local_replica()) {
+      Envelope finished_env;
+      auto finished_sub_txn = finished_env.mutable_request()->mutable_finished_subtxn();
+      finished_sub_txn->set_partition(config()->local_partition());
+      finished_sub_txn->set_allocated_txn(txn);
+      Send(finished_env, txn->internal().coordinating_server(), slog::kServerChannel);
+    } else {
+      delete txn;
+    }
+  }
 
   txns_.erase(txn_id);
 }
