@@ -120,13 +120,14 @@ def cleanup(username: str, config_path: str, image: str):
     # fmt: on
 
 
-def start_server(username: str, config_path: str, image: str):
+def start_server(username: str, config_path: str, image: str, binary="slog"):
     LOG.info("START SERVERS")
     admin.main([
         "start",
         config_path,
         "--user", username,
         "--image", image,
+        "--bin", binary,
     ])
 
     LOG.info("WAIT FOR ALL SERVERS TO BE ONLINE")
@@ -370,7 +371,12 @@ class Experiment:
                 cleanup(settings["username"], cleanup_config_path, server["image"])
 
                 if not args.skip_starting_server:
-                    start_server(settings["username"], config_path, server["image"])
+                    start_server(
+                        settings["username"],
+                        config_path,
+                        server["image"],
+                        server.get("binary", "slog")
+                    )
 
                 config_name = os.path.splitext(os.path.basename(server["config"]))[0]
                 if num_partitions is not None:

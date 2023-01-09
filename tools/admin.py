@@ -302,6 +302,9 @@ class StartCommand(AdminCommand):
     def add_arguments(self, parser):
         super().add_arguments(parser)
         parser.add_argument(
+            "--bin", default="slog", help="Name of the binary file to run"
+        )
+        parser.add_argument(
             "-e",
             nargs="*",
             help="Environment variables to pass to the container. For example, "
@@ -329,7 +332,7 @@ class StartCommand(AdminCommand):
         def start_container(remote_proc):
             client, pub_address, priv_address, *_ = remote_proc
             shell_cmd = (
-                f"slog "
+                f"{args.bin} "
                 f"--config {config_path} "
                 f"--address {priv_address} "
                 f"--data-dir {CONTAINER_DATA_DIR} "
