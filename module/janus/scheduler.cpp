@@ -15,6 +15,7 @@ namespace janus {
 using std::make_shared;
 using std::move;
 using std::shared_ptr;
+using std::unordered_set;
 using std::vector;
 using std::chrono::milliseconds;
 
@@ -121,13 +122,9 @@ void Scheduler::ProcessTransaction(EnvelopePtr&& env) {
 
   CheckPendingInquiry(txn_id);
 
-  sccs_finder_.FindSCCs(vertex_it->second);
-  auto result = sccs_finder_.Finalize();
-  VLOG(3) << "FindSCCs for " << txn_id << " - visited vertices: " << result.visited;
-  
-  DispatchSCCs(result.sccs);
-  ResolveMissingDependencies(txn_id, result.missing_deps);
-  CheckPendingTxns(txn_id);
+  vector<TxnId> ready_txns;
+  FindAndResolveSCCs(vertex_it->second, ready_txns);
+  CheckPendingTxns(std::move(ready_txns));
 }
 
 void Scheduler::ResolveMissingDependencies(TxnId txn_id, const vector<JanusDependency>& missing_deps) {
@@ -143,7 +140,7 @@ void Scheduler::ResolveMissingDependencies(TxnId txn_id, const vector<JanusDepen
         auto inquiry = env->mutable_request()->mutable_janus_inquire();
         inquiry->set_txn_id(dep.txn_id());
 
-        VLOG(2) << "Inquire: " << inquiry->DebugString();
+        VLOG(3) << "Inquire: " << inquiry->DebugString();
 
         Send(*env, MakeMachineId(local_region, local_replica, dep.target_partition()), kSchedulerChannel);
       }
@@ -186,14 +183,17 @@ void Scheduler::OnInternalResponseReceived(EnvelopePtr&& env) {
   auto txn_id = inquiry_result.txn_id();
   if (inquiry_result.executed()) {
     execution_horizon_.Add(txn_id);
+    CheckPendingTxns({txn_id});
   } else {
     vector<JanusDependency> deps(inquiry_result.deps().begin(), inquiry_result.deps().end());
-    graph_.insert({txn_id, Vertex{txn_id, false, std::move(deps)}});
+    auto res = graph_.insert({txn_id, Vertex{txn_id, false, std::move(deps)}});
+    vector<TxnId> ready_txns;
+    FindAndResolveSCCs(res.first->second, ready_txns);
+    CheckPendingTxns(std::move(ready_txns));
   }
-  CheckPendingTxns(txn_id);
 }
 
-void Scheduler::DispatchSCCs(const std::vector<SCC>& sccs) {
+void Scheduler::DispatchSCCs(const vector<SCC>& sccs) {
   for (const SCC& scc : sccs) {
     VLOG(2) << "Dispatched SCC: " << scc;
     for (auto [txn_id, is_local] : scc) {
@@ -240,31 +240,46 @@ void Scheduler::CheckPendingInquiry(TxnId txn_id) {
   }
 }
 
-void Scheduler::CheckPendingTxns(TxnId txn_id) {
-  std::unordered_set<TxnId> visited;
+void Scheduler::CheckPendingTxns(vector<TxnId>&& ready_txns) {
+  while (!ready_txns.empty()) {
+    auto txn_id = ready_txns.back();
+    ready_txns.pop_back();
 
-  auto pending = pending_txns_.Remove(txn_id);
-  if (pending.has_value()) {
-    VLOG(2) << "Checking pending txns: " << txn_id << " <- " << pending.value();
-    for (auto pending_txn_id : pending.value()) {
-      if (visited.find(pending_txn_id) != visited.end()) {
-        continue;
+    unordered_set<TxnId> visited;
+    auto pending = pending_txns_.Remove(txn_id);
+    if (pending.has_value()) {
+      VLOG(2) << "Checking pending txns: " << txn_id << " <- " << pending.value();
+      for (auto pending_txn_id : pending.value()) {
+        if (visited.find(pending_txn_id) != visited.end()) {
+          continue;
+        }
+
+        auto pending_txn_it = graph_.find(pending_txn_id);
+        if (pending_txn_it == graph_.end()) {
+          continue;
+        }
+
+        auto new_visited = FindAndResolveSCCs(pending_txn_it->second, ready_txns);
+        visited.insert(new_visited.begin(), new_visited.end());
       }
-
-      auto pending_txn_it = graph_.find(pending_txn_id);
-      if (pending_txn_it == graph_.end()) {
-        continue;
-      }
-
-      sccs_finder_.FindSCCs(pending_txn_it->second);
-      auto result = sccs_finder_.Finalize();
-      VLOG(3) << "FindSCCs for " << pending_txn_id << " - visited vertices: " << result.visited;
-
-      DispatchSCCs(result.sccs);
-      ResolveMissingDependencies(pending_txn_id, result.missing_deps);
-      visited.insert(result.visited.begin(), result.visited.end());
     }
   }
+}
+
+unordered_set<TxnId> Scheduler::FindAndResolveSCCs(Vertex& v, vector<TxnId>& ready_txns) {
+  sccs_finder_.FindSCCs(v);
+  auto result = sccs_finder_.Finalize();
+  VLOG(3) << "FindSCCs for " << v.txn_id << " - visited vertices: " << result.visited;
+  DispatchSCCs(result.sccs);
+  ResolveMissingDependencies(v.txn_id, result.missing_deps);
+
+  for (auto& scc : result.sccs) {
+    for (auto [new_txn_id, _] : scc) {
+      ready_txns.push_back(new_txn_id);
+    }
+  }
+
+  return result.visited;
 }
 
 void Scheduler::PrintStats() {
