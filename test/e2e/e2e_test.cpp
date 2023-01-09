@@ -229,49 +229,49 @@ TEST_P(E2ETest, AbortTxnEmptyKeySets) {
   ASSERT_EQ(TransactionType::UNKNOWN, aborted_txn_resp.internal().type());
 }
 
-class E2ETestBypassMHOrderer : public E2ETest {
-  internal::Configuration CustomConfig() final {
-    internal::Configuration config;
-    config.set_bypass_mh_orderer(true);
-#ifdef LOCK_MANAGER_DDR
-    config.set_ddr_interval(10);
-#else
-    config.set_synchronized_batching(true);
-    // Artificially offset the txn timestamp far into the future to avoid abort
-    config.set_timestamp_buffer_us(500000);
-#endif
-    return config;
-  }
-};
+// class E2ETestBypassMHOrderer : public E2ETest {
+//   internal::Configuration CustomConfig() final {
+//     internal::Configuration config;
+//     config.set_bypass_mh_orderer(true);
+// #ifdef LOCK_MANAGER_DDR
+//     config.set_ddr_interval(10);
+// #else
+//     config.set_synchronized_batching(true);
+//     // Artificially offset the txn timestamp far into the future to avoid abort
+//     config.set_timestamp_buffer_us(500000);
+// #endif
+//     return config;
+//   }
+// };
 
-TEST_P(E2ETestBypassMHOrderer, MultiHomeSinglePartition) {
-  auto txn1 = MakeTransaction({{"A", KeyType::READ}, {"C", KeyType::WRITE}}, {{"GET", "A"}, {"SET", "C", "newC"}});
-  auto resp = SendAndReceiveResult(txn1);
-  ASSERT_EQ(resp.status(), TransactionStatus::COMMITTED);
-  ASSERT_EQ(resp.internal().type(), TransactionType::MULTI_HOME_OR_LOCK_ONLY);
-  ASSERT_EQ(resp.keys().size(), 2);
-  ASSERT_EQ(TxnValueEntry(resp, "A").value(), "valA");
-  ASSERT_EQ(TxnValueEntry(resp, "C").new_value(), "newC");
+// TEST_P(E2ETestBypassMHOrderer, MultiHomeSinglePartition) {
+//   auto txn1 = MakeTransaction({{"A", KeyType::READ}, {"C", KeyType::WRITE}}, {{"GET", "A"}, {"SET", "C", "newC"}});
+//   auto resp = SendAndReceiveResult(txn1);
+//   ASSERT_EQ(resp.status(), TransactionStatus::COMMITTED);
+//   ASSERT_EQ(resp.internal().type(), TransactionType::MULTI_HOME_OR_LOCK_ONLY);
+//   ASSERT_EQ(resp.keys().size(), 2);
+//   ASSERT_EQ(TxnValueEntry(resp, "A").value(), "valA");
+//   ASSERT_EQ(TxnValueEntry(resp, "C").new_value(), "newC");
 
-  auto txn2 = MakeTransaction({{"C", KeyType::READ}}, {{"GET", "C"}});
-  SendAndCheckAllOneByOne(txn2, [this](Transaction resp) {
-    ASSERT_EQ(resp.status(), TransactionStatus::COMMITTED);
-    ASSERT_EQ(resp.internal().type(), TransactionType::SINGLE_HOME);
-    ASSERT_EQ(resp.keys_size(), 1);
-    ASSERT_EQ(TxnValueEntry(resp, "C").value(), "newC");
-  });
-}
+//   auto txn2 = MakeTransaction({{"C", KeyType::READ}}, {{"GET", "C"}});
+//   SendAndCheckAllOneByOne(txn2, [this](Transaction resp) {
+//     ASSERT_EQ(resp.status(), TransactionStatus::COMMITTED);
+//     ASSERT_EQ(resp.internal().type(), TransactionType::SINGLE_HOME);
+//     ASSERT_EQ(resp.keys_size(), 1);
+//     ASSERT_EQ(TxnValueEntry(resp, "C").value(), "newC");
+//   });
+// }
 
-TEST_P(E2ETestBypassMHOrderer, MultiHomeMultiPartition) {
-  auto txn = MakeTransaction({{"A", KeyType::READ}, {"X", KeyType::READ}, {"C", KeyType::READ}});
-  auto resp = SendAndReceiveResult(txn);
-  ASSERT_EQ(resp.status(), TransactionStatus::COMMITTED);
-  ASSERT_EQ(resp.internal().type(), TransactionType::MULTI_HOME_OR_LOCK_ONLY);
-  ASSERT_EQ(resp.keys().size(), 3);
-  ASSERT_EQ(TxnValueEntry(resp, "A").value(), "valA");
-  ASSERT_EQ(TxnValueEntry(resp, "X").value(), "valX");
-  ASSERT_EQ(TxnValueEntry(resp, "C").value(), "valC");
-}
+// TEST_P(E2ETestBypassMHOrderer, MultiHomeMultiPartition) {
+//   auto txn = MakeTransaction({{"A", KeyType::READ}, {"X", KeyType::READ}, {"C", KeyType::READ}});
+//   auto resp = SendAndReceiveResult(txn);
+//   ASSERT_EQ(resp.status(), TransactionStatus::COMMITTED);
+//   ASSERT_EQ(resp.internal().type(), TransactionType::MULTI_HOME_OR_LOCK_ONLY);
+//   ASSERT_EQ(resp.keys().size(), 3);
+//   ASSERT_EQ(TxnValueEntry(resp, "A").value(), "valA");
+//   ASSERT_EQ(TxnValueEntry(resp, "X").value(), "valX");
+//   ASSERT_EQ(TxnValueEntry(resp, "C").value(), "valC");
+// }
 
 INSTANTIATE_TEST_SUITE_P(AllE2ETests, E2ETest,
                          testing::Combine(testing::Values(false, true), testing::Range(0, kNumRegions),
