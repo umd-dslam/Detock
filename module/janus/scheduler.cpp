@@ -199,8 +199,11 @@ void Scheduler::DispatchSCCs(const vector<SCC>& sccs) {
   for (const SCC& scc : sccs) {
     VLOG(2) << "Dispatched SCC: " << scc;
     for (auto [txn_id, is_local] : scc) {
-      if (!is_local)
+      if (!is_local) {
+        graph_.erase(txn_id);
+        execution_horizon_.Add(txn_id);
         continue;
+      }
       auto txn_it = txns_.find(txn_id);
       CHECK(txn_it != txns_.end()) << "Could not find transaction " << txn_id;
 
