@@ -147,7 +147,7 @@ void Acceptor::ProcessCommit(EnvelopePtr&& env) {
   if (config()->execution_type() != slog::internal::ExecutionType::NOOP) {
     env->mutable_request()->mutable_janus_commit()->set_allocated_txn(txn);
     Send(move(env), kSchedulerChannel);
-  } else {  
+  } else {
     auto coordinator = txn->internal().coordinating_server();
     auto [coord_reg, coord_rep, _] = slog::UnpackMachineId(coordinator);
     if (coord_reg == config()->local_region() && coord_rep == config()->local_replica()) {

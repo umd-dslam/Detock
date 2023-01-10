@@ -1,8 +1,8 @@
 #pragma once
 
 #include <set>
-#include <unordered_map>
 #include <sstream>
+#include <unordered_map>
 #include <vector>
 
 #include "common/configuration.h"

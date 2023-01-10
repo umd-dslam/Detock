@@ -309,10 +309,10 @@ void Scheduler::PrintStats(EnvelopePtr&& env) {
         cout << "\n";
       }
       break;
-    case 1: 
+    case 1:
       cout << "Pending txns:\n" << pending_txns_.to_string();
       break;
-    case 2: 
+    case 2:
       cout << "Undispatched txns:\n";
       for (auto& [txn_id, _] : txns_) {
         cout << txn_id << "\n";
@@ -347,6 +347,6 @@ void Scheduler::PrintStats(EnvelopePtr&& env) {
     }
   }
   cout << std::flush;
-} 
+}
 
 }  // namespace janus

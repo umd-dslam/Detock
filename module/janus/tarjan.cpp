@@ -8,7 +8,8 @@ using std::vector;
 
 namespace janus {
 
-TarjanSCCsFinder::TarjanSCCsFinder(Graph& graph, TxnHorizon& execution_horizon) : graph_(graph), execution_horizon_(execution_horizon), id_counter_(0) {}
+TarjanSCCsFinder::TarjanSCCsFinder(Graph& graph, TxnHorizon& execution_horizon)
+    : graph_(graph), execution_horizon_(execution_horizon), id_counter_(0) {}
 
 void TarjanSCCsFinder::FindSCCs(Vertex& v) {
   // Make sure that the starting vertex is not already known to be in an SCC or executed

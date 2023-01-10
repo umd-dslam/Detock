@@ -1,7 +1,8 @@
 #include "module/janus/coordinator.h"
 
-#include <sstream>
 #include <glog/logging.h>
+
+#include <sstream>
 
 #include "common/clock.h"
 #include "common/constants.h"
@@ -173,7 +174,7 @@ void Coordinator::AcceptTxn(EnvelopePtr&& env) {
   auto info_it = txns_.find(txn_id);
   if (info_it == txns_.end()) {
     return;
-  } 
+  }
 
   // Get the quorum deps object of the partition in the response
   auto& quorums = info_it->second.quorums;
