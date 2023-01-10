@@ -25,7 +25,7 @@ message TransactionRequest {
 message StatsRequest {
     ModuleId module = 1;
     // Level of details, starting from 0
-    uint32 level = 2;
+    uint64 level = 2;
 }
 
 message WriteMetricsRequest {

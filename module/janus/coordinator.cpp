@@ -155,7 +155,7 @@ void Coordinator::PreAcceptTxn(EnvelopePtr&& env) {
         janus_dep->set_target_partition(p);
       }
     }
-    VLOG(2) << "Taking slow path:\n" << accept->DebugString();
+    VLOG(4) << "Taking slow path:\n" << accept->DebugString();
 
     Send(*accept_env, info_it->second.destinations, kSequencerChannel);
 
@@ -220,7 +220,7 @@ void Coordinator::CommitTxn(CoordinatorTxnInfo& txn_info) {
     }
   }
 
-  VLOG(2) << "Commit:\n" << commit->DebugString();
+  VLOG(4) << "Commit:\n" << commit->DebugString();
 
   Send(*commit_env, txn_info.destinations, kSequencerChannel);
 

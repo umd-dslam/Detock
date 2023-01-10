@@ -1,6 +1,7 @@
 #include "module/janus/scheduler.h"
 
 #include <algorithm>
+#include <iostream>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -30,7 +31,8 @@ using slog::internal::Request;
 using slog::internal::Response;
 
 bool PendingIndex::Add(const JanusDependency& ancestor, TxnId descendant) {
-  auto res = index_[ancestor.txn_id()].insert(descendant);
+  auto res = index_.try_emplace(ancestor.txn_id());
+  res.first->second.insert(descendant);
   return res.second;
 }
 
@@ -99,7 +101,7 @@ void Scheduler::OnInternalRequestReceived(EnvelopePtr&& env) {
       ProcessInquiry(move(env));
       break;
     case Request::kStats:
-      PrintStats();
+      PrintStats(move(env));
       break;
     default:
       LOG(ERROR) << "Unexpected request type received: \"" << CASE_NAME(env->request().type_case(), Request) << "\"";
@@ -282,21 +284,64 @@ unordered_set<TxnId> Scheduler::FindAndResolveSCCs(Vertex& v, vector<TxnId>& rea
   return result.visited;
 }
 
-void Scheduler::PrintStats() {
-  std::ostringstream oss;
-  oss << "graph:\n";
-  for (auto& [txn_id, vertex] : graph_) {
-    oss << txn_id << ": ";
-    bool first = true;
-    for (auto& dep : vertex.deps) {
-      if (!first) oss << ", ";
-      oss << dep.txn_id();
-      first = false;
+using std::cout;
+
+void Scheduler::PrintStats(EnvelopePtr&& env) {
+  auto& stat_request = env->request().stats();
+
+  cout << "\n";
+  switch (stat_request.level()) {
+    case 0:
+      cout << "Graph:\n";
+      for (auto& [txn_id, vertex] : graph_) {
+        cout << txn_id << ": ";
+        bool first = true;
+        for (auto& dep : vertex.deps) {
+          if (!first) cout << ", ";
+          cout << dep.txn_id();
+          first = false;
+        }
+        cout << "\n";
+      }
+      break;
+    case 1: 
+      cout << "Pending txns:\n" << pending_txns_.to_string();
+      break;
+    case 2: 
+      cout << "Undispatched txns:\n";
+      for (auto& [txn_id, _] : txns_) {
+        cout << txn_id << "\n";
+      }
+      break;
+    default: {
+      auto txn_id = stat_request.level();
+      cout << "Txn id: " << txn_id << "\n";
+      cout << "In execution horizon: " << execution_horizon_.contains(txn_id) << "\n";
+      auto txns_it = txns_.find(txn_id);
+      if (txns_it == txns_.end()) {
+        cout << "Txn data does not exist\n";
+      } else {
+        cout << "Data:\n" << txns_it->second->DebugString();
+      }
+      auto graph_it = graph_.find(txn_id);
+      if (graph_it == graph_.end()) {
+        cout << "No longer inside graph";
+      } else {
+        sccs_finder_.FindSCCs(graph_it->second);
+        auto result = sccs_finder_.Finalize();
+        cout << "Found SCCs:\n";
+        for (const auto& scc : result.sccs) {
+          cout << scc << "\n";
+        }
+        cout << "Missing dependencies:\n";
+        for (const auto& dep : result.missing_deps) {
+          cout << dep.DebugString() << "\n";
+        }
+        cout << "Visited: " << result.visited;
+      }
     }
-    oss << "\n";
   }
-  oss << "pending txns:\n" << pending_txns_.to_string();
-  LOG(INFO) << "Scheduler state:\n" << oss.str();
+  cout << std::flush;
 } 
 
 }  // namespace janus

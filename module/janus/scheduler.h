@@ -61,7 +61,7 @@ class Scheduler : public slog::NetworkedModule {
   void ResolveMissingDependencies(TxnId txn_id, const std::vector<JanusDependency>& deps);
   void CheckPendingInquiry(TxnId txn_id);
   void CheckPendingTxns(std::vector<TxnId>&& ready_txns);
-  void PrintStats();
+  void PrintStats(EnvelopePtr&& env);
 
   std::unordered_map<TxnId, Transaction*> txns_;
 

@@ -18,7 +18,7 @@
 DEFINE_string(host, "localhost", "Hostname of the SLOG server to connect to");
 DEFINE_uint32(port, 2021, "Port number of the SLOG server to connect to");
 DEFINE_uint32(repeat, 1, "Used with \"txn\" command. Send the txn multiple times");
-DEFINE_bool(no_wait, false, "Used with \"txn\" command. Don't wait for reply");
+DEFINE_bool(no_wait, false, "Don't wait for reply");
 DEFINE_int32(truncate, 50, "Number of lines to truncate the output at");
 
 using namespace slog;
@@ -86,13 +86,13 @@ void ExecuteTxn(const char* txn_file) {
 
   LOG(INFO) << "Request size in bytes: " << req.ByteSizeLong();
   // 3. Send to the server
-  for (uint32_t i = 0; i < FLAGS_repeat; i++) {
+  for (uint64_t i = 0; i < FLAGS_repeat; i++) {
     SendSerializedProtoWithEmptyDelim(server_socket, req);
   }
 
   // 4. Wait and print response
   if (!FLAGS_no_wait) {
-    for (uint32_t i = 0; i < FLAGS_repeat; i++) {
+    for (uint64_t i = 0; i < FLAGS_repeat; i++) {
       api::Response res;
       if (!RecvDeserializedProtoWithEmptyDelim(server_socket, res)) {
         LOG(FATAL) << "Malformed response";
@@ -128,10 +128,10 @@ void ExecuteTxn(const char* txn_file) {
 
 struct StatsModule {
   ModuleId api_enum;
-  function<void(const rapidjson::Document&, uint32_t level)> print_func;
+  function<void(const rapidjson::Document&, uint64_t level)> print_func;
 };
 
-void PrintServerStats(const rapidjson::Document& stats, uint32_t level) {
+void PrintServerStats(const rapidjson::Document& stats, uint64_t level) {
   cout << "Txn id counter: " << stats[TXN_ID_COUNTER].GetUint() << "\n";
   cout << "Pending responses: " << stats[NUM_PENDING_RESPONSES].GetUint() << "\n";
   if (level >= 1) {
@@ -149,7 +149,7 @@ void PrintServerStats(const rapidjson::Document& stats, uint32_t level) {
   }
 }
 
-void PrintForwarderStats(const rapidjson::Document& stats, uint32_t level) {
+void PrintForwarderStats(const rapidjson::Document& stats, uint64_t level) {
   const auto& latencies_ns = stats[FORW_LATENCIES_NS].GetArray();
   cout << "Latencies (ns): ";
   for (size_t i = 0; i < latencies_ns.Size(); ++i) {
@@ -163,7 +163,7 @@ void PrintForwarderStats(const rapidjson::Document& stats, uint32_t level) {
   }
 }
 
-void PrintSequencerStats(const rapidjson::Document& stats, uint32_t level) {
+void PrintSequencerStats(const rapidjson::Document& stats, uint64_t level) {
   cout << "Batch size: " << stats[SEQ_BATCH_SIZE].GetInt() << "\n";
   cout << "Num future txns: " << stats[SEQ_NUM_FUTURE_TXNS].GetInt() << "\n";
   cout << "Process future txn callback id: " << stats[SEQ_PROCESS_FUTURE_TXN_CALLBACK_ID].GetInt() << "\n";
@@ -187,7 +187,7 @@ string LockModeStr(LockMode mode) {
   return "<error>";
 }
 
-void PrintSchedulerStats(const rapidjson::Document& stats, uint32_t level) {
+void PrintSchedulerStats(const rapidjson::Document& stats, uint64_t level) {
   // 0: OLD or RMA. 1: DDR
   auto lock_man_type = stats[LOCK_MANAGER_TYPE].GetInt();
   cout << "Number of active txns: " << stats[NUM_ALL_TXNS].GetUint() << "\n";
@@ -277,7 +277,7 @@ const unordered_map<string, StatsModule> STATS_MODULES = {{"server", {ModuleId::
                                                           {"sequencer", {ModuleId::SEQUENCER, PrintSequencerStats}},
                                                           {"scheduler", {ModuleId::SCHEDULER, PrintSchedulerStats}}};
 
-void ExecuteStats(const char* module, uint32_t level) {
+void ExecuteStats(const char* module, uint64_t level) {
   auto stats_module_it = STATS_MODULES.find(string(module));
   if (stats_module_it == STATS_MODULES.end()) {
     LOG(ERROR) << "Invalid module: " << module;
@@ -294,6 +294,10 @@ void ExecuteStats(const char* module, uint32_t level) {
   SendSerializedProtoWithEmptyDelim(server_socket, req);
 
   // 3. Wait and print response
+  if (FLAGS_no_wait) {
+    return;
+  }
+
   api::Response res;
   if (!RecvDeserializedProtoWithEmptyDelim(server_socket, res)) {
     LOG(FATAL) << "Malformed response";
@@ -348,9 +352,9 @@ int main(int argc, char* argv[]) {
                  << "Usage: stats <module> [<level>]";
       return 1;
     }
-    uint32_t level = 0;
+    uint64_t level = 0;
     if (cmd_argc == 3) {
-      level = std::stoul(argv[3]);
+      level = std::stoull(argv[3]);
     }
     ExecuteStats(argv[2], level);
   } else if (strcmp(argv[1], "metrics") == 0) {

@@ -155,7 +155,7 @@ message FinishedSubtransaction {
 
 message StatsRequest {
     uint64 id = 1;
-    uint32 level = 2;
+    uint64 level = 2;
 }
 
 message GraphLogEntry {
