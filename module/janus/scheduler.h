@@ -69,7 +69,7 @@ class Scheduler : public slog::NetworkedModule {
   TarjanSCCsFinder sccs_finder_;
   TxnHorizon execution_horizon_;
   PendingIndex pending_txns_;
-  std::unordered_map<TxnId, EnvelopePtr> pending_inquiries_;
+  std::unordered_map<TxnId, std::vector<EnvelopePtr>> pending_inquiries_;
 
   // This must be defined at the end so that the workers exit before any resources
   // in the scheduler is destroyed

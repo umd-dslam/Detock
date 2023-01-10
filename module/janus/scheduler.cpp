@@ -41,7 +41,7 @@ std::optional<std::unordered_set<TxnId>> PendingIndex::Remove(TxnId ancestor) {
   if (it == index_.end()) {
     return std::nullopt;
   }
-  std::unordered_set<TxnId> descendants(std::move(it->second));
+  std::unordered_set<TxnId> descendants(move(it->second));
   index_.erase(it);
   return descendants;
 }
@@ -117,7 +117,7 @@ void Scheduler::ProcessTransaction(EnvelopePtr&& env) {
   txns_.emplace(txn_id, txn);
 
   vector<JanusDependency> deps(commit->deps().begin(), commit->deps().end());
-  auto [vertex_it, inserted] = graph_.insert({txn_id, Vertex{txn_id, true, std::move(deps)}});
+  auto [vertex_it, inserted] = graph_.insert({txn_id, Vertex{txn_id, true, move(deps)}});
   CHECK(inserted);
 
   VLOG(2) << "New transaction: " << txn_id;
@@ -126,7 +126,7 @@ void Scheduler::ProcessTransaction(EnvelopePtr&& env) {
 
   vector<TxnId> ready_txns;
   FindAndResolveSCCs(vertex_it->second, ready_txns);
-  CheckPendingTxns(std::move(ready_txns));
+  CheckPendingTxns(move(ready_txns));
 }
 
 void Scheduler::ResolveMissingDependencies(TxnId txn_id, const vector<JanusDependency>& missing_deps) {
@@ -160,7 +160,7 @@ bool Scheduler::ProcessInquiry(EnvelopePtr&& env) {
     if (execution_horizon_.contains(txn_id)) {
       resp_inquiry->set_executed(true);
     } else {
-      pending_inquiries_.emplace(txn_id, move(env));
+      pending_inquiries_[txn_id].push_back(move(env));
       return false;
     }
   } else {
@@ -188,10 +188,10 @@ void Scheduler::OnInternalResponseReceived(EnvelopePtr&& env) {
     CheckPendingTxns({txn_id});
   } else {
     vector<JanusDependency> deps(inquiry_result.deps().begin(), inquiry_result.deps().end());
-    auto res = graph_.insert({txn_id, Vertex{txn_id, false, std::move(deps)}});
+    auto res = graph_.insert({txn_id, Vertex{txn_id, false, move(deps)}});
     vector<TxnId> ready_txns;
     FindAndResolveSCCs(res.first->second, ready_txns);
-    CheckPendingTxns(std::move(ready_txns));
+    CheckPendingTxns(move(ready_txns));
   }
 }
 
@@ -240,7 +240,9 @@ bool Scheduler::OnCustomSocket() {
 
 void Scheduler::CheckPendingInquiry(TxnId txn_id) {
   if (auto it = pending_inquiries_.find(txn_id); it != pending_inquiries_.end()) {
-    CHECK(ProcessInquiry(move(it->second)));
+    for (auto& env : it->second) {
+      CHECK(ProcessInquiry(move(env)));
+    }
     pending_inquiries_.erase(it);
   }
 }
