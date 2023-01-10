@@ -84,7 +84,7 @@ TarjanResult TarjanSCCsFinder::Finalize() {
     // Reset disc of vertices that are visited but not in any scc yet
     it->second.disc = 0;
 
-    result.visited.insert(top);
+    result.unready.insert(top);
 
     stack_.pop_back();
   }

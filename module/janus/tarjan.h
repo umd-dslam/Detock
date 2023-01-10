@@ -54,7 +54,7 @@ using SCC = std::vector<std::pair<TxnId, bool>>;  // the second element is wheth
 struct TarjanResult {
   std::vector<SCC> sccs;
   std::vector<JanusDependency> missing_deps;
-  std::unordered_set<TxnId> visited;
+  std::unordered_set<TxnId> unready;
 };
 
 class TarjanSCCsFinder {

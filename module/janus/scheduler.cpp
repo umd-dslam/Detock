@@ -7,6 +7,7 @@
 #include <unordered_set>
 
 #include "common/json_utils.h"
+#include "common/metrics.h"
 #include "common/proto_utils.h"
 #include "common/types.h"
 #include "proto/internal.pb.h"
@@ -27,6 +28,7 @@ using slog::kReplicaIdBits;
 using slog::kSchedulerChannel;
 using slog::MakeMachineId;
 using slog::MakeRunnerFor;
+using slog::per_thread_metrics_repo;
 using slog::internal::Request;
 using slog::internal::Response;
 
@@ -215,6 +217,10 @@ void Scheduler::DispatchSCCs(const vector<SCC>& sccs) {
       current_worker_ = (current_worker_ + 1) % workers_.size();
       GetCustomSocket(worker).send(msg, zmq::send_flags::none);
     }
+
+    if (per_thread_metrics_repo != nullptr && scc.size() > 1) {
+      per_thread_metrics_repo->RecordDeadlockResolverDeadlock(scc.size(), {}, {});
+    }
   }
 }
 
@@ -252,31 +258,34 @@ void Scheduler::CheckPendingTxns(vector<TxnId>&& ready_txns) {
     auto txn_id = ready_txns.back();
     ready_txns.pop_back();
 
-    unordered_set<TxnId> visited;
     auto pending = pending_txns_.Remove(txn_id);
-    if (pending.has_value()) {
-      VLOG(2) << "Checking pending txns: " << txn_id << " <- " << pending.value();
-      for (auto pending_txn_id : pending.value()) {
-        if (visited.find(pending_txn_id) != visited.end()) {
-          continue;
-        }
+    if (!pending.has_value()) {
+      continue;
+    }
 
-        auto pending_txn_it = graph_.find(pending_txn_id);
-        if (pending_txn_it == graph_.end()) {
-          continue;
-        }
+    VLOG(2) << "Checking pending txns: " << txn_id << " <- " << pending.value();
 
-        auto new_visited = FindAndResolveSCCs(pending_txn_it->second, ready_txns);
-        visited.insert(new_visited.begin(), new_visited.end());
+    unordered_set<TxnId> unready;
+    for (auto pending_txn_id : pending.value()) {
+      if (unready.find(pending_txn_id) != unready.end()) {
+        continue;
       }
+
+      auto pending_txn_it = graph_.find(pending_txn_id);
+      if (pending_txn_it == graph_.end() || pending_txn_it->second.disc != 0) {
+        continue;
+      }
+
+      auto new_unready = FindAndResolveSCCs(pending_txn_it->second, ready_txns);
+      unready.insert(new_unready.begin(), new_unready.end());
     }
   }
 }
 
-unordered_set<TxnId> Scheduler::FindAndResolveSCCs(Vertex& v, vector<TxnId>& ready_txns) {
+std::unordered_set<TxnId> Scheduler::FindAndResolveSCCs(Vertex& v, vector<TxnId>& ready_txns) {
   sccs_finder_.FindSCCs(v);
   auto result = sccs_finder_.Finalize();
-  VLOG(3) << "FindSCCs for " << v.txn_id << " - visited vertices: " << result.visited;
+  VLOG(3) << "FindSCCs for " << v.txn_id << " - unready vertices: " << result.unready;
   DispatchSCCs(result.sccs);
   ResolveMissingDependencies(v.txn_id, result.missing_deps);
 
@@ -286,7 +295,12 @@ unordered_set<TxnId> Scheduler::FindAndResolveSCCs(Vertex& v, vector<TxnId>& rea
     }
   }
 
-  return result.visited;
+  if (per_thread_metrics_repo != nullptr) {
+    per_thread_metrics_repo->RecordDeadlockResolverRun(v.txn_id, result.unready.size(), ready_txns.size(),
+                                                       result.sccs.size(), result.missing_deps.size());
+  }
+
+  return result.unready;
 }
 
 using std::cout;
@@ -342,7 +356,7 @@ void Scheduler::PrintStats(EnvelopePtr&& env) {
         for (const auto& dep : result.missing_deps) {
           cout << dep.DebugString() << "\n";
         }
-        cout << "Visited: " << result.visited;
+        cout << "Unready: " << result.unready;
       }
     }
   }
