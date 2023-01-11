@@ -34,11 +34,6 @@ void TarjanSCCsFinder::FindSCCs(Vertex& v) {
       auto& next_v = next_v_it->second;
       if (next_v.disc == 0) {
         FindSCCs(next_v);
-
-        if (!missing_deps_.empty()) {
-          return;
-        }
-
         v.low = std::min(v.low, next_v.low);
       } else if (next_v.on_stack) {
         v.low = std::min(v.low, next_v.disc);

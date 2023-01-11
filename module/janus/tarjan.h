@@ -37,7 +37,7 @@ using slog::internal::JanusDependency;
 
 struct Vertex {
   explicit Vertex(TxnId txn_id, bool is_local, const std::vector<JanusDependency>& deps)
-      : txn_id(txn_id), is_local(is_local), deps(deps), disc(0), low(0), on_stack(false) {}
+      : txn_id(txn_id), is_local(is_local), deps(deps), disc(0), low(0), missing_deps(0), on_stack(false) {}
 
   const TxnId txn_id;
   const bool is_local;
@@ -45,6 +45,7 @@ struct Vertex {
 
   int disc;
   int low;
+  int missing_deps;
   bool on_stack;
 };
 

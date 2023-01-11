@@ -131,27 +131,6 @@ void Scheduler::ProcessTransaction(EnvelopePtr&& env) {
   CheckPendingTxns(move(ready_txns));
 }
 
-void Scheduler::ResolveMissingDependencies(TxnId txn_id, const vector<JanusDependency>& missing_deps) {
-  auto local_region = config()->local_region();
-  auto local_replica = config()->local_replica();
-  auto local_partition = config()->local_partition();
-  auto env = NewEnvelope();
-  for (const auto& dep : missing_deps) {
-    VLOG(3) << "Pending: " << dep.txn_id() << " <- " << txn_id;
-    if (pending_txns_.Add(dep, txn_id)) {
-      // Send an inquiry if current partition is not a participant of ancestor
-      if ((dep.participants_bitmap() & (1 << local_partition)) == 0) {
-        auto inquiry = env->mutable_request()->mutable_janus_inquire();
-        inquiry->set_txn_id(dep.txn_id());
-
-        VLOG(3) << "Inquire: " << inquiry->DebugString();
-
-        Send(*env, MakeMachineId(local_region, local_replica, dep.target_partition()), kSchedulerChannel);
-      }
-    }
-  }
-}
-
 bool Scheduler::ProcessInquiry(EnvelopePtr&& env) {
   auto txn_id = env->request().janus_inquire().txn_id();
   auto resp_env = NewEnvelope();
@@ -267,12 +246,14 @@ void Scheduler::CheckPendingTxns(vector<TxnId>&& ready_txns) {
 
     unordered_set<TxnId> unready;
     for (auto pending_txn_id : pending.value()) {
-      if (unready.find(pending_txn_id) != unready.end()) {
+      auto pending_txn_it = graph_.find(pending_txn_id);
+      if (pending_txn_it == graph_.end() || pending_txn_it->second.disc != 0) {
         continue;
       }
 
-      auto pending_txn_it = graph_.find(pending_txn_id);
-      if (pending_txn_it == graph_.end() || pending_txn_it->second.disc != 0) {
+      pending_txn_it->second.missing_deps--;
+
+      if (unready.find(pending_txn_id) != unready.end() || pending_txn_it->second.missing_deps > 0) {
         continue;
       }
 
@@ -286,8 +267,29 @@ std::unordered_set<TxnId> Scheduler::FindAndResolveSCCs(Vertex& v, vector<TxnId>
   sccs_finder_.FindSCCs(v);
   auto result = sccs_finder_.Finalize();
   VLOG(3) << "FindSCCs for " << v.txn_id << " - unready vertices: " << result.unready;
+
+  v.missing_deps = result.missing_deps.size();
+
+  auto local_region = config()->local_region();
+  auto local_replica = config()->local_replica();
+  auto local_partition = config()->local_partition();
+  auto env = NewEnvelope();
+  for (const auto& dep : result.missing_deps) {
+    VLOG(3) << "Pending: " << dep.txn_id() << " <- " << v.txn_id;
+    if (pending_txns_.Add(dep, v.txn_id)) {
+      // Send an inquiry if current partition is not a participant of ancestor
+      if ((dep.participants_bitmap() & (1 << local_partition)) == 0) {
+        auto inquiry = env->mutable_request()->mutable_janus_inquire();
+        inquiry->set_txn_id(dep.txn_id());
+
+        VLOG(3) << "Inquire: " << inquiry->DebugString();
+
+        Send(*env, MakeMachineId(local_region, local_replica, dep.target_partition()), kSchedulerChannel);
+      }
+    }
+  }
+
   DispatchSCCs(result.sccs);
-  ResolveMissingDependencies(v.txn_id, result.missing_deps);
 
   for (auto& scc : result.sccs) {
     for (auto [new_txn_id, _] : scc) {

@@ -58,7 +58,6 @@ class Scheduler : public slog::NetworkedModule {
   bool ProcessInquiry(EnvelopePtr&& env);
   std::unordered_set<TxnId> FindAndResolveSCCs(Vertex& v, std::vector<TxnId>& ready_txns);
   void DispatchSCCs(const std::vector<SCC>& sccs);
-  void ResolveMissingDependencies(TxnId txn_id, const std::vector<JanusDependency>& deps);
   void CheckPendingInquiry(TxnId txn_id);
   void CheckPendingTxns(std::vector<TxnId>&& ready_txns);
   void PrintStats(EnvelopePtr&& env);
