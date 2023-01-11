@@ -193,7 +193,7 @@ message JanusCommit {
 }
 
 message JanusInquireRequest {
-    uint64 txn_id = 1;
+    repeated uint64 txn_id = 1;
 }
 
 /***********************************************
@@ -260,8 +260,12 @@ message JanusAcceptResponse {
     bool ok = 2;
 }
 
-message JanusInquireResponse {
+message JanusInquiryResult {
     uint64 txn_id = 1;
     bool executed = 2;
     repeated JanusDependency deps = 3;
+}
+
+message JanusInquireResponse {
+    repeated JanusInquiryResult results = 1;
 }

@@ -132,27 +132,40 @@ void Scheduler::ProcessTransaction(EnvelopePtr&& env) {
 }
 
 bool Scheduler::ProcessInquiry(EnvelopePtr&& env) {
-  auto txn_id = env->request().janus_inquire().txn_id();
+  auto inquired_txn_ids = env->request().janus_inquire().txn_id();
+
   auto resp_env = NewEnvelope();
   auto resp_inquiry = resp_env->mutable_response()->mutable_janus_inquire();
-  resp_inquiry->set_txn_id(txn_id);
+  bool all_processed = true;
 
-  if (auto vertex_it = graph_.find(txn_id); vertex_it == graph_.end()) {
-    if (execution_horizon_.contains(txn_id)) {
-      resp_inquiry->set_executed(true);
+  for (auto txn_id : inquired_txn_ids) {
+    if (auto vertex_it = graph_.find(txn_id); vertex_it == graph_.end()) {
+      if (execution_horizon_.contains(txn_id)) {
+        auto result = resp_inquiry->add_results();
+        result->set_txn_id(txn_id);
+        result->set_executed(true);
+      } else {
+        auto pending_env = NewEnvelope();
+        pending_env->mutable_request()->mutable_janus_inquire()->add_txn_id(txn_id);
+        pending_env->set_from(env->from());
+        pending_inquiries_[txn_id].push_back(move(pending_env));
+        all_processed = false;
+      }
     } else {
-      pending_inquiries_[txn_id].push_back(move(env));
-      return false;
-    }
-  } else {
-    resp_inquiry->set_executed(false);
-    for (auto& dep : vertex_it->second.deps) {
-      resp_inquiry->add_deps()->CopyFrom(dep);
+      auto result = resp_inquiry->add_results();
+      result->set_txn_id(txn_id);
+      result->set_executed(false);
+      for (auto& dep : vertex_it->second.deps) {
+        result->add_deps()->CopyFrom(dep);
+      }
     }
   }
 
-  Send(*resp_env, env->from(), kSchedulerChannel);
-  return true;
+  if (!resp_inquiry->results().empty()) {
+    Send(*resp_env, env->from(), kSchedulerChannel);
+  }
+
+  return all_processed;
 }
 
 void Scheduler::OnInternalResponseReceived(EnvelopePtr&& env) {
@@ -163,16 +176,18 @@ void Scheduler::OnInternalResponseReceived(EnvelopePtr&& env) {
 
   VLOG(2) << "Inquiry result: " << inquiry_result.DebugString();
 
-  auto txn_id = inquiry_result.txn_id();
-  if (inquiry_result.executed()) {
-    execution_horizon_.Add(txn_id);
-    CheckPendingTxns({txn_id});
-  } else {
-    vector<JanusDependency> deps(inquiry_result.deps().begin(), inquiry_result.deps().end());
-    auto res = graph_.insert({txn_id, Vertex{txn_id, false, move(deps)}});
-    vector<TxnId> ready_txns;
-    FindAndResolveSCCs(res.first->second, ready_txns);
-    CheckPendingTxns(move(ready_txns));
+  for (const auto& res : inquiry_result.results()) {
+    auto txn_id = res.txn_id();
+    if (res.executed()) {
+      execution_horizon_.Add(txn_id);
+      CheckPendingTxns({txn_id});
+    } else {
+      vector<JanusDependency> deps(res.deps().begin(), res.deps().end());
+      auto res = graph_.insert({txn_id, Vertex{txn_id, false, move(deps)}});
+      vector<TxnId> ready_txns;
+      FindAndResolveSCCs(res.first->second, ready_txns);
+      CheckPendingTxns(move(ready_txns));
+    }
   }
 }
 
@@ -270,22 +285,26 @@ std::unordered_set<TxnId> Scheduler::FindAndResolveSCCs(Vertex& v, vector<TxnId>
 
   v.missing_deps = result.missing_deps.size();
 
+  // Create inquiry requests for the missing dependencies
   auto local_region = config()->local_region();
   auto local_replica = config()->local_replica();
   auto local_partition = config()->local_partition();
-  auto env = NewEnvelope();
+  vector<EnvelopePtr> envs(config()->num_partitions());
   for (const auto& dep : result.missing_deps) {
     VLOG(3) << "Pending: " << dep.txn_id() << " <- " << v.txn_id;
     if (pending_txns_.Add(dep, v.txn_id)) {
       // Send an inquiry if current partition is not a participant of ancestor
       if ((dep.participants_bitmap() & (1 << local_partition)) == 0) {
-        auto inquiry = env->mutable_request()->mutable_janus_inquire();
-        inquiry->set_txn_id(dep.txn_id());
-
-        VLOG(3) << "Inquire: " << inquiry->DebugString();
-
-        Send(*env, MakeMachineId(local_region, local_replica, dep.target_partition()), kSchedulerChannel);
+        auto part = dep.target_partition();
+        if (envs[part] == nullptr) envs[part] = NewEnvelope();
+        envs[part]->mutable_request()->mutable_janus_inquire()->add_txn_id(dep.txn_id());
       }
+    }
+  }
+  for (size_t i = 0; i < envs.size(); i++) {
+    if (envs[i] != nullptr) {
+      VLOG(3) << "Inquire: " << envs[i]->DebugString();
+      Send(*envs[i], MakeMachineId(local_region, local_replica, i), kSchedulerChannel);
     }
   }
 
