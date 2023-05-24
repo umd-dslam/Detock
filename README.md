@@ -3,17 +3,17 @@
 [![Build Status](https://github.com/ctring/Detock/workflows/Build%20and%20Test/badge.svg)](https://github.com/ctring/Detock/actions)
 
 
-Detock is a descendant of [SLOG](https://github.com/ctring/SLOG), a distributed data store designed to be deployed in multiple geographic regions.
+Detock is a descendant of [SLOG](https://github.com/umd-dslam/SLOG), a distributed data store designed to be deployed in multiple geographic regions.
 
 Like SLOG, Detock employs a deterministic execution framework to move most of intra- and inter-region coordination out of transactional execution. As a result, it can achieve high throughput, even for high contention workloads.
 
 While SLOG can guarantee low latency for transactions accessing data in a single region, it has to route all multi-region transactions through a global ordering mechanism to avoid deadlocks, incurring additional latency from this global ordering layer on top of normal processing of the transactions. Unlike SLOG, Detock eliminates the global ordering layer completely by using a graph-based concurrency control protocol that deterministically resolves deadlocks without aborting transactions, hence, achieving much lower latency.
 
-This repository contains an experimental implementations of the system. 
+This repository contains an experimental implementations used in the paper [Detock: High Performance Multi-region Transactions at Scale](https://doi.org/10.1145/3589293).
 
 ## How to Build
 
-The following guide has been tested on Ubuntu 20.04 with GCC 9.3.0 and CMake 3.16.3. Additional docs are in [the SLOG's wiki](https://github.com/ctring/SLOG/wiki).
+The following guide has been tested on Ubuntu 20.04 with GCC 9.3.0 and CMake 3.16.3. Additional docs are in [the SLOG's wiki](https://github.com/umd-dslam/SLOG/wiki).
 
 
 First, install the build tools:
@@ -150,7 +150,7 @@ Involved regions: 0
 <details>
 <summary>Run Detock on a cluster</summary>
 
-The following guide shows how to manually run Detock on a cluster of multiple machines. This can be time-consuming when the number of machines is large so you should use the [Admin tool](https://github.com/ctring/SLOG/wiki/Using-the-Admin-tool) instead.
+The following guide shows how to manually run Detock on a cluster of multiple machines. This can be time-consuming when the number of machines is large so you should use the [Admin tool](https://github.com/umd-dslam/SLOG/wiki/Using-the-Admin-tool) instead.
 
 In this example, we start Detock on a cluster using the configuration in `examples/cluster.conf`. You need to change the IP addresses in this file to match with the addresses of your machines. You can add more machines by increasing either the number of regions or the number of partitions in a region. The number of machines in a region must be the same across all regions and equal to `num_partitions`.
 
@@ -296,4 +296,4 @@ Involved regions: 0 1
 
 ## Experiments
         
-Experiment data and code to generate the figures in the paper can be found in https://github.com/ctring/DetockAnalysis
+Experiment data and code to generate the figures in the paper can be found in https://github.com/umd-dslam/DetockAnalysis

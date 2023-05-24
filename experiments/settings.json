@@ -267,7 +267,7 @@
     ],
     "workload": "basic",
     "txns": 300000,
-    "duration": 20,
+    "duration": 60,
     "clients": 15,
     "generators": 15,
     "rate_limit": 1000,
@@ -320,7 +320,7 @@
     ],
     "workload": "tpcc",
     "txns": 0,
-    "duration": 30,
+    "duration": 60,
     "clients": [1, 25, 50, 75, 100, 125, 150, 175, 200, 225],
     "sh_only": 0,
     "mh_zipf": 1

@@ -147,7 +147,7 @@
       {
         "config": "ycsb/ddr_ts.conf",
         "image": "ctring/slog:ddr-fe9a7d8",
-        "num_partitions": [3, 5, 7, 9, 11, 13, 15]
+        "num_partitions": [3, 5, 7, 9, 11, 13, 15, 17, 19, 21]
       }
     ],
     "num_log_managers": 3,
