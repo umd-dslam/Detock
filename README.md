@@ -293,6 +293,17 @@ Involved regions: 0 1
 ```
 </details>
 
+NOTE: If your deployment involves network link that is over 100ms round-trip time, for better performance, run the following commands on each node to increase the network buffer:
+
+```
+sudo sysctl -w net.core.rmem_max=10485760
+sudo sysctl -w net.core.wmem_max=10485760
+```
+and set the following fields in the config:
+```
+broker_rcvbuf: 10485760
+long_sender_sndbuf: 10485760
+```
 ## Experiments
         
 Experiment data and code to generate the figures in the paper can be found in https://github.com/umd-dslam/DetockAnalysis
