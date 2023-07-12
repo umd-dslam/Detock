@@ -25,7 +25,7 @@ option(BUILD_SLOG_TESTS            "Build the tests"                       ON)
 option(ENABLE_TXN_EVENT_RECORDING  "Enable transaction events recording"   ON)
 option(FETCH_DEPENDENCIES          "Automatically fetch the dependencies"  OFF)
 set(REMASTER_PROTOCOL "COUNTERLESS" CACHE STRING "Protocol for remastering (\"SIMPLE\", \"PER_KEY\", \"COUNTERLESS\", \"NONE\")")
-set(LOCK_MANAGER "RMA" CACHE STRING "Lock manager (\"OLD\", \"DDR\", \"RMA\")")
+set(LOCK_MANAGER "DDR" CACHE STRING "Lock manager (\"OLD\", \"DDR\", \"RMA\")")
 
 message(STATUS "Options:")
 message(STATUS "  BUILD_SLOG_CLIENT = ${BUILD_SLOG_CLIENT}")
