@@ -308,6 +308,6 @@ long_sender_sndbuf: 10485760
         
 Experiment data and code to generate the figures in the paper can be found in https://github.com/umd-dslam/DetockAnalysis
 
-## Acknowledgement
+## Acknowledgements
 
 This work is supported by the National Science Foundation under grant IIS-1910613
