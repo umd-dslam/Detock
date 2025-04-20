@@ -214,7 +214,7 @@ add_custom_target(proto_py ALL DEPENDS ${PROTO_PY_DEST_SRCS})
 #            Build flags
 #========================================
 
-set(CMAKE_CXX_FLAGS "-Wall -Wno-tautological-constant-compare -Wno-template-body -Wextra")
+set(CMAKE_CXX_FLAGS "-Wall -Wno-template-body -Wextra")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 set(CMAKE_CXX_FLAGS_DEBUG  "-g -fno-omit-frame-pointer")
 set(CMAKE_CXX_FLAGS_ASAN "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address")

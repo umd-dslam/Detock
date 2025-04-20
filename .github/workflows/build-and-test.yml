@@ -9,7 +9,7 @@ env:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     strategy:
       # Allow other jobs to continue when one job fails
       fail-fast: false
@@ -29,7 +29,7 @@ jobs:
             lock: old
 
     steps:
-    - name: Get latest CMake
+    - name: Get CMake 3.25
       uses: lukka/get-cmake@latest
       with:
         cmakeVersion: "~3.25.0"
