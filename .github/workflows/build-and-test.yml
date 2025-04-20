@@ -31,6 +31,8 @@ jobs:
     steps:
     - name: Get latest CMake
       uses: lukka/get-cmake@latest
+      with:
+        cmakeVersion: "~3.25.0"
 
     - uses: actions/checkout@v4
 
@@ -61,7 +63,6 @@ jobs:
         -DBUILD_SLOG_TESTS=ON
         -DREMASTER_PROTOCOL=$REMASTER_PROTOCOL
         -DLOCK_MANAGER=$LOCK_MANAGER
-        -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
     - name: Build
       working-directory: ${{ github.workspace }}/build
