@@ -56,7 +56,7 @@ jobs:
         cache-from: type=local,src=/tmp/.buildx-cache
         cache-to: type=local,dest=/tmp/.buildx-cache
         build-args: |
-          CMAKE_OPTIONS=-DLOCK_MANAGER=${{ matrix.lock }} -DREMASTER_PROTOCOL=${{ matrix.remaster }}
+          CMAKE_OPTIONS=-DLOCK_MANAGER=${{ matrix.lock }} -DREMASTER_PROTOCOL=${{ matrix.remaster }} -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
     - name: Image digest
       run: echo ${{ steps.docker_build.outputs.digest }}

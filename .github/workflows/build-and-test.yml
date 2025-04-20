@@ -61,6 +61,7 @@ jobs:
         -DBUILD_SLOG_TESTS=ON
         -DREMASTER_PROTOCOL=$REMASTER_PROTOCOL
         -DLOCK_MANAGER=$LOCK_MANAGER
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
     - name: Build
       working-directory: ${{ github.workspace }}/build
