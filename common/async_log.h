@@ -1,6 +1,7 @@
 #pragma once
 
 #include <sstream>
+#include <cstdint>
 #include <unordered_map>
 
 namespace slog {

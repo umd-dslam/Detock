@@ -64,7 +64,7 @@ else()
 
   FetchContent_Declare(libzmq
     GIT_REPOSITORY  https://github.com/zeromq/libzmq.git
-    GIT_TAG         v4.3.3
+    GIT_TAG         v4.3.5
   )
   FetchContent_GetProperties(libzmq)
   if(NOT libzmq_POPULATED)
@@ -76,7 +76,7 @@ else()
 
   FetchContent_Declare(cppzmq
     GIT_REPOSITORY  https://github.com/zeromq/cppzmq.git
-    GIT_TAG         v4.7.1
+    GIT_TAG         v4.10.0
   )
   FetchContent_GetProperties(cppzmq)
   if(NOT cppzmq_POPULATED)
@@ -214,7 +214,7 @@ add_custom_target(proto_py ALL DEPENDS ${PROTO_PY_DEST_SRCS})
 #            Build flags
 #========================================
 
-set(CMAKE_CXX_FLAGS "-Wall -Wextra")
+set(CMAKE_CXX_FLAGS "-Wall -Wno-template-body -Wextra")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 set(CMAKE_CXX_FLAGS_DEBUG  "-g -fno-omit-frame-pointer")
 set(CMAKE_CXX_FLAGS_ASAN "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address")
