@@ -68,8 +68,8 @@
   "ycsb": {
     "servers": [
       {
-        "config": "ycsb/baseline.conf",
-        "image": "ctring/slog:rma-fe9a7d8"
+        "config": "ycsb/ddr_ts.conf",
+        "image": "ctring/slog:ddr-fe9a7d8"
       }
     ],
     "num_log_managers": 3,
