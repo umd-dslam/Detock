@@ -1,0 +1,64 @@
+{
+  "username": "ctring",
+  "sample": 10,
+  "regions": [
+    "us-east-2", "us-east-1"
+  ],
+  "distance_ranking": {
+    "us-east-1":      ["us-east-2"],
+    "us-east-2":      ["us-east-1"]
+  },
+  "num_replicas": {
+    "us-east-1": 1,
+    "us-east-2": 1
+  },
+  "shrink_mh_orderer": {
+    "us-east-2": true,
+    "us-east-1": true
+  },
+  "servers_public": {
+    "us-east-1": [
+      "192.168.50.11",
+      "192.168.50.12"
+    ],
+    "us-east-2": [
+      "192.168.50.13",
+      "192.168.50.14"
+    ]
+  },
+  "servers_private": {
+    "us-east-1": [
+      "192.168.50.11",
+      "192.168.50.12"
+    ],
+    "us-east-2": [
+      "192.168.50.13",
+      "192.168.50.14"
+    ]
+  },
+  "clients": {
+    "us-east-1": [
+      "192.168.50.11"
+    ],
+    "us-east-2": [
+      "192.168.50.13"
+    ]
+  },
+  "ycsb": {
+    "servers": [
+      {
+        "config": "ycsb/baseline.conf",
+        "image": "ctring/slog:rma-test"
+      }
+    ],
+    "num_log_managers": 1,
+    "workload": "basic",
+    "duration": 0,
+    "rate": 1,
+    "txns": 10,
+    "clients": 0,
+    "include": [
+      {"hot": 10000, "mp": 100, "mh": 100, "rate_limit": 16000}
+    ]
+  }
+}
