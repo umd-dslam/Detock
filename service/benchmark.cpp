@@ -27,7 +27,7 @@ DEFINE_int32(rate, 0, "Maximum number of transactions sent per second.");
 DEFINE_int32(clients, 0, "Number of concurrent client. If set to 0, the txn are sent at a constant rate");
 DEFINE_int32(duration, 0, "Maximum duration in seconds to run the benchmark");
 DEFINE_uint32(txns, 100, "Total number of txns to be generated");
-DEFINE_string(wl, "basic", "Name of the workload to use (options: basic, cockroach, remastering)");
+DEFINE_string(wl, "basic", "Name of the workload to use (options: basic, cockroach, remastering, tpcc)");
 DEFINE_string(params, "", "Parameters of the workload");
 DEFINE_bool(dry_run, false, "Generate the transactions without actually sending to the server");
 DEFINE_double(sample, 10, "Percent of sampled transactions to be written to result files");

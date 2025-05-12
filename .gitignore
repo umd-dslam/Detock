@@ -63,3 +63,4 @@ venv.bak/
 
 # Data files
 *.dat
+data/

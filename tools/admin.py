@@ -1017,6 +1017,7 @@ class CollectServerCommand(AdminCommand):
                         "-c",
                         f"client metrics {out_dir} --host {address} --port {self.config.server_port}",
                     ],
+                    network_mode="host",
                     remove=True,
                 )
                 LOG.info("%s: Triggered flushing metrics to disk", address)
